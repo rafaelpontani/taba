@@ -2,13 +2,15 @@
 
 `bench/run.sh` runs the [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) (OMB) against Taba and
 other messaging systems on **your own machine**, everything in Docker. The only requirement is Docker (Compose v2)
-with at least **4 cores and 8 GB** available to it, on Linux, macOS or Windows (Git Bash).
+with at least **4 cores and 7 GB** available to it, on Linux, macOS or Windows (Git Bash).
 
 ```
 bench/run.sh                                   # profile quick (about 1 hour), every system
 bench/run.sh --profile standard                # 3 rounds of 5 minutes, six workloads
 bench/run.sh --systems taba,kafka --workloads fanout-1kb
 bench/run.sh --durability both                 # default and fsync
+bench/run.sh --nodes 1,3                       # one node and a cluster of three (systems with compose-cluster.yml)
+bench/run.sh --profile showcase                # Taba, RabbitMQ and NATS, one and three nodes, with a node killed
 bench/run.sh --taba-image rafaelpontani/taba:0.1.9   # default: builds the image of the current commit
 bench/run.sh --dry-run                         # prints the plan and the estimated time, runs nothing
 bench/run.sh --report-only bench/results/<folder>
@@ -23,7 +25,11 @@ machine, in this run. Every report says so in its first line.
   server and its volume, and only then starts the next one.
 - The same `cpus` and `mem_limit` for every server (half of the cores, at most 4, and half of the memory, at most
   8 GB); the OMB runs in another container with the rest. `--cpus` and `--memory` override the split.
-- One node per system. Three nodes on one machine would compete for the same cores and disks.
+- One node or a cluster of three (`--nodes 1,3`): each node of a cluster gets half of a single node, the same for
+  every system, from `systems/<name>/compose-cluster.yml`. The nodes share the cores and the disk of one machine.
+  A workload with a `<workload>.faults` file (`failover-1kb`) kills and restarts a node, and runs only in a cluster.
+- The CPU and memory of the server containers are sampled during each cell, with the time until healthy and the
+  memory at rest; the report draws them over time with the messages published and consumed.
 - The order of the systems rotates between rounds.
 - The same OMB, the same runner image and the same payload files for all of them. Taba is measured by the driver of
   `connectors/omb`; Kafka and Redpanda by the OMB Kafka driver; RabbitMQ and NATS JetStream by their own.

@@ -101,3 +101,19 @@ test('o perfil consume roda só os workloads de backlog e todos os sistemas leem
     assert.match(readFileSync(join(here, 'systems', s, 'driver-default.yaml'), 'utf8'), /enable\.auto\.commit=false/, s);
   }
 });
+
+/// UC: UC-BNC-001
+test('com --nodes 1,3 o plano traz o cluster, e um sistema sem compose-cluster.yml fica só com um nó', () => {
+  const r = run('--dry-run', '--profile', 'showcase', '--systems', 'taba,rabbitmq,nats,kafka');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /nós:\s+1 3/);
+  assert.match(r.stdout, /cluster:\s+3 nós de \d+ núcleos e \d+ MB cada/);
+  assert.match(r.stdout, /ordem taba rabbitmq nats kafka 3:taba 3:rabbitmq 3:nats/);
+  assert.match(r.stderr, /kafka não tem cluster/);
+  for (const s of ['taba', 'rabbitmq', 'nats']) {
+    const compose = readFileSync(join(here, 'systems', s, 'compose-cluster.yml'), 'utf8');
+    for (const n of [0, 1, 2]) assert.match(compose, new RegExp(`^  node-${n}:`, 'm'), `${s}: node-${n}`);
+    assert.match(compose, /cpus: \$\{BENCH_CPUS\}/, `${s}: limite de CPU por nó`);
+  }
+  assert.match(readFileSync(join(here, 'workloads', 'failover-1kb.faults'), 'utf8'), /^60 kill node-1$/m);
+});

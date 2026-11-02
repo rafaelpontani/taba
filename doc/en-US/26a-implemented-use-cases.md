@@ -10235,6 +10235,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `bench/run.test.mjs::o dry-run imprime o plano, a estimativa e a ordem em rodízio, sem tocar no Docker`
   - `bench/run.test.mjs::o servidor recebe o mesmo limite para todos os sistemas e o executor fica com o resto`
   - `bench/run.test.mjs::um sistema, um perfil, um workload ou uma durabilidade desconhecidos são recusados`
+  - `bench/run.test.mjs::com --nodes 1,3 o plano traz o cluster, e um sistema sem compose-cluster.yml fica só com um nó`
 
 ---
 

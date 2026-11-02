@@ -5,6 +5,8 @@
 #   bench/run.sh --profile standard
 #   bench/run.sh --systems taba,kafka --workloads fanout-1kb
 #   bench/run.sh --durability fsync               # default, fsync ou both
+#   bench/run.sh --nodes 1,3                      # um nó e cluster de três nós (só os sistemas com compose-cluster.yml)
+#   bench/run.sh --profile showcase               # Taba, RabbitMQ e NATS, um e três nós, com a queda de um nó
 #   bench/run.sh --taba-image rafaelpontani/taba:0.1.9
 #   bench/run.sh --dry-run                        # imprime o plano e termina
 #   bench/run.sh --allow-small                    # roda abaixo do mínimo (só para testar o script; números sem valor)
@@ -17,7 +19,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 PROFILE=quick
 SYSTEMS=""
 WORKLOADS=""
-DURABILITY=default
+DURABILITY=""
+NODES=""
 TABA_IMAGE=""
 CPUS=""
 MEMORY=""
@@ -25,10 +28,10 @@ DRY_RUN=0
 REPORT_ONLY=""
 OUTPUT=""
 MIN_CPUS=4
-MIN_GB=8
+MIN_GB=7
 ALLOW_SMALL=0
 
-usage() { sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,6 +39,7 @@ while [ $# -gt 0 ]; do
     --systems) SYSTEMS="${2//,/ }"; shift 2 ;;
     --workloads) WORKLOADS="${2//,/ }"; shift 2 ;;
     --durability) DURABILITY="$2"; shift 2 ;;
+    --nodes) NODES="${2//,/ }"; shift 2 ;;
     --taba-image) TABA_IMAGE="$2"; shift 2 ;;
     --cpus) CPUS="$2"; shift 2 ;;
     --memory) MEMORY="$2"; shift 2 ;;
@@ -57,6 +61,12 @@ fi
 # shellcheck disable=SC1090
 source "$BENCH_DIR/profile-$PROFILE"
 [ -n "$WORKLOADS" ] || WORKLOADS="$PROFILE_WORKLOADS"
+[ -n "$SYSTEMS" ] || SYSTEMS="${PROFILE_SYSTEMS:-}"
+[ -n "$NODES" ] || NODES="${PROFILE_NODES:-1}"
+[ -n "$DURABILITY" ] || DURABILITY="${PROFILE_DURABILITY:-default}"
+for n in $NODES; do
+  case "$n" in 1|3) ;; *) bench_die "número de nós desconhecido: $n (1 ou 3)" ;; esac
+done
 
 # Sistemas
 if [ -z "$SYSTEMS" ]; then SYSTEMS="$(bench_all_systems | tr '\n' ' ')"; fi
@@ -73,10 +83,28 @@ case "$DURABILITY" in
   both) DURABILITIES="default fsync" ;;
   *) bench_die "durabilidade desconhecida: $DURABILITY (default, fsync, both)" ;;
 esac
-for s in $SYSTEMS; do
+# Um workload com falhas (<workload>.faults) derruba um nó: só roda em cluster.
+has_faults() { [ -f "$BENCH_DIR/workloads/$1.faults" ]; }
+# Os pares nós:sistema do plano. Um sistema sem compose-cluster.yml fica fora do cluster, com aviso.
+PAIRS=()
+for n in $NODES; do
+  for s in $SYSTEMS; do
+    if bench_compose_file "$s" "$n" >/dev/null; then PAIRS+=("$n:$s"); else echo "aviso: $s não tem cluster (compose-cluster.yml); fica só com um nó" >&2; fi
+  done
+done
+[ ${#PAIRS[@]} -gt 0 ] || bench_die "nenhum sistema no plano"
+# Os workloads que rodam com <nós> nós.
+cell_workloads() {
+  local w
+  for w in $WORKLOADS; do
+    if has_faults "$w" && [ "$1" -lt 3 ]; then continue; fi
+    echo "$w"
+  done
+}
+for p in "${PAIRS[@]}"; do
   for d in $DURABILITIES; do
-    for w in $WORKLOADS; do
-      bench_driver_file "$s" "$d" "$w" >/dev/null || bench_die "o sistema $s não tem driver para a durabilidade $d"
+    for w in $(cell_workloads "${p%%:*}"); do
+      bench_driver_file "${p#*:}" "$d" "$w" "${p%%:*}" >/dev/null || bench_die "o sistema ${p#*:} não tem driver para a durabilidade $d"
     done
   done
 done
@@ -98,9 +126,16 @@ read -r SERVER_CPUS SERVER_GB RUNNER_CPUS RUNNER_GB < <(bench_split "$total_cpus
 [ -z "$CPUS" ] || SERVER_CPUS="$CPUS"
 [ -z "$MEMORY" ] || SERVER_GB="${MEMORY%[gG]}"
 RUNNER_HEAP_GB=$((RUNNER_GB * 6 / 10)); [ "$RUNNER_HEAP_GB" -lt 1 ] && RUNNER_HEAP_GB=1
+# O cluster: cada nó com metade do nó único (--cpus e --memory, no cluster, valem por nó).
+read -r NODE_CPUS NODE_MB C_RUNNER_CPUS C_RUNNER_GB < <(bench_split_cluster "$total_cpus" "$total_gb" 3)
+[ -z "$CPUS" ] || NODE_CPUS="$CPUS"
+[ -z "$MEMORY" ] || NODE_MB=$((${MEMORY%[gG]} * 1024))
+C_RUNNER_HEAP_GB=$((C_RUNNER_GB * 6 / 10)); [ "$C_RUNNER_HEAP_GB" -lt 1 ] && C_RUNNER_HEAP_GB=1
 
-n_systems=$(wc -w <<<"$SYSTEMS"); n_workloads=$(wc -w <<<"$WORKLOADS"); n_dur=$(wc -w <<<"$DURABILITIES")
-estimate="$(bench_estimate_minutes "$n_systems" "$n_dur" "$n_workloads" "$ROUNDS" "$DURATION" "$WARMUP")"
+n_dur=$(wc -w <<<"$DURABILITIES"); estimate=0
+for p in "${PAIRS[@]}"; do
+  estimate=$((estimate + $(bench_estimate_minutes 1 "$n_dur" "$(cell_workloads "${p%%:*}" | wc -l)" "$ROUNDS" "$DURATION" "$WARMUP")))
+done
 
 commit="$((cd "$BENCH_REPO_ROOT" && git rev-parse --short HEAD) 2>/dev/null || echo unknown)"
 omb_commit="$(tr -d '[:space:]' < "$BENCH_REPO_ROOT/connectors/omb/OMB_VERSION")"
@@ -111,15 +146,19 @@ bench_info "perfil:        $PROFILE ($ROUNDS rodada(s), $DURATION min + $WARMUP 
 bench_info "sistemas:      $SYSTEMS"
 bench_info "workloads:     $WORKLOADS"
 bench_info "durabilidade:  $DURABILITIES"
+bench_info "nós:           $NODES"
 bench_info "máquina:       $total_cpus núcleos, $total_gb GB"
 bench_info "servidor:      $SERVER_CPUS núcleos, ${SERVER_GB} GB (igual para todos)"
 bench_info "executor OMB:  $RUNNER_CPUS núcleos, ${RUNNER_GB} GB (heap ${RUNNER_HEAP_GB} GB)"
+case " $NODES " in *" 3 "*)
+  bench_info "cluster:       3 nós de $NODE_CPUS núcleos e $NODE_MB MB cada (igual para todos); executor $C_RUNNER_CPUS núcleos, ${C_RUNNER_GB} GB" ;;
+esac
 bench_info "tempo estimado: $(bench_format_minutes "$estimate")"
 bench_info "saída:         $OUTPUT"
 if [ "$DRY_RUN" -eq 1 ]; then
   for ((r = 0; r < ROUNDS; r++)); do
     # shellcheck disable=SC2086
-    bench_info "rodada $((r + 1)): ordem $(bench_rotate "$r" $SYSTEMS | tr '\n' ' ')"
+    bench_info "rodada $((r + 1)): ordem $(bench_rotate "$r" "${PAIRS[@]}" | sed 's/^1://' | tr '\n' ' ')"
   done
   exit 0
 fi
@@ -152,8 +191,6 @@ case " $SYSTEMS " in
 esac
 
 export BENCH_TABA_IMAGE="${TABA_IMAGE:-unused}"
-export BENCH_CPUS="$SERVER_CPUS" BENCH_MEMORY="${SERVER_GB}g"
-export BENCH_SMP="$SERVER_CPUS" BENCH_REDPANDA_MEMORY="$((SERVER_GB * 1024 * 3 / 4))M"
 
 # machine.json
 cpu_model="$(docker run --rm "$BENCH_RUNNER_IMAGE" "grep -m1 'model name' /proc/cpuinfo | cut -d: -f2" 2>/dev/null | sed 's/^ *//' | tr -d '"' || true)"
@@ -170,6 +207,9 @@ cpu_model="$(docker run --rm "$BENCH_RUNNER_IMAGE" "grep -m1 'model name' /proc/
   printf '  "systems": "%s",\n' "$SYSTEMS"
   printf '  "workloads": "%s",\n' "$WORKLOADS"
   printf '  "durabilities": "%s",\n' "$DURABILITIES"
+  printf '  "nodes": "%s",\n' "$NODES"
+  printf '  "cluster_node_cpus": %s,\n' "$NODE_CPUS"
+  printf '  "cluster_node_memory_mb": %s,\n' "$NODE_MB"
   printf '  "cpu_model": "%s",\n' "${cpu_model:-desconhecida}"
   printf '  "docker_cpus": %s,\n' "$total_cpus"
   printf '  "docker_memory_gb": %s,\n' "$total_gb"
@@ -185,32 +225,56 @@ cpu_model="$(docker run --rm "$BENCH_RUNNER_IMAGE" "grep -m1 'model name' /proc/
 
 # Os arquivos de workload do perfil.
 for w in $WORKLOADS; do bench_render_workload "$w" "$DURATION" "$WARMUP" "$WORK/$w.yaml"; done
+echo "system;nodes;durability;round;startup_seconds;idle_memory_mb" > "$OUTPUT/startup.csv"
 
 timeout_min=$(((DURATION + WARMUP) * 3 + 15))
 failed=0
 for ((r = 0; r < ROUNDS; r++)); do
-  # shellcheck disable=SC2046,SC2086
-  for system in $(bench_rotate "$r" $SYSTEMS); do
+  for pair in $(bench_rotate "$r" "${PAIRS[@]}"); do
+    nodes="${pair%%:*}"; system="${pair#*:}"
+    if [ "$nodes" -gt 1 ]; then
+      export BENCH_CPUS="$NODE_CPUS" BENCH_MEMORY="${NODE_MB}m" BENCH_SMP="$NODE_CPUS" BENCH_REDPANDA_MEMORY="$((NODE_MB * 3 / 4))M"
+      cell_cpus="$C_RUNNER_CPUS"; cell_gb="$C_RUNNER_GB"; cell_heap="$C_RUNNER_HEAP_GB"
+    else
+      export BENCH_CPUS="$SERVER_CPUS" BENCH_MEMORY="${SERVER_GB}g" BENCH_SMP="$SERVER_CPUS" BENCH_REDPANDA_MEMORY="$((SERVER_GB * 1024 * 3 / 4))M"
+      cell_cpus="$RUNNER_CPUS"; cell_gb="$RUNNER_GB"; cell_heap="$RUNNER_HEAP_GB"
+    fi
     for dur in $DURABILITIES; do
-      bench_log "Rodada $((r + 1))/$ROUNDS: $system ($dur)"
+      bench_log "Rodada $((r + 1))/$ROUNDS: $system, $nodes nó(s) ($dur)"
       CURRENT_SYSTEM="$system"
       bench_system_down "$system"
-      if ! bench_system_up "$system" "$dur"; then
+      up_start=$(date +%s)
+      if ! bench_system_up "$system" "$dur" "$nodes"; then
         echo "FALHOU: $system não ficou saudável" >&2
-        echo "$system $dur subida $((r + 1))" >> "$OUTPUT/failed.txt"
-        docker compose -p "bench-$system" -f "$BENCH_DIR_NATIVE/systems/$system/compose.yml" logs --tail 30 >&2 || true
+        echo "$system $nodes $dur subida $((r + 1))" >> "$OUTPUT/failed.txt"
+        docker compose -p "bench-$system" -f "$(bench_compose_file "$system" "$nodes")" logs --tail 30 >&2 || true
         bench_system_down "$system"; CURRENT_SYSTEM=""; failed=1
         continue
       fi
-      for w in $WORKLOADS; do
-        name="$system-$dur-$w-$((r + 1))"
+      # Tempo até ficar saudável e memória parada, antes da primeira célula.
+      up_seconds=$(($(date +%s) - up_start))
+      idle_mb=$(bench_stats_sample "$system" | awk -F';' '{ s += $4 } END { printf "%.0f", s }')
+      echo "$system;$nodes;$dur;$((r + 1));$up_seconds;$idle_mb" >> "$OUTPUT/startup.csv"
+      for w in $(cell_workloads "$nodes"); do
+        name="$(bench_cell_name "$system" "$nodes" "$dur" "$w" "$((r + 1))")"
         bench_info "$name"
-        driver="$(bench_driver_file "$system" "$dur" "$w")"
-        if ! bench_run_cell "$system" "$driver" "$WORK/$w.yaml" "$RAW" "$name" "$RUNNER_CPUS" "$RUNNER_GB" "$RUNNER_HEAP_GB" "$timeout_min"; then
+        driver="$(bench_driver_file "$system" "$dur" "$w" "$nodes")"
+        : > "$RAW/$name.log"
+        # CPU e memória do servidor durante a célula, e a hora em que a fase medida começa (para alinhar as amostras).
+        bench_stats_loop "$system" "$RAW/$name.stats" & stats_pid=$!
+        if has_faults "$w"; then
+          bench_faults "$system" "$nodes" "$BENCH_DIR/workloads/$w.faults" "$RAW/$name.events" $((timeout_min * 60)) & aux_pid=$!
+        else
+          (bench_wait_measure_start "$system" $((timeout_min * 60)) > "$RAW/$name.t0") & aux_pid=$!
+        fi
+        if ! bench_run_cell "$system" "$driver" "$WORK/$w.yaml" "$RAW" "$name" "$cell_cpus" "$cell_gb" "$cell_heap" "$timeout_min"; then
           echo "FALHOU: $name (veja $RAW/$name.log)" >&2
-          echo "$system $dur $w $((r + 1))" >> "$OUTPUT/failed.txt"
+          echo "$system $nodes $dur $w $((r + 1))" >> "$OUTPUT/failed.txt"
           failed=1
         fi
+        kill "$stats_pid" "$aux_pid" 2>/dev/null || true; wait "$stats_pid" "$aux_pid" 2>/dev/null || true
+        # Uma célula com falhas pode deixar um nó parado: o sistema volta inteiro para a próxima.
+        if has_faults "$w"; then bench_system_up "$system" "$dur" "$nodes" >/dev/null 2>&1 || true; fi
       done
       bench_system_down "$system"; CURRENT_SYSTEM=""
     done

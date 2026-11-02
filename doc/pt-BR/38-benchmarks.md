@@ -3,15 +3,15 @@ título: Benchmarks
 resumo: O benchmark comparativo local (bench/run.sh): o OpenMessaging Benchmark contra o Taba, Kafka, Redpanda, RabbitMQ e NATS JetStream em Docker numa máquina só, quem é meta (brokers da mesma classe) e quem é referência (logs de streaming), como a comparação é mantida justa, os níveis de durabilidade, os workloads, o relatório e como incluir um sistema. Nenhum número está publicado ainda.
 tipo: guia
 status: parcial
-verificado-em: 2026-11-02 @ c3a1dbc
-fontes: [bench/cluster-trend.sh, bench/profile.sh, bench/profile.awk, bench/run.sh, bench/lib.sh, bench/report.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
+verificado-em: 2026-11-02 @ 738868f
+fontes: [bench/cluster-trend.sh, bench/profile.sh, bench/profile.awk, bench/run.sh, bench/lib.sh, bench/report.mjs, bench/charts.mjs, doc/diagrams/scripts/generate-bench.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
 ---
 
 # Benchmarks
 
 > Leia antes: [21-conectores.md](21-conectores.md#driver-do-openmessaging-benchmark-connectorsomb) (o driver do Taba para o OMB) e [11-durabilidade.md](11-durabilidade.md).
 
-As metas de velocidade e custo do Taba (RNF-02) são medidas por um script que qualquer pessoa roda: `bench/run.sh`. Ele precisa só de Docker (Compose v2) com pelo menos **4 núcleos e 8 GB**, sem conta em nuvem, e compara o Taba com Kafka, Redpanda, RabbitMQ e NATS JetStream usando o [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) (OMB) no commit fixado em `connectors/omb/OMB_VERSION`. **Nenhum resultado está publicado ainda**: a ferramenta está pronta, e os números virão de uma rodada `standard` feita pelo mantenedor, com a máquina descrita.
+As metas de velocidade e custo do Taba (RNF-02) são medidas por um script que qualquer pessoa roda: `bench/run.sh`. Ele precisa só de Docker (Compose v2) com pelo menos **4 núcleos e 7 GB**, sem conta em nuvem, e compara o Taba com Kafka, Redpanda, RabbitMQ e NATS JetStream usando o [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) (OMB) no commit fixado em `connectors/omb/OMB_VERSION`. **Nenhum resultado está publicado ainda**: a ferramenta está pronta, e os números virão de uma rodada `standard` feita pelo mantenedor, com a máquina descrita.
 
 O resultado de uma máquina **nunca é número absoluto**. Ele compara os sistemas entre si, naquela máquina, naquela rodada. Todo `results.md` diz isso nas primeiras linhas.
 
@@ -33,6 +33,8 @@ bench/run.sh                                   # perfil quick (cerca de 1 hora),
 bench/run.sh --profile standard                # 3 rodadas de 5 minutos, seis workloads
 bench/run.sh --systems taba,kafka --workloads fanout-1kb
 bench/run.sh --durability both                 # default e fsync
+bench/run.sh --nodes 1,3                       # um nó e um cluster de três (os sistemas com compose-cluster.yml)
+bench/run.sh --profile showcase                # Taba, RabbitMQ e NATS, um e três nós, fsync, com a queda de um nó
 bench/run.sh --taba-image rafaelpontani/taba:0.1.9   # padrão: constrói a imagem do commit atual
 bench/run.sh --dry-run                         # o plano e a estimativa de tempo; não roda nada
 bench/run.sh --report-only bench/results/<pasta>
@@ -52,7 +54,7 @@ bench/run.sh --report-only bench/results/<pasta>
 
 - **Um sistema por vez.** O script sobe o servidor, espera ficar saudável, roda os workloads, remove o servidor **e o volume dele**, e só então sobe o próximo.
 - **Os mesmos limites.** Todo servidor recebe o mesmo `cpus` e `mem_limit` (metade dos núcleos do Docker, no máximo 4, e metade da memória, no máximo 8 GB). O OMB roda em outro contêiner com o resto, e o heap do JVM dele acompanha o limite.
-- **Um nó por sistema.** Três nós numa máquina só competiriam pelos mesmos núcleos e discos e dariam números enganosos; o cluster de três nós é uma medição de nuvem, fora deste script. A comparação **entre sistemas é a de um nó**; os três nós são medidos só do Taba contra ele mesmo, no `bench/cluster-trend.sh`.
+- **Um nó ou três (`--nodes 1,3`, D197).** Com três nós cada nó recebe metade do que um nó sozinho recebe (2 núcleos e 1,5 GB numa máquina de 12 núcleos e 7 GB), igual para todos os sistemas, a partir do `compose-cluster.yml` (serviços `node-0` a `node-2`): o Taba com `replication.factor=3`, TLS mútuo e o token raiz, atrás de um HAProxy de 1 núcleo contado nos seus recursos, como no Compose de produção; o RabbitMQ com uma fila de quórum que tem um membro em cada nó; o NATS JetStream com fluxos de 3 réplicas. Os clientes do RabbitMQ e do NATS conectam direto nos nós. Os três nós dividem os núcleos e o disco de uma máquina só: os números de cluster comparam os sistemas entre si, não com um cluster de verdade. Um sistema sem `compose-cluster.yml` (Kafka, Redpanda) fica com um nó.
 - **A ordem gira** entre as rodadas (A B C, depois B C A, depois C A B), para que a deriva térmica e o cache do disco não favoreçam sempre o mesmo sistema.
 - **O mesmo executor, o mesmo OMB, os mesmos arquivos de payload.** O Taba é medido pelo driver de `connectors/omb`; Kafka e Redpanda pelo driver Kafka do OMB; RabbitMQ e NATS pelos próprios. Toda imagem tem versão fixa.
 - O relatório registra o commit do Taba, o commit do OMB, as imagens, os limites e a máquina (`machine.json`).
@@ -84,20 +86,19 @@ Um sistema que não distingue os níveis mostra os mesmos números nos dois, com
 | `backlog-100b` | o mesmo com 100 bytes | o custo fixo de ler e confirmar uma mensagem |
 | `backlog-1kb-4c` | o mesmo, 4 partições e 4 consumidores | consumo por vários consumidores da mesma fila |
 
-Os perfis são arquivos `bench/profile-*`: `quick` (1 rodada de 2 minutos, os quatro primeiros workloads), `standard` (3 rodadas de 5 minutos, os seis) e `smoke` (1 minuto de `simple-1kb`, usado só pelo `bench/test.sh`). `consume` é o perfil do consumo: 3 rodadas de 3 minutos dos três workloads `backlog-*`, `bench/run.sh --profile consume`. O minuto de aquecimento não entra nos percentis.
+Um workload com um arquivo `<workload>.faults` (linhas `<segundos> <kill|start> <serviço>`, contados do início da fase medida) só roda com três nós: o `failover-1kb` publica 5 000 mensagens de 1 KB por segundo, mata o `node-1` aos 60 s e o liga de novo aos 150 s. Os perfis são arquivos `bench/profile-*`: `quick` (1 rodada de 2 minutos, os quatro primeiros workloads), `standard` (3 rodadas de 5 minutos, os seis) e `smoke` (1 minuto de `simple-1kb`, usado só pelo `bench/test.sh`). `showcase` é a comparação com os brokers da mesma classe (Taba, RabbitMQ e NATS, um e três nós, `fsync`, `simple-1kb`, `max-rate-1kb`, `keyed-1kb`, `backlog-1kb` e `failover-1kb`). `consume` é o perfil do consumo: 3 rodadas de 3 minutos dos três workloads `backlog-*`, `bench/run.sh --profile consume`. O minuto de aquecimento não entra nos percentis.
 
 Num workload `backlog-*` o relatório mostra a **vazão de drenagem do backlog** (a média do consumo depois do pico do backlog, quando o consumidor é liberado, enquanto ainda resta backlog) no lugar da latência ponta a ponta, que ali é só o tempo na fila. O OMB mantém o produtor na taxa configurada durante a drenagem.
 
 ## O relatório
 
-`bench/results/<data>-<commit>/` (ignorada pelo git) guarda `raw/*.json` (o resultado do OMB de cada rodada, com o `.log`), `machine.json`, `results.md`, `charts/*.svg` e, se uma célula falhou, `failed.txt`. O `results.md` mostra, por workload e durabilidade, uma tabela com a **mediana das rodadas e, entre parênteses, o mínimo e o máximo** da vazão publicada e consumida e da latência ponta a ponta p50, p99 e p99.9. Não aponta vencedor; termina com as diferenças conhecidas de cada sistema.
+`bench/results/<data>-<commit>/` (ignorada pelo git) guarda `raw/*.json` (o resultado do OMB de cada rodada, com o `.log`, a CPU e a memória dos contêineres do servidor amostradas a cada poucos segundos em `.stats` e o início da fase medida em `.t0`), `machine.json`, `startup.csv` (segundos até ficar saudável e memória parada), `results.md`, `summary.json`, `charts/*.svg` e, se uma célula falhou, `failed.txt`. Os gráficos (`bench/charts.mjs`) seguem a cor de cada sistema, com tema claro e escuro: barras de vazão e latência e, no tempo, as mensagens publicadas e consumidas por segundo, as mensagens processadas até ali, a CPU e a memória, com a queda e a volta de um nó marcadas. `node doc/diagrams/scripts/generate-bench.mjs --from <pasta>` copia o `summary.json` de uma rodada para `doc/diagrams/data/bench-results.json` e desenha os gráficos da documentação em todos os idiomas. O `results.md` mostra, por workload e durabilidade, uma tabela com a **mediana das rodadas e, entre parênteses, o mínimo e o máximo** da vazão publicada e consumida e da latência ponta a ponta p50, p99 e p99.9. Não aponta vencedor; termina com as diferenças conhecidas de cada sistema.
 
 ## O que a comparação não esconde
 
 - O corpo que o Taba guarda é **8 bytes maior** que o payload do OMB (a hora de publicação viaja nele).
 - O Taba usa uma requisição HTTP/1.1 por chamada e lê até 100 mensagens por requisição; os outros usam protocolo binário com lote no cliente.
 - O `fanout` do Taba copia a mensagem para uma fila por assinatura; nos outros as assinaturas são grupos de consumidores sobre um só log.
-- Um nó: o custo da replicação de um cluster não é medido aqui.
 - **O perfil `consume` precisa de memória para o backlog.** O Taba guarda o backlog em memória, cerca de 2,4 KB por mensagem de 1 KB: o backlog de 1 GB do OMB (cerca de 1,07 milhão de mensagens) não cabe num servidor de 3 GB, e o consumo desaba ([PRB-086](31-pendencias.md)). Rode com `--memory` suficiente e trate uma célula que para no limite como um achado, não como um número.
 - **A confirmação no consumo não é igual.** RabbitMQ e NATS confirmam cada mensagem; o Taba também confirma cada mensagem, mas o driver do OMB manda as confirmações de uma leitura numa **requisição só** (`POST …/messages/ack`, [D189](30-decisoes.md)) e publica em lotes de até 100 com 1 ms de `linger`, como o produtor do Kafka; Kafka e Redpanda confirmam um offset para um lote (`enable.auto.commit=false`, um commit depois de cada leitura do consumidor, como o driver do OMB faz). Isso é mais barato por mensagem, então a vazão de drenagem do Kafka e do Redpanda não é comparável ponto a ponto com a dos outros. Eles não são forçados a um commit por mensagem porque isso os deixaria lentos artificialmente; o relatório diz isso em todo workload `backlog-*`.
 

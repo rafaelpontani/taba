@@ -1,0 +1,4 @@
+# Queda de um nó com carga constante (só em cluster): o nó node-1 morre (SIGKILL) aos 60 s da fase medida e volta aos
+# 150 s. Linhas "<segundos> <kill|start> <serviço do compose>".
+60 kill node-1
+150 start node-1

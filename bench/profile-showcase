@@ -1,0 +1,10 @@
+# Perfil showcase: os brokers da mesma classe (Taba, RabbitMQ com fila de quórum, NATS JetStream), um nó e cluster de
+# três nós, durabilidade fsync (os três confirmam depois do fsync). Taxa fixa, taxa máxima, ordem por chave, leitura de
+# um backlog de 1 GB e, só no cluster, a queda de um nó. Uma rodada de 3 min por teste, 1 min de aquecimento.
+ROUNDS=1
+DURATION=3
+WARMUP=1
+PROFILE_WORKLOADS="simple-1kb max-rate-1kb keyed-1kb backlog-1kb failover-1kb"
+PROFILE_SYSTEMS="taba rabbitmq nats"
+PROFILE_NODES="1 3"
+PROFILE_DURABILITY="fsync"

@@ -21,7 +21,8 @@ function run() {
 test('a mediana e os nomes dos arquivos', () => {
   assert.equal(median([3, 1, 2]), 2);
   assert.equal(median([4, 1, 2, 3]), 2.5);
-  assert.deepEqual(parseName('taba-default-simple-1kb-2.json'), { system: 'taba', durability: 'default', workload: 'simple-1kb', round: 2 });
+  assert.deepEqual(parseName('taba-default-simple-1kb-2.json'), { system: 'taba', nodes: 1, durability: 'default', workload: 'simple-1kb', round: 2 });
+  assert.deepEqual(parseName('rabbitmq-x3-fsync-failover-1kb-1.json'), { system: 'rabbitmq', nodes: 3, durability: 'fsync', workload: 'failover-1kb', round: 1 });
   assert.equal(parseName('machine.json'), null);
 });
 
@@ -83,8 +84,8 @@ test('a curva de drenagem começa depois do pico e o gráfico de linhas traz uma
   const result = { consumeRate: [0, 0, 0, 8000, 8100, 9000], backlog: [0, 100000, 200000, 150000, 100000, 0] };
   assert.deepEqual(drainCurve(result), [8000, 8100]);
   assert.deepEqual(drainCurve({ consumeRate: [10], backlog: [0] }), []);
-  const svg = lineChart({ title: 't', unit: 'msg/s', xLabel: 'x', step: 10, series: [{ label: 'taba', values: [1, 2, 3] }, { label: 'kafka', values: [3, NaN, 1] }] });
-  assert.equal((svg.match(/<polyline/g) ?? []).length, 2);
+  const svg = lineChart({ title: 't', unit: 'msg/s', xLabel: 'x', series: [{ key: 'taba', label: 'taba', values: [1, 2, 3], step: 10 }, { key: 'kafka', label: 'kafka', values: [3, NaN, 1], step: 10 }] });
+  assert.equal((svg.match(/<path d="M[^"]*" fill="none"/g) ?? []).length, 2);
   assert.match(svg, /taba/);
   const charts = join(dirname(join(run(), 'results.md')), 'charts');
   assert.ok(existsSync(join(charts, 'backlog-1kb-default-curve.svg')));
