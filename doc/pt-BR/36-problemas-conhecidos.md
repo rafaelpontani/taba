@@ -17,6 +17,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [Um teste de sincronização cuja segunda store achou o banco travado no arm64](#um-teste-de-sincronização-cuja-segunda-store-achou-o-banco-travado-no-arm64) | Corrigido | 2026-11-03 | 2026-11-03 |
 | [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Aberto | 2026-11-03 | — |
 | [Uma votação de exclusão que falha uma vez na suíte completa](#uma-votação-de-exclusão-que-falha-uma-vez-na-suíte-completa) | Aberto | 2026-10-29 | — |
 | [Um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la) | Corrigido | 2026-10-27 | 2026-10-29 |
@@ -31,6 +32,22 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## Um teste de sincronização cuja segunda store achou o banco travado no arm64
+
+**Status:** Corrigido · **Achado em:** 2026-11-03 · **Corrigido em:** 2026-11-03
+
+- **Teste:** `tests/sync.rs::a_message_that_is_listed_but_has_no_content_anywhere_is_a_loss_and_the_sync_goes_on` (UC-SIN-025 a 028).
+- **Sintoma:** na rodada do `release.yml` em `main` para a `v0.3.3` (merge do #38), o job do servidor no arm64 falhou em `sync.rs:322`: `evict_body(...).unwrap()` sobre `SqliteFailure(DatabaseBusy, "database is locked")`; o release parou antes de publicar. O mesmo código passou no amd64, na rodada da candidata e nos checks do pull request.
+- **Causa:** o teste abre uma segunda `MessageStore` sobre o banco de um nó que está rodando para apagar um corpo, e o nó pode estar escrevendo no mesmo banco (a escritora, a limpeza do log de mensagens excluídas): a escrita do teste recebe `SQLITE_BUSY`. Um nó tem uma store só por banco, então o produto não é afetado; o runner arm64, mais lento, aumentou a janela.
+- **Correção:** o teste tenta apagar de novo enquanto o banco está travado (`eventually`), e falha em qualquer outro erro.
+- **Verificação:** o teste passou 5 de 5 sozinho e o arquivo de 12 testes 3 de 3.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-03 | Falhou uma vez no arm64 no release de `main`; o teste tenta de novo enquanto o banco está travado. |
 
 ## Um consume com ack que falha uma vez no docker/validate.sh depois de um drain
 
