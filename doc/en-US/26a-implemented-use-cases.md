@@ -6435,11 +6435,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-ARM-026
 
 **Case:** The log of excluded messages has an **age limit** (`storage.excluded.max-age`, 24 h) and a **size limit** (`storage.excluded.max-size`, 100 MB, adding all topics)  
-**Then:** the oldest rows go first, from whichever topic, until the log fits; the trimming runs every 30 s.  
+**Then:** the oldest rows go first, from whichever topic, until the log fits; the trimming runs every 30 s, and a trim of hundreds of thousands of rows lets the writes of the topic go in between (chunks through the write queue, PRB-090).  
 **Level:** U  
 **Tests:**
   - `src/storage/messages/excluded/tests.rs::the_limits_drop_the_oldest_rows_first_and_move_the_start_forward`
   - `src/storage/messages/excluded/tests.rs::the_size_limit_counts_every_topic_and_drops_the_oldest_of_all`
+  - `src/storage/messages/excluded/tests.rs::a_large_trim_lets_the_writes_of_the_topic_go_in_between`
 
 ---
 
@@ -6506,6 +6507,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/cluster.rs::the_first_node_starts_the_cluster_alone`
+  - `tests/cluster.rs::the_first_node_starts_the_cluster_even_when_the_balancer_sends_the_listing_to_itself`
   - `tests/cluster.rs::nodes_join_through_the_balancer_and_end_with_the_same_table`
   - `tests/cluster.rs::only_members_call_the_phase_routes_but_anyone_lists_and_asks_to_join`
   - `tests/cluster_api.rs::the_cluster_port_serves_only_cluster_routes_and_the_client_port_none`
@@ -10325,6 +10327,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `tests/memory_cost.rs::cost_of_the_cluster_path`
   - `src/engine/messages/tests/cost.rs::publishing_taking_and_acking_a_deep_backlog_one_by_one`
   - `src/engine/messages/tests/cost.rs::a_message_is_in_memory_until_it_is_acked_or_demoted`
+
+---
+
+### UC-BNC-007
+
+**Case:** A system cannot complete `max-rate-1kb` (NATS JetStream with `sync_interval: always` makes one fsync per message; its publications run past the client timeout and the OMB rate controller drops the rate to zero), and its folder has a `max-rate-sweep` file with fixed rates
+**Then:** `bench/run.sh` replaces `max-rate-1kb` of that system by one `rate-<n>-1kb` cell per rate (`simple-1kb` with that rate), the plan says so, and the other systems keep the maximum rate; `generate-bench.mjs` shows for that system the highest rate it sustained (consumed at least 95 % of it) and says so in the note of the chart; a system that sustained none stays out of the bars, and a second line of the note says how far it got (its highest 10-second rate) and why ([38-benchmarks.md](38-benchmarks.md#results))
+**Level:** U
+**Tests:**
+  - `bench/run.test.mjs::um sistema com max-rate-sweep troca a taxa máxima por taxas fixas e os outros seguem com a taxa máxima`
 
 ---
 

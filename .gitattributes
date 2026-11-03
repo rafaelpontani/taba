@@ -1,0 +1,3 @@
+# Os vetores de referência do formato entre nós são comparados byte a byte: sempre LF, também num clone do
+# Windows com core.autocrlf.
+crates/taba-node/tests/wire/*.hex text eol=lf

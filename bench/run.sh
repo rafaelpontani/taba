@@ -93,17 +93,28 @@ for n in $NODES; do
   done
 done
 [ ${#PAIRS[@]} -gt 0 ] || bench_die "nenhum sistema no plano"
-# Os workloads que rodam com <nós> nós.
+# As taxas fixas que substituem a taxa máxima de um sistema (bench/systems/<sistema>/max-rate-sweep, uma por linha). Serve
+# ao sistema que não completa o max-rate-1kb do OMB: o controlador de taxa do OMB derruba a taxa a zero quando as
+# publicações estouram o tempo do cliente, e a varredura mede a maior taxa fixa que ele sustenta.
+sweep_rates() {
+  local f="$BENCH_DIR/systems/$1/max-rate-sweep"
+  [ -f "$f" ] && grep -v -e '^#' -e '^$' "$f"
+}
+# Os workloads que rodam com <nós> nós para <sistema>; max-rate-1kb vira rate-<n>-1kb onde há varredura.
 cell_workloads() {
-  local w
+  local w r
   for w in $WORKLOADS; do
     if has_faults "$w" && [ "$1" -lt 3 ]; then continue; fi
+    if [ "$w" = max-rate-1kb ] && [ -n "${2:-}" ] && sweep_rates "$2" >/dev/null; then
+      for r in $(sweep_rates "$2"); do echo "rate-$r-1kb"; done
+      continue
+    fi
     echo "$w"
   done
 }
 for p in "${PAIRS[@]}"; do
   for d in $DURABILITIES; do
-    for w in $(cell_workloads "${p%%:*}"); do
+    for w in $(cell_workloads "${p%%:*}" "${p#*:}"); do
       bench_driver_file "${p#*:}" "$d" "$w" "${p%%:*}" >/dev/null || bench_die "o sistema ${p#*:} não tem driver para a durabilidade $d"
     done
   done
@@ -134,7 +145,7 @@ C_RUNNER_HEAP_GB=$((C_RUNNER_GB * 6 / 10)); [ "$C_RUNNER_HEAP_GB" -lt 1 ] && C_R
 
 n_dur=$(wc -w <<<"$DURABILITIES"); estimate=0
 for p in "${PAIRS[@]}"; do
-  estimate=$((estimate + $(bench_estimate_minutes 1 "$n_dur" "$(cell_workloads "${p%%:*}" | wc -l)" "$ROUNDS" "$DURATION" "$WARMUP")))
+  estimate=$((estimate + $(bench_estimate_minutes 1 "$n_dur" "$(cell_workloads "${p%%:*}" "${p#*:}" | wc -l)" "$ROUNDS" "$DURATION" "$WARMUP")))
 done
 
 commit="$((cd "$BENCH_REPO_ROOT" && git rev-parse --short HEAD) 2>/dev/null || echo unknown)"
@@ -145,6 +156,11 @@ bench_log "Plano (resultado de máquina local: compara os sistemas entre si, nã
 bench_info "perfil:        $PROFILE ($ROUNDS rodada(s), $DURATION min + $WARMUP min de aquecimento)"
 bench_info "sistemas:      $SYSTEMS"
 bench_info "workloads:     $WORKLOADS"
+for s in $SYSTEMS; do
+  case " $WORKLOADS " in *" max-rate-1kb "*) ;; *) break ;; esac
+  rates="$(sweep_rates "$s" | tr '\n' ' ' || true)"
+  [ -z "$rates" ] || bench_info "varredura:     $s troca max-rate-1kb pelas taxas fixas ${rates% }"
+done
 bench_info "durabilidade:  $DURABILITIES"
 bench_info "nós:           $NODES"
 bench_info "máquina:       $total_cpus núcleos, $total_gb GB"
@@ -225,6 +241,13 @@ cpu_model="$(docker run --rm "$BENCH_RUNNER_IMAGE" "grep -m1 'model name' /proc/
 
 # Os arquivos de workload do perfil.
 for w in $WORKLOADS; do bench_render_workload "$w" "$DURATION" "$WARMUP" "$WORK/$w.yaml"; done
+# A varredura: simple-1kb com a taxa e o nome de cada passo.
+for s in $SYSTEMS; do
+  for r in $(sweep_rates "$s" || true); do
+    bench_render_workload simple-1kb "$DURATION" "$WARMUP" - |
+      sed -e "s/^name: .*/name: rate-$r-1kb/" -e "s/^producerRate: .*/producerRate: $r/" > "$WORK/rate-$r-1kb.yaml"
+  done
+done
 echo "system;nodes;durability;round;startup_seconds;idle_memory_mb" > "$OUTPUT/startup.csv"
 
 timeout_min=$(((DURATION + WARMUP) * 3 + 15))
@@ -255,11 +278,12 @@ for ((r = 0; r < ROUNDS; r++)); do
       up_seconds=$(($(date +%s) - up_start))
       idle_mb=$(bench_stats_sample "$system" | awk -F';' '{ s += $4 } END { printf "%.0f", s }')
       echo "$system;$nodes;$dur;$((r + 1));$up_seconds;$idle_mb" >> "$OUTPUT/startup.csv"
-      for w in $(cell_workloads "$nodes"); do
+      for w in $(cell_workloads "$nodes" "$system"); do
         name="$(bench_cell_name "$system" "$nodes" "$dur" "$w" "$((r + 1))")"
         bench_info "$name"
         driver="$(bench_driver_file "$system" "$dur" "$w" "$nodes")"
         : > "$RAW/$name.log"
+        cell_start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
         # CPU e memória do servidor durante a célula, e a hora em que a fase medida começa (para alinhar as amostras).
         bench_stats_loop "$system" "$RAW/$name.stats" & stats_pid=$!
         if has_faults "$w"; then
@@ -273,6 +297,9 @@ for ((r = 0; r < ROUNDS; r++)); do
           failed=1
         fi
         kill "$stats_pid" "$aux_pid" 2>/dev/null || true; wait "$stats_pid" "$aux_pid" 2>/dev/null || true
+        # Os logs do servidor durante a célula, para investigar uma parada ou um erro depois que os contêineres somem.
+        docker compose -p "bench-$system" -f "$(bench_compose_file "$system" "$nodes")" logs --no-color --timestamps \
+          --since "$cell_start" > "$RAW/$name.server.log" 2>&1 || true
         # Uma célula com falhas pode deixar um nó parado: o sistema volta inteiro para a próxima.
         if has_faults "$w"; then bench_system_up "$system" "$dur" "$nodes" >/dev/null 2>&1 || true; fi
       done

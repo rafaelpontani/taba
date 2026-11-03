@@ -6435,11 +6435,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-ARM-026
 
 **Caso:** O log de excluídos tem **limite de idade** (`storage.excluded.max-age`, 24 h) e **de tamanho** (`storage.excluded.max-size`, 100 MB, somando todos os tópicos)  
-**Então:** os registros mais antigos saem primeiro, de qualquer tópico, até o log caber; a poda roda a cada 30 s.  
+**Então:** os registros mais antigos saem primeiro, de qualquer tópico, até o log caber; a poda roda a cada 30 s, e uma poda de centenas de milhares de linhas deixa as escritas do tópico passarem no meio (pedaços pela fila de escrita, PRB-090).  
 **Nível:** U  
 **Testes:**
   - `src/storage/messages/excluded/tests.rs::the_limits_drop_the_oldest_rows_first_and_move_the_start_forward`
   - `src/storage/messages/excluded/tests.rs::the_size_limit_counts_every_topic_and_drops_the_oldest_of_all`
+  - `src/storage/messages/excluded/tests.rs::a_large_trim_lets_the_writes_of_the_topic_go_in_between`
 
 ---
 
@@ -6506,6 +6507,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `tests/cluster.rs::the_first_node_starts_the_cluster_alone`
+  - `tests/cluster.rs::the_first_node_starts_the_cluster_even_when_the_balancer_sends_the_listing_to_itself`
   - `tests/cluster.rs::nodes_join_through_the_balancer_and_end_with_the_same_table`
   - `tests/cluster.rs::only_members_call_the_phase_routes_but_anyone_lists_and_asks_to_join`
   - `tests/cluster_api.rs::the_cluster_port_serves_only_cluster_routes_and_the_client_port_none`
@@ -10325,6 +10327,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `tests/memory_cost.rs::cost_of_the_cluster_path`
   - `src/engine/messages/tests/cost.rs::publishing_taking_and_acking_a_deep_backlog_one_by_one`
   - `src/engine/messages/tests/cost.rs::a_message_is_in_memory_until_it_is_acked_or_demoted`
+
+---
+
+### UC-BNC-007
+
+**Caso:** Um sistema não consegue completar o `max-rate-1kb` (o NATS JetStream com `sync_interval: always` faz um fsync por mensagem; as publicações passam do tempo do cliente e o controlador de taxa do OMB derruba a taxa a zero), e a pasta dele tem um arquivo `max-rate-sweep` com taxas fixas
+**Então:** o `bench/run.sh` troca o `max-rate-1kb` desse sistema por uma célula `rate-<n>-1kb` por taxa (o `simple-1kb` com essa taxa), o plano diz isso, e os outros sistemas seguem com a taxa máxima; o `generate-bench.mjs` mostra para esse sistema a maior taxa que ele sustentou (consumiu pelo menos 95 % dela) e diz isso na nota do gráfico; um sistema que não sustentou nenhuma fica fora das barras, e uma segunda linha da nota diz até onde ele chegou (a maior taxa de 10 s) e por quê ([38-benchmarks.md](38-benchmarks.md#resultados))
+**Nível:** U
+**Testes:**
+  - `bench/run.test.mjs::um sistema com max-rate-sweep troca a taxa máxima por taxas fixas e os outros seguem com a taxa máxima`
 
 ---
 

@@ -58,15 +58,15 @@ That is why Taba is measured [against brokers of the same class](doc/en-US/38-be
 
 Measured with the [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) against RabbitMQ (quorum queue), a broker of the same class, on one machine, with the same CPU and memory limits for both and every write confirmed after `fsync`: one node with 4 cores and 3 GB, and a cluster of three nodes with 2 cores and 1.5 GB each. Messages of 1 KB, each one consumed and acknowledged.
 
-![Maximum throughput, 1 KB messages: Taba 26 thousand messages per second on one node and 9.3 thousand on three nodes; RabbitMQ 16 thousand and 6.8 thousand](doc/diagrams/img/en-US/bench-throughput.svg)
+![Maximum throughput, 1 KB messages: Taba 29 thousand messages per second on one node and 10 thousand on three nodes; RabbitMQ 15 thousand and 5.6 thousand](doc/diagrams/img/en-US/bench-throughput.svg)
 
-![End-to-end latency at 10,000 messages per second: Taba p50 3 ms and p99 25 ms on one node, p50 79 ms and p99 999 ms on three nodes; RabbitMQ p50 515 ms and p99 1 s on one node, p50 1.1 s and p99 1.8 s on three nodes](doc/diagrams/img/en-US/bench-latency.svg)
+![End-to-end latency at 10,000 messages per second: Taba p50 2 ms and p99 17 ms on one node, p50 232 ms and p99 1.5 s on three nodes; RabbitMQ p50 517 ms and p99 1 s on one node, p50 1.2 s and p99 2 s on three nodes](doc/diagrams/img/en-US/bench-latency.svg)
 
-- **Throughput:** Taba consumes **1.7 times** as many messages per second as RabbitMQ on one node and **1.4 times** on three nodes.
-- **Latency:** at a fixed 10,000 messages per second, a message takes **3 ms** (p50) from publish to delivery on one node, against 515 ms; on three nodes, 79 ms against 1.1 s, and RabbitMQ does not keep up with the rate there (6,600 per second).
-- **Memory at rest:** 20 MB on one node and 101 MB for three nodes, against 171 MB and 506 MB.
+- **Throughput:** Taba consumes **2 times** as many messages per second as RabbitMQ on one node (29,200 against 14,800) and **1.8 times** on three nodes (10,000 against 5,600).
+- **Latency:** at a fixed 10,000 messages per second, a message takes **2 ms** (p50) from publish to delivery on one node, against 517 ms; on three nodes, 232 ms against 1.2 s, and RabbitMQ does not keep up with the rate there (5,900 per second).
+- **Memory at rest:** 21 MB on one node and 87 MB for three nodes, against 227 MB and 534 MB.
 
-NATS JetStream, the other broker of the same class, is in the run but has no valid measurement with `sync_interval: always` on this machine, so it is left out of the charts. These are numbers of one local run (`bench/results` of commit `3735b5f`, 2026-11-03), useful to compare the systems with each other, not as absolute numbers. Every chart, the method and how to run it yourself are in the [benchmark guide](doc/en-US/38-benchmarks.md#results).
+NATS JetStream, the other broker of the same class, is in the run too, with the same guarantee (`sync_interval: always`, one fsync per message): on this machine it fails above about 380 messages per second, because each fsync stalls its server and the client gives up after 2 s, so the charts leave it out of the bars and say so. These are numbers of one local run (2026-11-03, a laptop; three rounds of Taba on three nodes at the maximum rate, the median shown), useful to compare the systems with each other, not as absolute numbers. Every chart, the method and how to run it yourself are in the [benchmark guide](doc/en-US/38-benchmarks.md#results).
 
 ## See it running
 

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 358" width="760" height="358" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 376" width="760" height="376" role="img" aria-labelledby="t d">
 <title id="t">Messages per CPU core</title><desc id="d">maximum rate; consumed per second divided by the average cores the server used · local run, not representative</desc>
 <style>
 svg{--bg:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;--s0:#2a78d6;--s1:#eb6834}
@@ -7,7 +7,7 @@ text{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetic
 .t{fill:var(--ink);font-size:16px;font-weight:600}.st{font-size:12.5px}.v{fill:var(--ink);font-size:11.5px;font-weight:600}
 .lg{fill:var(--ink);font-size:12.5px}.ax{fill:var(--muted);font-size:11px}.mk{fill:var(--ink2);font-size:11px}
 </style>
-<rect width="760" height="358" rx="10" fill="var(--bg)"/>
+<rect width="760" height="376" rx="10" fill="var(--bg)"/>
 <text class="t" x="20" y="28">Messages per CPU core</text>
 <text class="st" x="20" y="48">maximum rate; consumed per second divided by the average cores the server used · local run, not representative</text>
 <rect x="20" y="62" width="12" height="12" rx="3" fill="var(--s0)"/>
@@ -25,15 +25,16 @@ text{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetic
 <line x1="64" y1="90" x2="740" y2="90" stroke="var(--grid)" stroke-width="1"/>
 <text class="ax" x="56" y="94" text-anchor="end">20k</text>
 <text class="ax" x="56" y="84" text-anchor="end">msg/s per core</text>
-<path d="M178 290V182.797Q178 178.797 182 178.797H228Q232 178.797 232 182.797V290Z" fill="var(--s0)"><title>Taba · 1 node: 11k msg/s per core</title></path>
-<text class="v" x="205" y="173.797" text-anchor="middle">11k</text>
-<path d="M234 290V227.9904Q234 223.9904 238 223.9904H284Q288 223.9904 288 227.9904V290Z" fill="var(--s1)"><title>RabbitMQ · 1 node: 6.6k msg/s per core</title></path>
-<text class="v" x="261" y="218.9904" text-anchor="middle">6.6k</text>
+<path d="M178 290V167.8067Q178 163.8067 182 163.8067H228Q232 163.8067 232 167.8067V290Z" fill="var(--s0)"><title>Taba · 1 node: 13k msg/s per core</title></path>
+<text class="v" x="205" y="158.8067" text-anchor="middle">13k</text>
+<path d="M234 290V222.2421Q234 218.2421 238 218.2421H284Q288 218.2421 288 222.2421V290Z" fill="var(--s1)"><title>RabbitMQ · 1 node: 7.2k msg/s per core</title></path>
+<text class="v" x="261" y="213.2421" text-anchor="middle">7.2k</text>
 <text class="lg" x="233" y="310" text-anchor="middle">1 node</text>
-<path d="M516 290V272.2719Q516 268.2719 520 268.2719H566Q570 268.2719 570 272.2719V290Z" fill="var(--s0)"><title>Taba · 3 nodes: 2.2k msg/s per core</title></path>
-<text class="v" x="543" y="263.2719" text-anchor="middle">2.2k</text>
-<path d="M572 290V269.1035Q572 265.1035 576 265.1035H622Q626 265.1035 626 269.1035V290Z" fill="var(--s1)"><title>RabbitMQ · 3 nodes: 2.5k msg/s per core</title></path>
-<text class="v" x="599" y="260.1035" text-anchor="middle">2.5k</text>
+<path d="M516 290V275.9754Q516 271.9754 520 271.9754H566Q570 271.9754 570 275.9754V290Z" fill="var(--s0)"><title>Taba · 3 nodes: 1.8k msg/s per core</title></path>
+<text class="v" x="543" y="266.9754" text-anchor="middle">1.8k</text>
+<path d="M572 290V275.5908Q572 271.5908 576 271.5908H622Q626 271.5908 626 275.5908V290Z" fill="var(--s1)"><title>RabbitMQ · 3 nodes: 1.8k msg/s per core</title></path>
+<text class="v" x="599" y="266.5908" text-anchor="middle">1.8k</text>
 <text class="lg" x="571" y="310" text-anchor="middle">3 nodes</text>
-<text class="ax" x="20" y="346">Same limits for every system: 1 node 4 cores / 3 GB · 3 nodes 2 cores / 1536 MB each · durability: fsync · NATS JetStream: no valid measurement</text>
+<text class="ax" x="20" y="346">Same limits for every system: 1 node 4 cores / 3 GB · 3 nodes 2 cores / 1536 MB each · durability: fsync</text>
+<text class="ax" x="20" y="364">NATS JetStream: fails above ~380 msg/s, one fsync per message (sync_interval: always) stalls the server and the client gives up after 2 s</text>
 </svg>

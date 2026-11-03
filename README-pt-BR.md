@@ -58,15 +58,15 @@ Por isso o Taba é medido [contra brokers da mesma classe](doc/pt-BR/38-benchmar
 
 Medido com o [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) contra o RabbitMQ (fila de quórum), um broker da mesma classe, numa máquina só, com os mesmos limites de CPU e memória para os dois e toda escrita confirmada depois do `fsync`: um nó com 4 núcleos e 3 GB, e um cluster de três nós com 2 núcleos e 1,5 GB cada. Mensagens de 1 KB, cada uma consumida e confirmada.
 
-![Vazão máxima, mensagens de 1 KB: Taba 26 mil mensagens por segundo em um nó e 9,3 mil em três nós; RabbitMQ 16 mil e 6,8 mil](doc/diagrams/img/pt-BR/bench-throughput.svg)
+![Vazão máxima, mensagens de 1 KB: Taba 29 mil mensagens por segundo em um nó e 10 mil em três nós; RabbitMQ 15 mil e 5,6 mil](doc/diagrams/img/pt-BR/bench-throughput.svg)
 
-![Latência ponta a ponta a 10.000 mensagens por segundo: Taba p50 3 ms e p99 25 ms em um nó, p50 79 ms e p99 999 ms em três nós; RabbitMQ p50 515 ms e p99 1 s em um nó, p50 1,1 s e p99 1,8 s em três nós](doc/diagrams/img/pt-BR/bench-latency.svg)
+![Latência ponta a ponta a 10.000 mensagens por segundo: Taba p50 2 ms e p99 17 ms em um nó, p50 232 ms e p99 1,5 s em três nós; RabbitMQ p50 517 ms e p99 1 s em um nó, p50 1,2 s e p99 2 s em três nós](doc/diagrams/img/pt-BR/bench-latency.svg)
 
-- **Vazão:** o Taba consome **1,7 vez** mais mensagens por segundo que o RabbitMQ em um nó e **1,4 vez** em três nós.
-- **Latência:** a 10.000 mensagens por segundo fixas, uma mensagem leva **3 ms** (p50) da publicação à entrega em um nó, contra 515 ms; em três nós, 79 ms contra 1,1 s, e ali o RabbitMQ não acompanha a taxa (6.600 por segundo).
-- **Memória parada:** 20 MB em um nó e 101 MB nos três nós, contra 171 MB e 506 MB.
+- **Vazão:** o Taba consome **2 vezes** mais mensagens por segundo que o RabbitMQ em um nó (29.200 contra 14.800) e **1,8 vez** em três nós (10.000 contra 5.600).
+- **Latência:** a 10.000 mensagens por segundo fixas, uma mensagem leva **2 ms** (p50) da publicação à entrega em um nó, contra 517 ms; em três nós, 232 ms contra 1,2 s, e ali o RabbitMQ não acompanha a taxa (5.900 por segundo).
+- **Memória parada:** 21 MB em um nó e 87 MB nos três nós, contra 227 MB e 534 MB.
 
-O NATS JetStream, o outro broker da mesma classe, está na rodada, mas não teve medida válida com `sync_interval: always` nesta máquina, por isso fica fora dos gráficos. São números de uma rodada local (`bench/results` do commit `3735b5f`, 2026-11-03), úteis para comparar os sistemas entre si, não como números absolutos. Todos os gráficos, o método e como rodar você mesmo estão no [guia do benchmark](doc/pt-BR/38-benchmarks.md#resultados).
+O NATS JetStream, o outro broker da mesma classe, também está na rodada, com a mesma garantia (`sync_interval: always`, um fsync por mensagem): nesta máquina ele falha acima de cerca de 380 mensagens por segundo, porque cada fsync trava o servidor e o cliente desiste depois de 2 s, então os gráficos o deixam fora das barras e dizem isso. São números de uma rodada local (2026-11-03, um notebook; três rodadas do Taba em três nós na taxa máxima, com a mediana), úteis para comparar os sistemas entre si, não como números absolutos. Todos os gráficos, o método e como rodar você mesmo estão no [guia do benchmark](doc/pt-BR/38-benchmarks.md#resultados).
 
 ## Veja funcionando
 

@@ -1,0 +1,7 @@
+# Taxas fixas (mensagens por segundo) que substituem o max-rate-1kb do NATS. Com sync_interval: always o NATS faz um
+# fsync por mensagem; na taxa máxima as publicações estouram o tempo de resposta do cliente e o controlador de taxa do
+# OMB derruba a taxa a zero. A varredura mede a maior taxa fixa que ele sustenta com a mesma garantia dos outros.
+500
+1000
+2000
+5000

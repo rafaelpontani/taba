@@ -6,7 +6,7 @@
 //! once decided it does not go back, and the coordinator insists up to the `write.commit.timeout` ceiling.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -328,7 +328,12 @@ pub struct ClusterService {
     upgrade: super::upgrade::Upgrade,
     /// The queues of message operations on their way to the other nodes (`cluster.batch.*`).
     batcher: batch::Batcher,
+    /// Listings in a row that found only a node without the table (the first node, PRB-092).
+    tableless_listings: AtomicU32,
 }
+
+/// How many listings in a row that find only nodes without the table make the first node start the cluster alone.
+const FIRST_NODE_TABLELESS_LISTINGS: u32 = 3;
 
 /// The nodes that left by drain, as `Request::Departed` answers (and as `GET /nodes` reads them).
 pub fn departed_json(members: &[Member]) -> serde_json::Value {
@@ -457,6 +462,7 @@ impl ClusterService {
             backup: OnceLock::new(),
             upgrade: super::upgrade::Upgrade::default(),
             batcher: batch::Batcher::default(),
+            tableless_listings: AtomicU32::new(0),
         })
     }
 
@@ -2303,7 +2309,10 @@ impl ClusterService {
             other => other,
         };
         let table = match listed {
-            Ok(Response::Members(table)) => table,
+            Ok(Response::Members(table)) => {
+                self.tableless_listings.store(0, Ordering::SeqCst);
+                table
+            }
             Ok(_) => {
                 return Err(Failure {
                     reason: "list",
@@ -2336,6 +2345,25 @@ impl ClusterService {
                 // finds no one.
                 self.start_alone_with_disk().await;
                 return Ok(());
+            }
+            Err(e) if e.found_no_cluster() && self.rules.first_node => {
+                // A node without the table answered: a cluster that does not exist yet. The load balancer that
+                // already resolved this node sends the listing to the node itself, and counting only the network
+                // error it asked itself for minutes (PRB-092). One answer is not enough: in a running cluster the
+                // listing may fall once on a node that is still joining, so it starts alone only after
+                // `FIRST_NODE_TABLELESS_LISTINGS` listings in a row found nothing but nodes without the table.
+                let in_a_row = self.tableless_listings.fetch_add(1, Ordering::SeqCst) + 1;
+                if in_a_row >= FIRST_NODE_TABLELESS_LISTINGS {
+                    self.start_alone_with_disk().await;
+                    return Ok(());
+                }
+                return Err(Failure {
+                    reason: "list",
+                    message: format!(
+                        "the node listing at {entry} found only a node without the table \
+                         ({in_a_row} of {FIRST_NODE_TABLELESS_LISTINGS} before starting alone): {e}"
+                    ),
+                });
             }
             Err(e) => {
                 return Err(Failure {
