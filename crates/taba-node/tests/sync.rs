@@ -319,7 +319,16 @@ async fn a_message_that_is_listed_but_has_no_content_anywhere_is_a_loss_and_the_
         );
         // A replica answers the commit before its write reaches the database (D196): it gets there a moment later.
         eventually("the message on disk", || disk.has_body("orders", &target)).await;
-        disk.evict_body("orders", &target).unwrap();
+        // This store is a second one over the node's database, and the node may be writing it (its writer, the
+        // trim of the excluded log): the write here gets `database is locked` and tries again.
+        eventually("the body deleted", || {
+            match disk.evict_body("orders", &target) {
+                Ok(_) => true,
+                Err(e) if e.to_string().contains("database is locked") => false,
+                Err(e) => panic!("evict_body: {e}"),
+            }
+        })
+        .await;
     }
     let number = start_isolated(&mut cluster, &[("TABA_MEMORY_LIMIT", "1B")]).await;
     cluster.network.restore(&host_of(number));
