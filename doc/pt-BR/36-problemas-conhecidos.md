@@ -17,6 +17,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [Um teste de replicação cujas 14 publicações não caíram no nó isolado](#um-teste-de-replicação-cujas-14-publicações-não-caíram-no-nó-isolado) | Corrigido | 2026-11-03 | 2026-11-03 |
 | [Um teste de sincronização cuja segunda store achou o banco travado no arm64](#um-teste-de-sincronização-cuja-segunda-store-achou-o-banco-travado-no-arm64) | Corrigido | 2026-11-03 | 2026-11-03 |
 | [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Aberto | 2026-11-03 | — |
 | [Uma votação de exclusão que falha uma vez na suíte completa](#uma-votação-de-exclusão-que-falha-uma-vez-na-suíte-completa) | Aberto | 2026-10-29 | — |
@@ -32,6 +33,22 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## Um teste de replicação cujas 14 publicações não caíram no nó isolado
+
+**Status:** Corrigido · **Achado em:** 2026-11-03 · **Corrigido em:** 2026-11-03
+
+- **Teste:** `tests/replication.rs::with_a_node_down_only_the_publications_it_owns_fail_and_the_replica_catches_up`.
+- **Sintoma:** nos checks do merge de volta `main → release` depois da `v0.3.3` (#43), o job do servidor no amd64 falhou em `replication.rs:393` com `ok 14 failed 0`: nenhuma das 14 publicações foi recusada.
+- **Causa:** o teste isola o nó 3 e espera que algumas publicações falhem, as que têm o nó 3 como primário; o primário vem do hash do `id` aleatório de cada mensagem, então com 14 publicações fixas nenhuma cai no nó 3 com probabilidade (2/3)^14, cerca de uma vez em 300 execuções. Não tem relação com uma mudança de código.
+- **Correção:** o teste publica até ter visto os dois resultados (pelo menos uma aceita e uma recusada), no mínimo 14 e no máximo 60 vezes; a chance de não cair no nó 3 em 60 é de cerca de 10^-11.
+- **Verificação:** o teste passou 5 de 5 e o arquivo de 21 testes passou.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-03 | Falhou uma vez no amd64 no #43 (`ok 14 failed 0`); o teste publica até ver os dois resultados. |
 
 ## Um teste de sincronização cuja segunda store achou o banco travado no arm64
 
