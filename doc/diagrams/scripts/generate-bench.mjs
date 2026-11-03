@@ -23,11 +23,18 @@ if (from > 0) {
   console.log(`dados: ${DATA}`);
 }
 const data = JSON.parse(readFileSync(DATA, 'utf8'));
+// --without nats: tira dos gráficos um sistema que não completou uma medida válida na rodada. Fica gravado no JSON
+// (excluded), para a próxima geração sem --from repetir a escolha, e os gráficos dizem quem ficou de fora.
+const without = process.argv.indexOf('--without');
+if (without > 0) {
+  data.excluded = process.argv[without + 1].split(',').filter(Boolean);
+  writeFileSync(DATA, `${JSON.stringify(data, null, 2)}\n`);
+}
 const langArg = process.argv.find((a) => a.startsWith('--lang='));
 const langs = langArg ? [langArg.slice(7)] : ['en-US', ...readdirSync(resolve(root, 'doc/diagrams/i18n')).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5))];
 
 // Os sistemas da comparação, na ordem fixa (a cor segue o sistema).
-const SYSTEMS = ['taba', 'rabbitmq', 'nats'];
+const SYSTEMS = ['taba', 'rabbitmq', 'nats'].filter((s) => !(data.excluded ?? []).includes(s));
 const DUR = 'fsync';
 const STEP = data.sampleSeconds ?? 10;
 
@@ -50,7 +57,8 @@ for (const lang of langs) {
   const name = (s) => SYSTEM_NAMES[s];
   const local = T('local run, not representative');
   const machine = data.machine ?? {};
-  const note = `${T('Same limits for every system')}: ${T('1 node')} ${machine.server_cpus ?? '?'} ${T('cores')} / ${machine.server_memory_gb ?? '?'} GB · ${T('3 nodes')} ${machine.cluster_node_cpus ?? '?'} ${T('cores')} / ${machine.cluster_node_memory_mb ?? '?'} MB ${T('each')} · ${T('durability')}: fsync`;
+  const left = (data.excluded ?? []).map((s) => SYSTEM_NAMES[s]).join(', ');
+  const note = `${T('Same limits for every system')}: ${T('1 node')} ${machine.server_cpus ?? '?'} ${T('cores')} / ${machine.server_memory_gb ?? '?'} GB · ${T('3 nodes')} ${machine.cluster_node_cpus ?? '?'} ${T('cores')} / ${machine.cluster_node_memory_mb ?? '?'} MB ${T('each')} · ${T('durability')}: fsync${left ? ` · ${left}: ${T('no valid measurement')}` : ''}`;
   const bars = (workload, key) => SYSTEMS.filter((s) => NODES.some(([n]) => cell(workload, s, n)))
     .map((s) => ({ key: s, label: name(s), values: NODES.map(([n]) => stat(workload, s, n, key)) }));
 

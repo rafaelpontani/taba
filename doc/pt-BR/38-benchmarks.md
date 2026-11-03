@@ -1,9 +1,9 @@
 ---
 título: Benchmarks
-resumo: O benchmark comparativo local (bench/run.sh): o OpenMessaging Benchmark contra o Taba, Kafka, Redpanda, RabbitMQ e NATS JetStream em Docker numa máquina só, quem é meta (brokers da mesma classe) e quem é referência (logs de streaming), como a comparação é mantida justa, os níveis de durabilidade, os workloads, o relatório e como incluir um sistema. Nenhum número está publicado ainda.
+resumo: O benchmark comparativo local (bench/run.sh): o OpenMessaging Benchmark contra o Taba, Kafka, Redpanda, RabbitMQ e NATS JetStream em Docker numa máquina só, quem é meta (brokers da mesma classe) e quem é referência (logs de streaming), como a comparação é mantida justa, os níveis de durabilidade, os workloads, o relatório e como incluir um sistema. Os resultados da última rodada, com os gráficos.
 tipo: guia
 status: parcial
-verificado-em: 2026-11-02 @ 738868f
+verificado-em: 2026-11-03 @ 3735b5f
 fontes: [bench/cluster-trend.sh, bench/profile.sh, bench/profile.awk, bench/run.sh, bench/lib.sh, bench/report.mjs, bench/charts.mjs, doc/diagrams/scripts/generate-bench.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
 ---
 
@@ -93,6 +93,36 @@ Num workload `backlog-*` o relatório mostra a **vazão de drenagem do backlog**
 ## O relatório
 
 `bench/results/<data>-<commit>/` (ignorada pelo git) guarda `raw/*.json` (o resultado do OMB de cada rodada, com o `.log`, a CPU e a memória dos contêineres do servidor amostradas a cada poucos segundos em `.stats` e o início da fase medida em `.t0`), `machine.json`, `startup.csv` (segundos até ficar saudável e memória parada), `results.md`, `summary.json`, `charts/*.svg` e, se uma célula falhou, `failed.txt`. Os gráficos (`bench/charts.mjs`) seguem a cor de cada sistema, com tema claro e escuro: barras de vazão e latência e, no tempo, as mensagens publicadas e consumidas por segundo, as mensagens processadas até ali, a CPU e a memória, com a queda e a volta de um nó marcadas. `node doc/diagrams/scripts/generate-bench.mjs --from <pasta>` copia o `summary.json` de uma rodada para `doc/diagrams/data/bench-results.json` e desenha os gráficos da documentação em todos os idiomas. O `results.md` mostra, por workload e durabilidade, uma tabela com a **mediana das rodadas e, entre parênteses, o mínimo e o máximo** da vazão publicada e consumida e da latência ponta a ponta p50, p99 e p99.9. Não aponta vencedor; termina com as diferenças conhecidas de cada sistema.
+
+## Resultados
+
+Rodada de 2026-11-03, commit `3735b5f`, perfil `showcase` com os workloads `simple-1kb` e `max-rate-1kb` (uma rodada de 3 minutos depois de 1 minuto de aquecimento), durabilidade fsync, num notebook (Intel i7-10750H, Docker Desktop com 12 núcleos e 7 GB): um nó com 4 núcleos e 3 GB, três nós com 2 núcleos e 1,5 GB cada. Os dados são `doc/diagrams/data/bench-results.json` (o `summary.json` da rodada) e os gráficos saem deles com `node doc/diagrams/scripts/generate-bench.mjs`. Uma rodada local compara os sistemas entre si; não é número absoluto.
+
+| Célula | Taba | RabbitMQ (fila de quórum) |
+|---|---|---|
+| Taxa máxima, um nó | 26.280 msg/s, p50 89 ms, 11.120 msg/s por núcleo | 15.752 msg/s, p50 1,5 s, 6.601 msg/s por núcleo |
+| Taxa máxima, três nós | 9.344 msg/s, p50 271 ms | 6.835 msg/s, p50 2,3 s |
+| 10.000 msg/s, um nó | sustentada, p50 3 ms, p99 25 ms | sustentada, p50 515 ms, p99 1 s |
+| 10.000 msg/s, três nós | sustentada, p50 79 ms, p99 999 ms | 6.612 msg/s (não acompanha), p50 1,1 s |
+| Memória parada, um nó / três nós | 20 MB / 101 MB | 171 MB / 506 MB |
+
+**O NATS JetStream não tem medida válida nesta rodada.** Com `sync_interval: always` ele publicou cerca de 1 mensagem por segundo na taxa máxima (o controlador de taxa do OMB baixou a taxa a zero depois do primeiro acúmulo, o efeito descrito no [PRB-087](31-pendencias.md)) e a célula `simple-1kb` de três nós falhou. Ele fica fora dos gráficos com `generate-bench.mjs --without nats`, que grava a escolha no arquivo de dados (`excluded`) e a diz na nota de cada gráfico. A meta da [D195](30-decisoes.md), o dobro da vazão dos brokers da mesma classe, ainda não foi atingida: 1,7 vez o RabbitMQ em um nó e 1,4 vez em três.
+
+![Vazão máxima](../diagrams/img/pt-BR/bench-throughput.svg)
+
+![Latência ponta a ponta a 10.000 msg/s](../diagrams/img/pt-BR/bench-latency.svg)
+
+![Mensagens por núcleo de CPU](../diagrams/img/pt-BR/bench-efficiency.svg)
+
+![Memória do servidor](../diagrams/img/pt-BR/bench-memory.svg)
+
+![Mensagens por segundo ao longo do tempo, um nó](../diagrams/img/pt-BR/bench-timeline-1.svg)
+
+![Mensagens por segundo ao longo do tempo, três nós](../diagrams/img/pt-BR/bench-timeline-3.svg)
+
+![Mensagens processadas ao longo do tempo, um nó](../diagrams/img/pt-BR/bench-processed-1.svg)
+
+![Mensagens processadas ao longo do tempo, três nós](../diagrams/img/pt-BR/bench-processed-3.svg)
 
 ## O que a comparação não esconde
 

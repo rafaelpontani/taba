@@ -1,9 +1,9 @@
 ---
 title: Benchmarks
-summary: The local comparative benchmark (bench/run.sh): the OpenMessaging Benchmark against Taba, Kafka, Redpanda, RabbitMQ and NATS JetStream in Docker on one machine, which systems are the target (brokers of the same class) and which are the reference (streaming logs), how the comparison is kept fair, the durability levels, the workloads, the report and how to add a system. No number is published yet.
+summary: The local comparative benchmark (bench/run.sh): the OpenMessaging Benchmark against Taba, Kafka, Redpanda, RabbitMQ and NATS JetStream in Docker on one machine, which systems are the target (brokers of the same class) and which are the reference (streaming logs), how the comparison is kept fair, the durability levels, the workloads, the report and how to add a system. The results of the last run, with their charts.
 type: guide
 status: partial
-verified-on: 2026-11-02 @ 738868f
+verified-on: 2026-11-03 @ 3735b5f
 sources: [bench/cluster-trend.sh, bench/profile.sh, bench/profile.awk, bench/run.sh, bench/lib.sh, bench/report.mjs, bench/charts.mjs, doc/diagrams/scripts/generate-bench.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
 ---
 
@@ -93,6 +93,36 @@ In a `backlog-*` workload the report shows the **drain rate of the backlog** (th
 ## The report
 
 `bench/results/<date>-<commit>/` (ignored by git) holds `raw/*.json` (one OMB result per round, with its `.log`, the CPU and memory of the server containers sampled every few seconds in `.stats` and the start of the measured phase in `.t0`), `machine.json`, `startup.csv` (seconds until healthy and memory at rest), `results.md`, `summary.json`, `charts/*.svg` and, if a cell failed, `failed.txt`. The charts (`bench/charts.mjs`) follow the color of each system, with a light and a dark theme: bars of throughput and latency, and over time the messages published and consumed per second, the messages processed so far, CPU and memory, with the kill and the start of a node marked. `node doc/diagrams/scripts/generate-bench.mjs --from <folder>` copies the `summary.json` of a run to `doc/diagrams/data/bench-results.json` and draws the charts of the documentation in every language. `results.md` shows, per workload and durability, a table with the **median of the rounds and, in parentheses, the minimum and the maximum** of the published and consumed throughput and the end-to-end p50, p99 and p99.9. It does not name a winner; it ends with the known differences of each system.
+
+## Results
+
+Run of 2026-11-03, commit `3735b5f`, profile `showcase` with the workloads `simple-1kb` and `max-rate-1kb` (one round of 3 minutes after 1 minute of warm-up), durability fsync, on a laptop (Intel i7-10750H, Docker Desktop with 12 cores and 7 GB): one node with 4 cores and 3 GB, three nodes with 2 cores and 1.5 GB each. The data is `doc/diagrams/data/bench-results.json` (the `summary.json` of the run) and the charts are drawn from it by `node doc/diagrams/scripts/generate-bench.mjs`. A local run compares the systems with each other; it is not an absolute number.
+
+| Cell | Taba | RabbitMQ (quorum queue) |
+|---|---|---|
+| Maximum rate, one node | 26,280 msg/s, p50 89 ms, 11,120 msg/s per core | 15,752 msg/s, p50 1.5 s, 6,601 msg/s per core |
+| Maximum rate, three nodes | 9,344 msg/s, p50 271 ms | 6,835 msg/s, p50 2.3 s |
+| 10,000 msg/s, one node | sustained, p50 3 ms, p99 25 ms | sustained, p50 515 ms, p99 1 s |
+| 10,000 msg/s, three nodes | sustained, p50 79 ms, p99 999 ms | 6,612 msg/s (does not keep up), p50 1.1 s |
+| Memory at rest, one node / three nodes | 20 MB / 101 MB | 171 MB / 506 MB |
+
+**NATS JetStream has no valid measurement in this run.** With `sync_interval: always` it published about 1 message per second at the maximum rate (the OMB rate controller dropped the rate to zero after the first backlog, the effect described in [PRB-087](31-pending-items.md)) and the three-node `simple-1kb` cell failed. It is left out of the charts with `generate-bench.mjs --without nats`, which writes the choice in the data file (`excluded`) and says so in the note of every chart. The goal of [D195](30-decisions.md), twice the throughput of the brokers of the same class, is not reached yet: 1.7 times RabbitMQ on one node and 1.4 times on three.
+
+![Maximum throughput](../diagrams/img/en-US/bench-throughput.svg)
+
+![End-to-end latency at 10,000 msg/s](../diagrams/img/en-US/bench-latency.svg)
+
+![Messages per CPU core](../diagrams/img/en-US/bench-efficiency.svg)
+
+![Server memory](../diagrams/img/en-US/bench-memory.svg)
+
+![Messages per second over time, one node](../diagrams/img/en-US/bench-timeline-1.svg)
+
+![Messages per second over time, three nodes](../diagrams/img/en-US/bench-timeline-3.svg)
+
+![Messages processed over time, one node](../diagrams/img/en-US/bench-processed-1.svg)
+
+![Messages processed over time, three nodes](../diagrams/img/en-US/bench-processed-3.svg)
 
 ## What the comparison does not hide
 

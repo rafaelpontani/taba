@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 358" width="760" height="358" role="img" aria-labelledby="t d">
+<title id="t">Vazão máxima, mensagens de 1 KB</title><desc id="d">mensagens consumidas e confirmadas por segundo · rodada local, não representativa</desc>
+<style>
+svg{--bg:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;--s0:#2a78d6;--s1:#eb6834}
+@media (prefers-color-scheme: dark){svg{--bg:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;--s0:#3987e5;--s1:#d95926}}
+text{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;fill:var(--ink2);font-size:12px}
+.t{fill:var(--ink);font-size:16px;font-weight:600}.st{font-size:12.5px}.v{fill:var(--ink);font-size:11.5px;font-weight:600}
+.lg{fill:var(--ink);font-size:12.5px}.ax{fill:var(--muted);font-size:11px}.mk{fill:var(--ink2);font-size:11px}
+</style>
+<rect width="760" height="358" rx="10" fill="var(--bg)"/>
+<text class="t" x="20" y="28">Vazão máxima, mensagens de 1 KB</text>
+<text class="st" x="20" y="48">mensagens consumidas e confirmadas por segundo · rodada local, não representativa</text>
+<rect x="20" y="62" width="12" height="12" rx="3" fill="var(--s0)"/>
+<text class="lg" x="38" y="72">Taba</text>
+<rect x="88" y="62" width="12" height="12" rx="3" fill="var(--s1)"/>
+<text class="lg" x="106" y="72">RabbitMQ</text>
+<line x1="64" y1="290" x2="740" y2="290" stroke="var(--axis)" stroke-width="1"/>
+<text class="ax" x="56" y="294" text-anchor="end">0</text>
+<line x1="64" y1="240" x2="740" y2="240" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="244" text-anchor="end">10k</text>
+<line x1="64" y1="190" x2="740" y2="190" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="194" text-anchor="end">20k</text>
+<line x1="64" y1="140" x2="740" y2="140" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="144" text-anchor="end">30k</text>
+<line x1="64" y1="90" x2="740" y2="90" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="94" text-anchor="end">40k</text>
+<text class="ax" x="56" y="84" text-anchor="end">msg/s</text>
+<path d="M178 290V162.6006Q178 158.6006 182 158.6006H228Q232 158.6006 232 162.6006V290Z" fill="var(--s0)"><title>Taba · 1 nó: 26k msg/s</title></path>
+<text class="v" x="205" y="153.6006" text-anchor="middle">26k</text>
+<path d="M234 290V215.23775Q234 211.23775 238 211.23775H284Q288 211.23775 288 215.23775V290Z" fill="var(--s1)"><title>RabbitMQ · 1 nó: 16k msg/s</title></path>
+<text class="v" x="261" y="206.23775" text-anchor="middle">16k</text>
+<text class="lg" x="233" y="310" text-anchor="middle">1 nó</text>
+<path d="M516 290V247.2776Q516 243.2776 520 243.2776H566Q570 243.2776 570 247.2776V290Z" fill="var(--s0)"><title>Taba · 3 nós: 9.3k msg/s</title></path>
+<text class="v" x="543" y="238.2776" text-anchor="middle">9.3k</text>
+<path d="M572 290V259.82565Q572 255.82565 576 255.82565H622Q626 255.82565 626 259.82565V290Z" fill="var(--s1)"><title>RabbitMQ · 3 nós: 6.8k msg/s</title></path>
+<text class="v" x="599" y="250.82565" text-anchor="middle">6.8k</text>
+<text class="lg" x="571" y="310" text-anchor="middle">3 nós</text>
+<text class="ax" x="20" y="346">Mesmos limites para todos: 1 nó 4 núcleos / 3 GB · 3 nós 2 núcleos / 1536 MB cada · durabilidade: fsync · NATS JetStream: sem medida válida</text>
+</svg>

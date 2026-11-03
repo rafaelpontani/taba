@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 358" width="760" height="358" role="img" aria-labelledby="t d">
+<title id="t">End-to-end latency at 10,000 msg/s</title><desc id="d">from publish to delivery, lower is better · local run, not representative</desc>
+<style>
+svg{--bg:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;--s0:#2a78d6;--s1:#eb6834}
+@media (prefers-color-scheme: dark){svg{--bg:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;--s0:#3987e5;--s1:#d95926}}
+text{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;fill:var(--ink2);font-size:12px}
+.t{fill:var(--ink);font-size:16px;font-weight:600}.st{font-size:12.5px}.v{fill:var(--ink);font-size:11.5px;font-weight:600}
+.lg{fill:var(--ink);font-size:12.5px}.ax{fill:var(--muted);font-size:11px}.mk{fill:var(--ink2);font-size:11px}
+</style>
+<rect width="760" height="358" rx="10" fill="var(--bg)"/>
+<text class="t" x="20" y="28">End-to-end latency at 10,000 msg/s</text>
+<text class="st" x="20" y="48">from publish to delivery, lower is better · local run, not representative</text>
+<rect x="20" y="62" width="12" height="12" rx="3" fill="var(--s0)"/>
+<text class="lg" x="38" y="72">Taba</text>
+<rect x="88" y="62" width="12" height="12" rx="3" fill="var(--s1)"/>
+<text class="lg" x="106" y="72">RabbitMQ</text>
+<line x1="64" y1="290" x2="740" y2="290" stroke="var(--axis)" stroke-width="1"/>
+<text class="ax" x="56" y="294" text-anchor="end">0</text>
+<line x1="64" y1="240" x2="740" y2="240" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="244" text-anchor="end">500</text>
+<line x1="64" y1="190" x2="740" y2="190" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="194" text-anchor="end">1k</text>
+<line x1="64" y1="140" x2="740" y2="140" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="144" text-anchor="end">1.5k</text>
+<line x1="64" y1="90" x2="740" y2="90" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="94" text-anchor="end">2k</text>
+<text class="ax" x="56" y="84" text-anchor="end">ms</text>
+<path d="M93.5 290V289.5Q93.5 289 94 289H147Q147.5 289 147.5 289.5V290Z" fill="var(--s0)"><title>Taba · p50 · 1 node: 3 ms</title></path>
+<text class="v" x="120.5" y="284" text-anchor="middle">3</text>
+<path d="M149.5 290V242.5Q149.5 238.5 153.5 238.5H199.5Q203.5 238.5 203.5 242.5V290Z" fill="var(--s1)"><title>RabbitMQ · p50 · 1 node: 515 ms</title></path>
+<text class="v" x="176.5" y="233.5" text-anchor="middle">515</text>
+<text class="lg" x="148.5" y="310" text-anchor="middle">p50 · 1 node</text>
+<path d="M262.5 290V288.75Q262.5 287.5 263.75 287.5H315.25Q316.5 287.5 316.5 288.75V290Z" fill="var(--s0)"><title>Taba · p99 · 1 node: 25 ms</title></path>
+<text class="v" x="289.5" y="282.5" text-anchor="middle">25</text>
+<path d="M318.5 290V193.7Q318.5 189.7 322.5 189.7H368.5Q372.5 189.7 372.5 193.7V290Z" fill="var(--s1)"><title>RabbitMQ · p99 · 1 node: 1k ms</title></path>
+<text class="v" x="345.5" y="184.7" text-anchor="middle">1k</text>
+<text class="lg" x="317.5" y="310" text-anchor="middle">p99 · 1 node</text>
+<path d="M431.5 290V286.05Q431.5 282.1 435.45 282.1H481.55Q485.5 282.1 485.5 286.05V290Z" fill="var(--s0)"><title>Taba · p50 · 3 nodes: 79 ms</title></path>
+<text class="v" x="458.5" y="277.1" text-anchor="middle">79</text>
+<path d="M487.5 290V184.499Q487.5 180.499 491.5 180.499H537.5Q541.5 180.499 541.5 184.499V290Z" fill="var(--s1)"><title>RabbitMQ · p50 · 3 nodes: 1.1k ms</title></path>
+<text class="v" x="514.5" y="175.499" text-anchor="middle">1.1k</text>
+<text class="lg" x="486.5" y="310" text-anchor="middle">p50 · 3 nodes</text>
+<path d="M600.5 290V194.1Q600.5 190.1 604.5 190.1H650.5Q654.5 190.1 654.5 194.1V290Z" fill="var(--s0)"><title>Taba · p99 · 3 nodes: 999 ms</title></path>
+<text class="v" x="627.5" y="185.1" text-anchor="middle">999</text>
+<path d="M656.5 290V114.299Q656.5 110.299 660.5 110.299H706.5Q710.5 110.299 710.5 114.299V290Z" fill="var(--s1)"><title>RabbitMQ · p99 · 3 nodes: 1.8k ms</title></path>
+<text class="v" x="683.5" y="105.299" text-anchor="middle">1.8k</text>
+<text class="lg" x="655.5" y="310" text-anchor="middle">p99 · 3 nodes</text>
+<text class="ax" x="20" y="346">Same limits for every system: 1 node 4 cores / 3 GB · 3 nodes 2 cores / 1536 MB each · durability: fsync · NATS JetStream: no valid measurement</text>
+</svg>

@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 370" width="760" height="370" role="img" aria-labelledby="t d">
+<title id="t">Messages per second over time, 1 node</title><desc id="d">maximum rate; consumed (solid) and published (dashed) · local run, not representative</desc>
+<style>
+svg{--bg:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;--s0:#2a78d6;--s1:#eb6834}
+@media (prefers-color-scheme: dark){svg{--bg:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;--s0:#3987e5;--s1:#d95926}}
+text{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;fill:var(--ink2);font-size:12px}
+.t{fill:var(--ink);font-size:16px;font-weight:600}.st{font-size:12.5px}.v{fill:var(--ink);font-size:11.5px;font-weight:600}
+.lg{fill:var(--ink);font-size:12.5px}.ax{fill:var(--muted);font-size:11px}.mk{fill:var(--ink2);font-size:11px}
+</style>
+<rect width="760" height="370" rx="10" fill="var(--bg)"/>
+<text class="t" x="20" y="28">Messages per second over time, 1 node</text>
+<text class="st" x="20" y="48">maximum rate; consumed (solid) and published (dashed) · local run, not representative</text>
+<line x1="20" y1="68" x2="38" y2="68" stroke="var(--s0)" stroke-width="2.5"/>
+<text class="lg" x="44" y="72">Taba</text>
+<line x1="94" y1="68" x2="112" y2="68" stroke="var(--s1)" stroke-width="2.5"/>
+<text class="lg" x="118" y="72">RabbitMQ</text>
+<line x1="196" y1="68" x2="214" y2="68" stroke="var(--ink2)" stroke-width="2" stroke-dasharray="4 3"/>
+<text class="lg" x="220" y="72">published</text>
+<line x1="305" y1="68" x2="323" y2="68" stroke="var(--ink2)" stroke-width="2.5"/>
+<text class="lg" x="329" y="72">consumed</text>
+<line x1="64" y1="290" x2="664" y2="290" stroke="var(--axis)" stroke-width="1"/>
+<text class="ax" x="56" y="294" text-anchor="end">0</text>
+<line x1="64" y1="240" x2="664" y2="240" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="244" text-anchor="end">10k</text>
+<line x1="64" y1="190" x2="664" y2="190" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="194" text-anchor="end">20k</text>
+<line x1="64" y1="140" x2="664" y2="140" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="144" text-anchor="end">30k</text>
+<line x1="64" y1="90" x2="664" y2="90" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="94" text-anchor="end">40k</text>
+<text class="ax" x="56" y="84" text-anchor="end">msg/s</text>
+<text class="ax" x="64" y="306" text-anchor="middle">0</text>
+<text class="ax" x="164" y="306" text-anchor="middle">30</text>
+<text class="ax" x="264" y="306" text-anchor="middle">60</text>
+<text class="ax" x="364" y="306" text-anchor="middle">90</text>
+<text class="ax" x="464" y="306" text-anchor="middle">120</text>
+<text class="ax" x="564" y="306" text-anchor="middle">150</text>
+<text class="ax" x="664" y="306" text-anchor="middle">180</text>
+<text class="ax" x="364" y="324" text-anchor="middle">seconds of the measured phase</text>
+<path d="M97.3 147.7L130.7 146.6L164.0 156.9L197.3 210.3L230.7 152.3L264.0 145.5L297.3 168.0L330.7 210.9L364.0 143.6L397.3 143.0L430.7 144.0L464.0 188.6L497.3 166.7L530.7 143.8L564.0 142.0L597.3 167.5L630.7 140.8L664.0 136.2" fill="none" stroke="var(--s0)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="5 4" opacity="0.85"><title>Taba published</title></path>
+<path d="M97.3 147.0L130.7 148.3L164.0 155.3L197.3 210.1L230.7 152.7L264.0 145.5L297.3 167.9L330.7 210.7L364.0 143.9L397.3 144.7L430.7 142.0L464.0 188.5L497.3 166.9L530.7 143.8L564.0 142.5L597.3 166.9L630.7 141.1L664.0 137.1" fill="none" stroke="var(--s0)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><title>Taba consumed</title></path>
+<circle cx="97.3" cy="147.0" r="7" fill="transparent"><title>Taba consumed · 10 s: 29k msg/s</title></circle>
+<circle cx="130.7" cy="148.3" r="7" fill="transparent"><title>Taba consumed · 20 s: 28k msg/s</title></circle>
+<circle cx="164.0" cy="155.3" r="7" fill="transparent"><title>Taba consumed · 30 s: 27k msg/s</title></circle>
+<circle cx="197.3" cy="210.1" r="7" fill="transparent"><title>Taba consumed · 40 s: 16k msg/s</title></circle>
+<circle cx="230.7" cy="152.7" r="7" fill="transparent"><title>Taba consumed · 50 s: 27k msg/s</title></circle>
+<circle cx="264.0" cy="145.5" r="7" fill="transparent"><title>Taba consumed · 60 s: 29k msg/s</title></circle>
+<circle cx="297.3" cy="167.9" r="7" fill="transparent"><title>Taba consumed · 70 s: 24k msg/s</title></circle>
+<circle cx="330.7" cy="210.7" r="7" fill="transparent"><title>Taba consumed · 80 s: 16k msg/s</title></circle>
+<circle cx="364.0" cy="143.9" r="7" fill="transparent"><title>Taba consumed · 90 s: 29k msg/s</title></circle>
+<circle cx="397.3" cy="144.7" r="7" fill="transparent"><title>Taba consumed · 100 s: 29k msg/s</title></circle>
+<circle cx="430.7" cy="142.0" r="7" fill="transparent"><title>Taba consumed · 110 s: 30k msg/s</title></circle>
+<circle cx="464.0" cy="188.5" r="7" fill="transparent"><title>Taba consumed · 120 s: 20k msg/s</title></circle>
+<circle cx="497.3" cy="166.9" r="7" fill="transparent"><title>Taba consumed · 130 s: 25k msg/s</title></circle>
+<circle cx="530.7" cy="143.8" r="7" fill="transparent"><title>Taba consumed · 140 s: 29k msg/s</title></circle>
+<circle cx="564.0" cy="142.5" r="7" fill="transparent"><title>Taba consumed · 150 s: 30k msg/s</title></circle>
+<circle cx="597.3" cy="166.9" r="7" fill="transparent"><title>Taba consumed · 160 s: 25k msg/s</title></circle>
+<circle cx="630.7" cy="141.1" r="7" fill="transparent"><title>Taba consumed · 170 s: 30k msg/s</title></circle>
+<circle cx="664.0" cy="137.1" r="7" fill="transparent"><title>Taba consumed · 180 s: 31k msg/s</title></circle>
+<path d="M97.3 206.5L130.7 207.8L164.0 215.2L197.3 214.1L230.7 213.6L264.0 211.2L297.3 208.4L330.7 219.0L364.0 211.7L397.3 213.9L430.7 210.8L464.0 210.0L497.3 214.3L530.7 206.7L564.0 209.5L597.3 207.5L630.7 211.4L664.0 210.8" fill="none" stroke="var(--s1)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="5 4" opacity="0.85"><title>RabbitMQ published</title></path>
+<path d="M97.3 206.6L130.7 207.8L164.0 215.1L197.3 214.0L230.7 213.7L264.0 211.1L297.3 208.4L330.7 219.0L364.0 211.8L397.3 213.8L430.7 210.9L464.0 209.9L497.3 214.3L530.7 206.7L564.0 209.4L597.3 207.6L630.7 211.5L664.0 210.8" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><title>RabbitMQ consumed</title></path>
+<circle cx="97.3" cy="206.6" r="7" fill="transparent"><title>RabbitMQ consumed · 10 s: 17k msg/s</title></circle>
+<circle cx="130.7" cy="207.8" r="7" fill="transparent"><title>RabbitMQ consumed · 20 s: 16k msg/s</title></circle>
+<circle cx="164.0" cy="215.1" r="7" fill="transparent"><title>RabbitMQ consumed · 30 s: 15k msg/s</title></circle>
+<circle cx="197.3" cy="214.0" r="7" fill="transparent"><title>RabbitMQ consumed · 40 s: 15k msg/s</title></circle>
+<circle cx="230.7" cy="213.7" r="7" fill="transparent"><title>RabbitMQ consumed · 50 s: 15k msg/s</title></circle>
+<circle cx="264.0" cy="211.1" r="7" fill="transparent"><title>RabbitMQ consumed · 60 s: 16k msg/s</title></circle>
+<circle cx="297.3" cy="208.4" r="7" fill="transparent"><title>RabbitMQ consumed · 70 s: 16k msg/s</title></circle>
+<circle cx="330.7" cy="219.0" r="7" fill="transparent"><title>RabbitMQ consumed · 80 s: 14k msg/s</title></circle>
+<circle cx="364.0" cy="211.8" r="7" fill="transparent"><title>RabbitMQ consumed · 90 s: 16k msg/s</title></circle>
+<circle cx="397.3" cy="213.8" r="7" fill="transparent"><title>RabbitMQ consumed · 100 s: 15k msg/s</title></circle>
+<circle cx="430.7" cy="210.9" r="7" fill="transparent"><title>RabbitMQ consumed · 110 s: 16k msg/s</title></circle>
+<circle cx="464.0" cy="209.9" r="7" fill="transparent"><title>RabbitMQ consumed · 120 s: 16k msg/s</title></circle>
+<circle cx="497.3" cy="214.3" r="7" fill="transparent"><title>RabbitMQ consumed · 130 s: 15k msg/s</title></circle>
+<circle cx="530.7" cy="206.7" r="7" fill="transparent"><title>RabbitMQ consumed · 140 s: 17k msg/s</title></circle>
+<circle cx="564.0" cy="209.4" r="7" fill="transparent"><title>RabbitMQ consumed · 150 s: 16k msg/s</title></circle>
+<circle cx="597.3" cy="207.6" r="7" fill="transparent"><title>RabbitMQ consumed · 160 s: 16k msg/s</title></circle>
+<circle cx="630.7" cy="211.5" r="7" fill="transparent"><title>RabbitMQ consumed · 170 s: 16k msg/s</title></circle>
+<circle cx="664.0" cy="210.8" r="7" fill="transparent"><title>RabbitMQ consumed · 180 s: 16k msg/s</title></circle>
+<text class="v" x="670" y="141.1215">Taba 31k</text>
+<text class="v" x="670" y="214.8055">RabbitMQ 16k</text>
+<text class="ax" x="20" y="358">Same limits for every system: 1 node 4 cores / 3 GB · 3 nodes 2 cores / 1536 MB each · durability: fsync · NATS JetStream: no valid measurement</text>
+</svg>

@@ -12,9 +12,18 @@ O objetivo é fazer o trabalho de um broker de mensagens com **poucos recursos**
 
 ## Mensageria, não streaming
 
-O Taba é da classe dos **brokers de mensagens** (RabbitMQ, NATS JetStream, SQS), não da classe das **plataformas de streaming** (Kafka, Redpanda, Pulsar). Uma plataforma de streaming é um log de acréscimo: muito rápida para gravar bytes e relê-los, mas deixa para a aplicação o trabalho em volta de cada mensagem: confirmar uma mensagem e não a seguinte, reentregar só a que falhou, mandá-la para uma fila de mensagens mortas, manter a ordem por chave com mais consumidores que partições, expirar uma mensagem só. O Taba faz esse trabalho no broker, e o faz com o mínimo de recursos que consegue.
+O Taba é da classe dos **brokers de mensagens** (RabbitMQ, NATS JetStream, SQS), não da classe das **plataformas de streaming** (Kafka, Redpanda, Pulsar). Elas resolvem problemas diferentes, por isso este README compara o Taba só com sistemas da classe dele.
 
-É também assim que o Taba é medido: [contra brokers da mesma classe](doc/pt-BR/38-benchmarks.md#o-que-a-comparação-mede). Uma plataforma de streaming aparece no benchmark como a referência da velocidade de um log puro, não como a meta.
+**Por que não dá para comparar as duas.** Uma plataforma de streaming é um log de acréscimo dividido em partições. O consumidor não pega uma mensagem: lê o log a partir de uma posição (um offset) e avança essa posição. É por isso que ela é tão rápida para gravar bytes e relê-los: o broker só acrescenta e lê em sequência, e quase todo o trabalho em volta de cada mensagem fica para a aplicação:
+
+- **Confirmar uma mensagem e não a seguinte.** O offset é um número por partição: confirmar a mensagem 10 confirma da 1 à 9. Uma mensagem que falhou no meio precisa ser tratada pela aplicação, ou trava a partição.
+- **Reentregar só a que falhou e mandá-la para uma fila de mensagens mortas** depois de algumas tentativas: a aplicação escreve essa lógica (tópicos de nova tentativa, um tópico de mensagens mortas).
+- **Dividir a carga:** o número de consumidores trabalhando em paralelo é limitado pelo número de partições; consumidores além disso ficam parados.
+- **Expirar uma mensagem só, ou escondê-la por um tempo** (visibilidade): o log só expira segmentos inteiros, por idade ou tamanho.
+
+Um broker faz esse trabalho ele mesmo, para cada mensagem: registra a entrega, espera o ack, reentrega no prazo, conta as tentativas e move a mensagem para a fila de mensagens mortas. Medir os dois na mesma carga compara um log sem nada a fazer com um broker fazendo o trabalho que o log deixa para a aplicação. Os números de vazão saem de trabalhos diferentes, então nenhum deles diz qual sistema é mais rápido para uma fila.
+
+Por isso o Taba é medido [contra brokers da mesma classe](doc/pt-BR/38-benchmarks.md#o-que-a-comparação-mede). Se o que você precisa é reler o histórico ou processar streams, uma plataforma de streaming é a ferramenta certa; se precisa de filas, FIFO e pub/sub com cada mensagem tratada por si, o Taba é.
 
 ## Em resumo
 
@@ -26,7 +35,7 @@ O Taba é da classe dos **brokers de mensagens** (RabbitMQ, NATS JetStream, SQS)
 | **Durabilidade** | Cada mensagem é confirmada por um **quorum** de nós (3 cópias por padrão) e copiada **continuamente para o S3** (AWS, SeaweedFS, MinIO, Ceph...) |
 | **Implantação** | Uma imagem Docker (58 MB), Docker Compose ou o **Helm chart** em `oci://ghcr.io/rafaelpontani/charts/taba` |
 | **Operação** | `taba-cli`, uma linha de comando com **interface de terminal em tela cheia** (saúde do cluster, tópicos, gráficos das filas), além de métricas Prometheus e OpenTelemetry |
-| **Clientes** | HTTP simples, de qualquer linguagem; conectores prontos para Rust (crates.io) e C#/.NET (nuget.org) |
+| **Clientes** | HTTP simples, de qualquer linguagem; conectores prontos para **Java, C#/.NET, Python, Node.js e Rust** (Rust no crates.io, C# no nuget.org), todos sem dependências, além de um driver para o [OpenMessaging Benchmark](connectors/omb/README.md) |
 | **Licença** | Servidor AGPLv3, conectores Apache-2.0 |
 
 ## Por que o Taba
@@ -44,6 +53,20 @@ O Taba é da classe dos **brokers de mensagens** (RabbitMQ, NATS JetStream, SQS)
 - Os nós **se monitoram** e excluem por votação o que falha; ele **volta sozinho** quando se recupera.
 - O **backup no S3 nunca atrasa uma escrita** e permite que um cluster inteiro que caiu **se restaure sozinho** ao subir (só a última janela do backup fica em risco).
 - Todo candidato é validado de ponta a ponta antes de virar release final: um cluster de três nós com nós caindo, fazendo drain e voltando, **sem perda de mensagens confirmadas**, mais backup e restauração no S3 ([docker/validate.sh](docker/validate.sh)).
+
+## Desempenho
+
+Medido com o [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) contra o RabbitMQ (fila de quórum), um broker da mesma classe, numa máquina só, com os mesmos limites de CPU e memória para os dois e toda escrita confirmada depois do `fsync`: um nó com 4 núcleos e 3 GB, e um cluster de três nós com 2 núcleos e 1,5 GB cada. Mensagens de 1 KB, cada uma consumida e confirmada.
+
+![Vazão máxima, mensagens de 1 KB: Taba 26 mil mensagens por segundo em um nó e 9,3 mil em três nós; RabbitMQ 16 mil e 6,8 mil](doc/diagrams/img/pt-BR/bench-throughput.svg)
+
+![Latência ponta a ponta a 10.000 mensagens por segundo: Taba p50 3 ms e p99 25 ms em um nó, p50 79 ms e p99 999 ms em três nós; RabbitMQ p50 515 ms e p99 1 s em um nó, p50 1,1 s e p99 1,8 s em três nós](doc/diagrams/img/pt-BR/bench-latency.svg)
+
+- **Vazão:** o Taba consome **1,7 vez** mais mensagens por segundo que o RabbitMQ em um nó e **1,4 vez** em três nós.
+- **Latência:** a 10.000 mensagens por segundo fixas, uma mensagem leva **3 ms** (p50) da publicação à entrega em um nó, contra 515 ms; em três nós, 79 ms contra 1,1 s, e ali o RabbitMQ não acompanha a taxa (6.600 por segundo).
+- **Memória parada:** 20 MB em um nó e 101 MB nos três nós, contra 171 MB e 506 MB.
+
+O NATS JetStream, o outro broker da mesma classe, está na rodada, mas não teve medida válida com `sync_interval: always` nesta máquina, por isso fica fora dos gráficos. São números de uma rodada local (`bench/results` do commit `3735b5f`, 2026-11-03), úteis para comparar os sistemas entre si, não como números absolutos. Todos os gráficos, o método e como rodar você mesmo estão no [guia do benchmark](doc/pt-BR/38-benchmarks.md#resultados).
 
 ## Veja funcionando
 
@@ -85,16 +108,18 @@ A API de cliente também está em `http://localhost:8080` para qualquer cliente 
 
 ## Taba × as alternativas
 
-| | **Taba** | SQS + SNS | Kafka | RabbitMQ |
+Sistemas da mesma classe, os brokers de mensagens ([por que as plataformas de streaming não estão aqui](#mensageria-não-streaming)):
+
+| | **Taba** | SQS + SNS | RabbitMQ | NATS JetStream |
 |---|---|---|---|---|
 | **Onde roda** | Em qualquer lugar: máquina, VM, Docker, Kubernetes | Só na AWS | Onde você hospedar, ou como serviço gerenciado | Onde você hospedar, ou como serviço gerenciado |
-| **O que operar** | A mesma imagem em 3 nós (1 para desenvolvimento) | Nada (gerenciado) | Brokers e coordenação de metadados | Um broker (mais nós para alta disponibilidade) |
-| **Fila e pub/sub** | Na mesma API HTTP | Dois serviços separados | Tópicos e grupos de consumidores | Filas e exchanges |
-| **Trabalho por mensagem** | Ack, reentrega, dead-letter e expiração por mensagem, no broker | Por mensagem, no serviço | Um offset por partição; o resto fica para a aplicação (ack por registro só com os share groups do Kafka 4) | Ack, reentrega e dead-letter por mensagem, no broker |
-| **Alta disponibilidade** | Embutida: replicação por quorum, votação e volta automática | Gerenciada pela AWS | Partições replicadas | Quorum queues num cluster |
-| **Escala** | Adicione ou retire um nó: ele se rebalanceia sozinho | Automática (gerenciada) | Brokers e partições, redistribuídas à mão ou por ferramentas | Nós do cluster; líderes das filas rebalanceados por comando |
-| **Backup** | Contínuo no S3, restaurado ao subir | Gerenciado pela AWS | Replicação; backup com ferramentas externas | Exportação de definições; mensagens com ferramentas externas |
-| **Desenvolvimento local** | A mesma imagem da produção | Um emulador (LocalStack) ou uma conta AWS | O mesmo software, mais pesado | O mesmo software |
+| **O que operar** | A mesma imagem em 3 nós (1 para desenvolvimento) | Nada (gerenciado) | Um broker (mais nós para alta disponibilidade) | Um servidor (3 ou mais para streams replicados) |
+| **Fila e pub/sub** | Na mesma API HTTP | Dois serviços separados | Filas e exchanges | Subjects, streams e consumers |
+| **Trabalho por mensagem** | Ack, reentrega, dead-letter e expiração por mensagem, no broker | Por mensagem, no serviço | Ack, reentrega e dead-letter por mensagem, no broker | Ack e reentrega por mensagem; sem fila de mensagens mortas (um aviso quando as tentativas acabam) |
+| **Alta disponibilidade** | Embutida: replicação por quorum, votação e volta automática | Gerenciada pela AWS | Quorum queues num cluster | Streams replicados por Raft |
+| **Escala** | Adicione ou retire um nó: ele se rebalanceia sozinho | Automática (gerenciada) | Nós do cluster; líderes das filas rebalanceados por comando | Servidores no cluster; streams posicionados na criação e movidos por comando |
+| **Backup** | Contínuo no S3, restaurado ao subir | Gerenciado pela AWS | Exportação de definições; mensagens com ferramentas externas | Snapshots dos streams por comando |
+| **Desenvolvimento local** | A mesma imagem da produção | Um emulador (LocalStack) ou uma conta AWS | O mesmo software | O mesmo software |
 | **Cobrança** | Sem cobrança por mensagem: só infraestrutura | Por requisição | Infraestrutura, ou um plano gerenciado | Infraestrutura, ou um plano gerenciado |
 
 ## Perguntas frequentes
@@ -124,10 +149,10 @@ O que limita um cluster Taba é o hardware que você dá a ele, não um número 
 
 O que o Taba não faz:
 
-- **Não substitui um protocolo:** o Taba fala HTTP. Não há compatibilidade com os protocolos AMQP, MQTT ou Kafka, então trocar de broker significa trocar o cliente.
-- **Não é uma plataforma de streaming:** processamento de streams e reprodução do histórico de mensagens estão fora do escopo. Para filas e pub/sub, sim; para reler o passado, não.
+- **Não substitui um protocolo:** o Taba fala HTTP. Não há compatibilidade com os protocolos AMQP ou MQTT, então trocar de broker significa trocar o cliente.
+- **Não é uma plataforma de streaming:** processamento de streams e reprodução do histórico de mensagens estão fora do escopo ([Mensageria, não streaming](#mensageria-não-streaming)). Para filas e pub/sub, sim; para reler o passado, não.
 - **Fora do escopo por enquanto:** interface web, autenticação avançada (OAuth/OIDC) e multirregião.
-- **Ainda por vir:** os conectores das demais linguagens, o contrato OpenAPI e resultados de benchmark publicados (o script está em [`bench/`](bench/README.md)). Veja o [roadmap](doc/pt-BR/32-roadmap.md) e os [problemas conhecidos](doc/pt-BR/36-problemas-conhecidos.md).
+- **Ainda por vir:** os conectores de PHP, Ruby, Go, C e C++, e os pacotes dos conectores Java, Node.js e Python (hoje eles são usados a partir do código-fonte). Veja o [roadmap](doc/pt-BR/32-roadmap.md) e os [problemas conhecidos](doc/pt-BR/36-problemas-conhecidos.md).
 
 ## Desenvolva em um nó
 
@@ -229,11 +254,55 @@ A API é HTTP, então qualquer linguagem já fala com o Taba pelo cliente HTTP q
 | C | `connectors/c/` | C89 | planejado | TODO |
 | C++ | `connectors/cpp/` | C++03 | planejado | TODO |
 
+Os cinco conectores prontos têm as mesmas operações, os mesmos padrões e os mesmos erros: os [testes de contrato](connectors/contract/README.md) passam um mesmo cenário por cada um deles contra um nó de verdade, cada um no runtime mais antigo que suporta, e depois fazem um ler as mensagens dos outros. Publicar e consumir com ack automático (a mensagem só é apagada se o handler não falhar):
+
+```java
+// Java
+try (TabaClient client = new TabaClient(TabaConfig.of("http://localhost:8080").token(token))) {
+    client.publishText("orders", "hello");
+    client.consume("orders", new ConsumeOptions().waitTime(20), ctx -> System.out.println(ctx.getMessage().getBodyText()));
+}
+```
+
+```csharp
+// C#
+using (var client = new TabaClient(new TabaConfig("http://localhost:8080") { Token = token }))
+{
+    await client.PublishJsonAsync("orders", new { order = 9001 });
+    await client.ConsumeAsync<Order>("orders", async ctx => await ProcessAsync(ctx.Body));
+}
+```
+
+```python
+# Python
+with Client("http://localhost:8080", token=token) as client:
+    client.publish_json("orders", {"order": 9001})
+    client.consume_with("orders", lambda ctx: print(ctx.message.body_text), wait_time=20)
+```
+
+```js
+// Node.js
+const client = new TabaClient({ baseUrl: 'http://localhost:8080', token });
+await client.publishJson('orders', { order: 9001 });
+await client.consumeWith('orders', { waitTime: 20 }, async ({ message }) => console.log(message.bodyText));
+```
+
+```rust
+// Rust (feature "serde")
+client.publish_object("orders", &Order { number: 9001 })?;
+client.consume_typed::<Order, _>("orders", &ConsumeOptions::default(), |d| {
+    process_order(&d.body)?;
+    Ok(())
+})?;
+```
+
+Cada um também tem `subscribe` (o laço de consumo inteiro, até ser cancelado) e chamadas em lote (`publishBatch`, `ackBatch`, `changeVisibilityBatch`); veja o README de cada um.
+
 O `taba-cli`, a linha de comando de cliente ([connectors/rust/cli](connectors/rust/cli/README.md)), está pronto e é o caminho mais curto para experimentar um cluster.
 
-As outras linguagens usam o próprio cliente HTTP ou a biblioteca C. O desenho está no [guia dos conectores](doc/pt-BR/21-conectores.md).
+**Driver do OpenMessaging Benchmark.** O [`connectors/omb`](connectors/omb/README.md) é um driver para o [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark), escrito sobre o conector Java, para medir o Taba com a mesma ferramenta e as mesmas cargas do RabbitMQ e do NATS. É ele que o [benchmark](#desempenho) usa.
 
-<!-- TODO: adicionar exemplos de uso (criar tópico, publicar, consumir com long polling e ack) para cada linguagem, quando os conectores existirem. -->
+As outras linguagens usam o próprio cliente HTTP ou a biblioteca C. O desenho está no [guia dos conectores](doc/pt-BR/21-conectores.md).
 
 > As versões base são propostas e podem mudar até serem confirmadas (pendência D68, veja as [pendências](doc/pt-BR/31-pendencias.md)).
 
