@@ -30,7 +30,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `LIM` | Rate limit and client IP | 2 | 13 |
 | `PAG` | Pagination | 1 | 8 |
 | `CNV` | Common API conventions (format, headers, errors, status) | 3 | 14 |
-| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 9 | 29 |
+| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 9 | 31 |
 | `ANE` | Hash ring, blocks and roles | 3 | 8 |
 | `DEF` | Topic and token definition replicated in the cluster | 7 | 24 |
 | `ENT` | Delivery on the owner: ready list, `take`, long polling | 12 | 18 |
@@ -46,8 +46,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `DRN` | Stop and drain mode | 2 | 19 |
 | `DEV` | One-node profile (the former development mode) | 0 | 3 |
 | `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 6 | 41 |
-| `CLR` | Contract of the cluster routes (DTOs and common rules) | 2 | 8 |
+| `CLR` | Contract of the cluster routes (DTOs and common rules) | 2 | 10 |
 | `CFG` | Configuration and startup validations | 1 | 10 |
+| `BNC` | Local comparative benchmark (`bench/run.sh`) | 1 | 4 |
 
 ## TOP: Topics: create, list, read, change and remove
 
@@ -910,6 +911,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+
+## BNC: Local comparative benchmark (`bench/run.sh`)
+
+### UC-BNC-004
+
+**Case:** `bench/run.sh` runs a workload end to end: it builds (or takes) the images, starts one Taba node in Docker with the limits, waits for it to be healthy, runs the OMB in the runner container, removes the node and its volume, and writes the raw JSON, `machine.json` and the report; the same for Kafka, Redpanda, RabbitMQ and NATS JetStream
+**Level:** K
+**Reason without a test cited by `uc_coverage`:** `bench/test.sh` checks it with the `smoke` profile against Taba, but it needs Docker and runs for minutes, so it is a script and no test file cites the case; the other systems were run once by hand
+
+---
 
 ## Retired cases
 

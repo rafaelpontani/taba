@@ -3,7 +3,7 @@ título: Armazenamento
 resumo: Onde cada dado do nó mora — memória primeiro, overflow para o disco, um banco SQLite por tópico, o banco do nó, o banco de eventos — e o que acontece num reinício.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-14 @ efeb47a
+verificado-em: 2026-10-31 @ 5188786
 fontes: [crates/taba-node/src/storage, crates/taba-node/src/engine/messages/mod.rs, crates/taba-node/src/engine/messages/rates, crates/taba-node/src/engine/topics/mod.rs, crates/taba-node/src/engine/tokens/mod.rs]
 ---
 
@@ -30,8 +30,7 @@ ${storage.dir}/
   _lives/<ID antigo>/      uma pasta por vida anterior: os tópicos dela e o `manifest.json`; ficam até o fim da restauração
   _previous-life/          disco sem manifesto (versão anterior), posto de lado num reinício; apagado ao fim da recuperação
   <topico>/                uma pasta por tópico (maiúsculas viram "~" + minúscula: Pedidos → ~pedidos/)
-    _topic.db              banco do tópico (SQLite, WAL), só com o que está em disco
-    <id>.body              o corpo de cada mensagem em disco, só os bytes como vieram
+    _topic.db              banco do tópico (SQLite, WAL), só com o que está em disco: linhas e corpos
 ```
 
 Tudo é **estritamente local**: nenhum desses arquivos é copiado entre nós. O que trafega são as mensagens e os metadados pelo protocolo de registro + commit.
@@ -41,7 +40,7 @@ Tudo é **estritamente local**: nenhum desses arquivos é copiado entre nós. O 
 ## Memória e overflow
 
 - **Limite:** `memory.limit` (sem padrão). **Sem ele, nada vai para o disco por overflow.**
-- Ao atingir o limite, as mensagens excedentes são gravadas em disco: primeiro o **corpo** em `<topico>/<id>.body`, depois a **linha** no banco do tópico. Ao ler uma mensagem que não está em memória, ela é buscada no disco.
+- Ao atingir o limite, as mensagens excedentes são gravadas em disco: a **linha e o corpo** vão para o banco do tópico numa transação. Ao ler uma mensagem que não está em memória, ela é buscada no disco.
 - **Divisão entre tópicos.** A memória não é dividida igualmente. Cada tópico tem uma **taxa de leitura** (média móvel das mensagens consumidas por segundo na janela `memory.rate.window`, padrão **5 min**; a mesma janela calcula `publishRate` e `consumeRate`). Cada tópico tem direito a uma **reserva** (`memory.topic.reserve`, padrão **1000** mensagens) independente da taxa, para um tópico novo não começar jogando mensagens em disco. Acima das reservas, quem tem menor taxa de leitura perde a memória primeiro.
 - **O que fica na memória:** a lista de prontos (as próximas a entregar) e as recém-chegadas. Não se usa LRU/LFU: cada mensagem é lida **uma vez** e apagada pelo ack, então histórico de acesso não prediz nada.
 - **Resumo do overflow:** um log `info` (`taba.storage.overflow`) a cada 60 s, só se houve overflow.
@@ -63,7 +62,9 @@ A versão do esquema é gravada no banco (`SCHEMA_VERSION`); um banco de versão
 
 ## O banco do tópico (`<topico>/_topic.db`)
 
-Tabela `messages`, **uma linha por mensagem em disco**: `id`, `content_type`, `group_id`, `published_at`, `delivery_count`, `invisible_until`, `receipt_token`, `age_base` (de onde o `ttl` conta: a publicação, ou a entrada na dead-letter), `dead_lettered_at`, `dead_letter_reason`, `position` (a posição no anel) e, na FIFO, `deduplication_id` e `delete_at`. Índices por `invisible_until`, `age_base`, `group_id` (o fim de um grupo sai dele, em ordem de `id`), `position` e `(group_id, deduplication_id)` e `delete_at`.
+Tabela `messages`, **uma linha por mensagem em disco**: `id`, `content_type`, `group_id`, `published_at`, `delivery_count`, `invisible_until`, `receipt_token`, `age_base` (de onde o `ttl` conta: a publicação, ou a entrada na dead-letter), `dead_lettered_at`, `dead_letter_reason`, `position` (a posição no anel) e, na FIFO, `deduplication_id` e `delete_at`. Índices por `invisible_until`, `age_base`, `group_id` (o fim de um grupo sai dele, em ordem de `id`), `position`, e os parciais `(group_id, deduplication_id)` (só as linhas com `deduplication_id`) e `delete_at` (só a linha curta do ack FIFO), para as outras linhas não pagarem entrada neles. Um banco de versão anterior tem esses dois inteiros: viram parciais quando ele abre (D192).
+
+**Corpo.** O corpo são os bytes como vieram. Até `storage.body.inline-max` (padrão 256 bytes) ele fica na própria linha (coluna `body`); um maior vai para a tabela `bodies` (`id`, `body`), para as atualizações de estado da linha (entrega, prazo) não o regravarem. A linha e o corpo são gravados e apagados **na mesma transação**. Uma pasta de tópico de versão anterior pode ainda ter arquivos `<id>.body`: são lidos quando a linha não tem corpo e apagados com a mensagem, mas nada grava arquivo.
 
 Ele responde: a mensagem mais antiga, as próximas a vencer, as mensagens de um bloco (faixa pela posição, para os streams de sincronização e a limpeza) e as contagens.
 
@@ -71,9 +72,15 @@ Ele responde: a mensagem mais antiga, as próximas a vencer, as mensagens de um 
 
 **Log de excluídos.** A tabela `excluded` (`id`, `position`, `at_ms`) guarda o `id` de toda mensagem que **saiu do tópico morta** (ack, `prune`, envio à dead-letter; o `ttl` não entra), com a posição no anel (o bloco é achado por ela). O registro é gravado **na mesma transação** que apaga a mensagem, sem fsync extra (`storage.db.synchronous` segue como configurado). O log tem limite de idade (`storage.excluded.max-age`, 24 h) e de tamanho (`storage.excluded.max-size`, 100 MB, somando todos os tópicos); os registros mais antigos saem primeiro, e a **data de início da gravação contínua** (chave `excluded_since` da tabela `state` do `_node.db`) avança até o instante do registro mais novo descartado ([07-cluster.md](07-cluster.md), seção 10).
 
-**Escritor único.** Toda escrita no banco de um tópico passa por **uma fila de comandos**, executada uma de cada vez. Leituras longas (os streams de sincronização) usam conexões de leitura próprias (modo WAL) e não bloqueiam o escritor.
+**Escritor único, commit em grupo (D192).** Cada banco de tópico tem **uma conexão de escrita**. As escritas frequentes (publicar, entregar, confirmar, os pares da `expiry`) entram na **fila de escrita** do tópico; a primeira chamada que espera vira a **líder**: leva tudo o que está na fila, grava numa **transação só** e acorda as outras. Quem chega enquanto ela grava entra na rodada seguinte, com o que se juntou nesse meio-tempo. Nas rotas de lote ([10-publicacao.md](10-publicacao.md)) o motor põe as escritas na fila segurando o tópico, **solta o tópico** e só então espera o commit: as outras chamadas do tópico entram no mesmo commit, e a resposta ao cliente continua só depois dele. As escritas raras (linha curta da FIFO, dead-letter, evicção, limpezas) pegam a conexão de escrita depois de a fila esvaziar.
 
-**Ordem de gravação** (para a queda não corromper): na escrita, **primeiro o arquivo, depois a linha**; no ack, **primeiro a linha, depois o arquivo**. Uma queda deixa no máximo **arquivo sem linha** (lixo inofensivo) ou **linha sem arquivo** (a mensagem se perdeu e é descartada na leitura). O nó que reinicia volta como nó novo e refaz do cluster.
+**Leituras.** As leituras usam **conexões só de leitura** (modo WAL), em paralelo com a escrita. Uma leitura por `id` (metadados, corpo, o par da mensagem na `expiry`) vê o que ainda está na fila. As páginas de mensagens e os pares mais próximos da `expiry` (o que a janela de prontas e a lista de invisíveis leem segurando o tópico) **não esperam a fila** (D193): com a fila parada por um instante, a leitura fixa o seu instantâneo do banco e copia o que está pendente na sua faixa, e depois aplica a cópia por cima das linhas (a mensagem removida sai, a alterada é filtrada pelos valores novos, a nova entra); a página continua voltando cheia só quando pode haver mais depois dela. A cópia é só do que a página pode devolver (D194): os primeiros `limit` IDs da fila no sentido da página; quando a fila tem mais além deles, a página para no último copiado e continua dali com outra leitura, e o seu custo acompanha a página, não o tamanho da fila. As outras leituras por faixa (contagens, idades, listagens de bloco) esperam a fila esvaziar antes.
+
+**Entrega sem esperar o commit (D193).** Nas rotas de lote do nó sozinho (D191) a entrega põe a sua escrita (contador, prazo, `receiptToken`) na fila e responde sem esperar o commit; uma thread de fundo (`taba-flush`) espera a gravação e registra uma falha. A publicação e o ack continuam respondendo só depois do commit. As escritas da tabela `expiry` feitas ao escolher o que entregar, e as do reabastecimento da janela depois de um lote, entram no mesmo escopo adiado e são esperadas depois de soltar o tópico.
+
+**Checkpoint.** A cópia do WAL para o arquivo do banco roda em **segundo plano** (`PASSIVE`, com conexão própria), pedida pela escrita a cada 32 MB gravados; o checkpoint do próprio SQLite na escrita fica só como rede de segurança, perto de 400 MB de WAL.
+
+**Ordem de gravação** (para a queda não corromper): a linha e o corpo entram e saem **numa transação**, então uma queda deixa os dois ou nenhum. Com um arquivo `<id>.body` antigo, o arquivo é apagado depois da linha. O nó que reinicia volta como nó novo e refaz do cluster.
 
 **Durabilidade do SQLite:** `storage.db.synchronous` (padrão `NORMAL`, com WAL): como a durabilidade vem da replicação, não se paga o `fsync` de cada gravação.
 
@@ -119,16 +126,16 @@ Só existe com o **backup opcional em S3** ([33-backup-s3.md](33-backup-s3.md)).
 
 Numa partida em produção o banco é **zerado**: o nó é novo, e o que o anterior guardava (fila, referências) não vale para a identidade nova (o que o disco da vida anterior devolve entra de novo pela publicação normal, e o novo dono o enfileira).
 
-**Evicção.** Com o disco acima de `backup.disk.evict-above` (85%), o nó apaga só o **arquivo do corpo** (`<id>.body`) das mensagens que já têm referência no bucket, até `backup.disk.evict-to` (70%). A linha em `_topic.db` fica, então a ordem "arquivo primeiro, linha depois" segue valendo. Na leitura, o corpo ausente vira um `Range` no segmento. Detalhes e a pausa durante o drain: [33-backup-s3.md](33-backup-s3.md).
+**Evicção.** Com o disco acima de `backup.disk.evict-above` (85%), o nó apaga só o **corpo** (a coluna `body` da linha, a linha de `bodies` ou o arquivo `<id>.body` antigo) das mensagens que já têm referência no bucket, até `backup.disk.evict-to` (70%). A linha em `_topic.db` fica. Na leitura, o corpo ausente vira um `Range` no segmento. Detalhes e a pausa durante o drain: [33-backup-s3.md](33-backup-s3.md).
 
 ## Limites conhecidos
 
-- **PRB-025:** `diskBytes` e `bytes` somam o tamanho dos arquivos `.body` do tópico, **uma chamada por mensagem em disco**, a cada leitura de `/metrics/topics*`.
+- **PRB-025:** `diskBytes` e `bytes` somam os tamanhos dos corpos do tópico com uma consulta por tópico, que lê todas as linhas dele, a cada leitura de `/metrics/topics*`.
 - **PRB-019:** achar a mensagem do meio para rebaixar e conferir as prontas quando `maxDeliveries` muda varrem a memória do tópico; a conferência do `maxDeliveries` e as consultas sob demanda leem as mensagens em páginas.
 - **D80:** o nome do tópico vira nome de pasta; nomes reservados do Windows (`con`, `nul`, `aux`, `com1`…) ainda não são tratados.
 
 ## Fontes e provas
 
-- `storage/backup` (o depósito de objetos, o segmento, o diário, os nomes e o `_backup.db`); `storage/db` (`_node.db`, esquema), `storage/messages` (corpo, banco do tópico, ordem de gravação, nome da pasta), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`, `storage/versions`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
+- `storage/backup` (o depósito de objetos, o segmento, o diário, os nomes e o `_backup.db`); `storage/db` (`_node.db`, esquema), `storage/messages` (corpo, banco do tópico, ordem de gravação, nome da pasta), `storage/messages/writer` (fila de escrita, commit em grupo, conexões de leitura, checkpoint), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`, `storage/versions`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
 - Casos de uso: UC-ARM (armazenamento), UC-DEF (definições replicadas), UC-DRN (drain como save); veja [26a](26a-casos-de-uso-implementados.md).
 - Histórico: `02-arquitetura.md` (3.2 a 3.4).

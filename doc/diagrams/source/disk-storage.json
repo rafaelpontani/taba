@@ -94,8 +94,8 @@
     {
       "id": "body",
       "type": "database",
-      "label": "<topic>/<id>.body",
-      "sublabel": "body bytes",
+      "label": "bodies table",
+      "sublabel": "bodies above 256 B",
       "pos": [
         740,
         190
@@ -164,7 +164,7 @@
       "id": "w3",
       "from": "topicdb",
       "to": "body",
-      "label": "points to"
+      "label": "same transaction"
     },
     {
       "id": "w4",

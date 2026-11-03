@@ -18,6 +18,12 @@ const BODY_BYTES: &[f64] = &[
 const WAIT_SECONDS: &[f64] = &[
     0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 60.0, 300.0,
 ];
+const BATCH_ITEMS: &[f64] = &[
+    1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 250.0, 500.0, 1_000.0,
+];
+const BATCH_WAIT_SECONDS: &[f64] = &[
+    0.000_1, 0.000_5, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0,
+];
 const NO_BUCKETS: &[f64] = &[];
 
 const fn def(name: &'static str, kind: Kind, unit: &'static str, help: &'static str) -> Def {
@@ -322,6 +328,24 @@ pub static WRITE_COMMIT_TIMEOUTS: Def = def(
     Kind::Counter,
     "{timeout}",
     "Times write.commit.timeout ran out without a confirmed commit on a replica.",
+);
+pub static CLUSTER_BATCH_ITEMS: Def = histogram(
+    "taba.cluster.batch.items",
+    "{item}",
+    "Operations in each batch sent to another node.",
+    BATCH_ITEMS,
+);
+pub static CLUSTER_BATCH_BYTES: Def = histogram(
+    "taba.cluster.batch.bytes",
+    "By",
+    "Size of the body of each batch sent to another node (the messages' bodies, not the envelope).",
+    BODY_BYTES,
+);
+pub static CLUSTER_BATCH_WAIT: Def = histogram(
+    "taba.cluster.batch.wait",
+    "s",
+    "How long an operation waited in the queue of a node before its batch left.",
+    BATCH_WAIT_SECONDS,
 );
 pub static WRITE_RECEIVED: Def = def(
     "taba.write.received",

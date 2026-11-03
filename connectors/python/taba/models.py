@@ -5,7 +5,7 @@ import binascii
 import json
 import ssl
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ._json import JsonError, JsonFields, array_items, decode_string
 from ._version import VERSION
@@ -184,6 +184,39 @@ class VisibilityResponse:
     raw: str = ""
 
 
+@dataclass
+class BatchMessage:
+    """One message of `publish_batch`: the same fields as `publish`. The bytes travel in base64."""
+
+    body: Union[bytes, bytearray, memoryview, str]
+    #: Default `application/json`.
+    content_type: Optional[str] = None
+    group_id: Optional[str] = None
+    deduplication_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class BatchResult:
+    """
+    The result of one item of a batch, in the order of the request: the `status` the single call would have
+    answered and what it would have returned. An item that failed does not raise: `ok` is `False`.
+    """
+
+    #: `201` published, `200` a FIFO duplicate, a distributor or a new invisibility, `204` acked, or the error's.
+    status: int
+    id: Optional[str] = None
+    duplicate: Optional[bool] = None
+    matched: Optional[int] = None
+    invisible_until: Optional[str] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    raw: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.error_code is None and self.status < 300
+
+
 class MessageContext:
     """
     What the `consume_with` handler receives: the `message`, the `delete` flag (the message is deleted at the end
@@ -329,6 +362,32 @@ def parse_publish_response(raw: str) -> PublishResponse:
         )
     except JsonError as e:
         raise _invalid("publication", e)
+
+
+def parse_batch_results(raw: str) -> List[BatchResult]:
+    """The `results` of a batch, one per item in the order of the request."""
+    f = _fields(raw, "batch")
+    try:
+        results: List[BatchResult] = []
+        for item in array_items(f.raw("results") or "[]"):
+            r = JsonFields.parse(item)
+            error = r.raw("error")
+            e = JsonFields.parse(error) if error is not None and error.startswith("{") else None
+            results.append(
+                BatchResult(
+                    status=r.integer("status") or 0,
+                    id=r.string("id"),
+                    duplicate=r.boolean("duplicate"),
+                    matched=r.integer("matched"),
+                    invisible_until=r.string("invisibleUntil"),
+                    error_code=None if e is None else (e.string("code") or ""),
+                    error_message=None if e is None else e.string("message"),
+                    raw=item,
+                )
+            )
+        return results
+    except JsonError as e:
+        raise _invalid("batch results", e)
 
 
 def parse_visibility_response(raw: str) -> VisibilityResponse:

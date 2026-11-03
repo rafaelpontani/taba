@@ -144,6 +144,35 @@ final class ModelParser {
         }
     }
 
+    /** The `results` of a batch, one per item in the order of the request. */
+    static List<BatchResult> parseBatchResults(String raw) {
+        Json.Fields f = fields(raw, "batch");
+        try {
+            String list = f.raw("results");
+            List<BatchResult> results = new ArrayList<>();
+            for (String item : Json.arrayItems(list == null ? "[]" : list)) {
+                Json.Fields r = Json.Fields.parse(item);
+                String error = r.raw("error");
+                Json.Fields e = error != null && error.startsWith("{") ? Json.Fields.parse(error) : null;
+                PublishResponse published = r.raw("deliveries") != null ? parsePublishResponse(item) : null;
+                Long status = r.integer("status");
+                results.add(new BatchResult(
+                        status == null ? 0 : status.intValue(),
+                        r.string("id"),
+                        r.bool("duplicate"),
+                        r.integer("matched"),
+                        published == null ? new ArrayList<>() : published.getDeliveries(),
+                        r.string("invisibleUntil"),
+                        e == null ? null : orEmpty(e.string("code")),
+                        e == null ? null : e.string("message"),
+                        item));
+            }
+            return results;
+        } catch (Json.JsonException e) {
+            throw invalid("batch results", e);
+        }
+    }
+
     static VisibilityResponse parseVisibilityResponse(String raw) {
         Json.Fields f = fields(raw, "visibility");
         try {

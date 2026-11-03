@@ -144,6 +144,53 @@ test('publish sends raw bytes with content type and query', () =>
     assert.equal(server.requests[3].headers['content-type'], 'application/json');
   }));
 
+/// UC: UC-CNT-041
+test('the batches send one JSON and read one result per item', () =>
+  withClient({}, async (client, server) => {
+    server.fallback(json(200, { results: [
+      { status: 201, id: 'm1' },
+      { status: 200, id: 'm0', duplicate: true },
+      { status: 400, error: { code: 'validation.invalid-content-type', message: 'bad' } },
+    ] }));
+    const results = await client.publishBatch('q', [
+      { body: Buffer.from([0, 1, 255]), contentType: 'application/octet-stream', groupId: 'g1', deduplicationId: 'd1' },
+      { body: 'olá', contentType: 'text/plain; charset=utf-8' },
+      { body: '{}', contentType: 'nope' },
+    ]);
+    let request = server.requests[0];
+    assert.equal(request.method, 'POST');
+    assert.ok(request.url.startsWith('/topics/q/messages/batch'), request.url);
+    assert.equal(request.bodyText, '{"messages":[{"body":"AAH/","bodyEncoding":"base64","contentType":"application/octet-stream",'
+      + '"groupId":"g1","deduplicationId":"d1"},'
+      + '{"body":"b2zDoQ==","bodyEncoding":"base64","contentType":"text/plain; charset=utf-8"},'
+      + '{"body":"e30=","bodyEncoding":"base64","contentType":"nope"}]}');
+    assert.equal(results[0].ok, true);
+    assert.equal(results[0].status, 201);
+    assert.equal(results[0].id, 'm1');
+    assert.equal(results[1].duplicate, true);
+    assert.equal(results[2].ok, false);
+    assert.equal(results[2].errorCode, 'validation.invalid-content-type');
+
+    const messages = [{ id: 'm1', receiptToken: 'rt-m1' }, { id: 'm2', receiptToken: 'rt-m2' }];
+    server.fallback(json(200, { results: [
+      { status: 204, id: 'm1' },
+      { status: 409, error: { code: 'message.stale-receipt', message: 'old' } },
+    ] }));
+    const acked = await client.ackBatch('q', messages);
+    request = server.requests[1];
+    assert.ok(request.url.startsWith('/topics/q/messages/ack'), request.url);
+    assert.equal(request.bodyText, '{"messages":[{"id":"m1","receiptToken":"rt-m1"},{"id":"m2","receiptToken":"rt-m2"}]}');
+    assert.equal(acked[0].ok, true);
+    assert.equal(acked[1].errorCode, 'message.stale-receipt');
+
+    server.fallback(json(200, { results: [{ status: 200, id: 'm1', invisibleUntil: '2026-10-29T10:00:00Z' }] }));
+    const changed = await client.changeVisibilityBatch('q', messages.slice(0, 1), 30);
+    request = server.requests[2];
+    assert.ok(request.url.startsWith('/topics/q/messages/visibility'), request.url);
+    assert.equal(request.bodyText, '{"messages":[{"id":"m1","receiptToken":"rt-m1","visibilityTimeout":30}]}');
+    assert.equal(changed[0].invisibleUntil, '2026-10-29T10:00:00Z');
+  }));
+
 /// UC: UC-CNT-004
 test('a distributor answer lists each copy and the partial failures', () =>
   withClient({}, async (client, server) => {

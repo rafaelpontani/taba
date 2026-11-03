@@ -62,7 +62,7 @@ fn plain_record(cluster: &TestCluster, n: u64) -> MessageRecord {
     MessageRecord {
         id: id::new_at(now + n),
         topic: PLAIN.into(),
-        body: json!({ "n": n }).to_string().into_bytes(),
+        body: json!({ "n": n }).to_string().into_bytes().into(),
         content_type: "application/json".into(),
         group_id: None,
         deduplication_id: None,

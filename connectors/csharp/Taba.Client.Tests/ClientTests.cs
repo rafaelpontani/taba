@@ -249,6 +249,61 @@ namespace Taba.Tests
             Assert.That(rig.Handler.Last.Header("Content-Type"), Is.EqualTo("application/json"));
         }
 
+        /// UC: UC-CNT-041
+        [Test]
+        public void the_batches_send_one_json_and_read_one_result_per_item()
+        {
+            var rig = new Rig();
+            rig.Handler
+                .Reply(200, "{\"results\":[{\"status\":201,\"id\":\"m1\"},{\"status\":200,\"id\":\"m0\",\"duplicate\":true},"
+                    + "{\"status\":400,\"error\":{\"code\":\"validation.invalid-content-type\",\"message\":\"bad\"}}]}")
+                .Reply(200, "{\"results\":[{\"status\":204,\"id\":\"m1\"},"
+                    + "{\"status\":409,\"error\":{\"code\":\"message.stale-receipt\",\"message\":\"old\"}}]}")
+                .Reply(200, "{\"results\":[{\"status\":200,\"id\":\"m1\",\"invisibleUntil\":\"2026-10-29T10:00:00Z\"}]}");
+
+            ITabaBatchClient batch = rig.Client;
+            IList<BatchResult> published = batch.PublishBatch("q", new[]
+            {
+                new BatchMessage(new byte[] { 0, 1, 255 }) { ContentType = "application/octet-stream", GroupId = "g1", DeduplicationId = "d1" },
+                BatchMessage.Text("olá"),
+                new BatchMessage(Encoding.UTF8.GetBytes("{}")) { ContentType = "nope" },
+            });
+            Seen seen = rig.Handler.Last;
+            Assert.That(seen.Path, Is.EqualTo("/topics/q/messages/batch"));
+            Assert.That(Encoding.UTF8.GetString(seen.Body), Is.EqualTo(
+                "{\"messages\":[{\"body\":\"AAH/\",\"bodyEncoding\":\"base64\",\"contentType\":\"application/octet-stream\","
+                + "\"groupId\":\"g1\",\"deduplicationId\":\"d1\"},"
+                + "{\"body\":\"b2zDoQ==\",\"bodyEncoding\":\"base64\",\"contentType\":\"text/plain; charset=utf-8\"},"
+                + "{\"body\":\"e30=\",\"bodyEncoding\":\"base64\",\"contentType\":\"nope\"}]}"));
+            Assert.That(published[0].IsOk, Is.True);
+            Assert.That(published[0].Status, Is.EqualTo(201));
+            Assert.That(published[0].Id, Is.EqualTo("m1"));
+            Assert.That(published[1].Duplicate, Is.True);
+            Assert.That(published[2].IsOk, Is.False);
+            Assert.That(published[2].ErrorCode, Is.EqualTo("validation.invalid-content-type"));
+
+            var messages = new List<Message>();
+            foreach (string id in new[] { "m1", "m2" })
+            {
+                messages.Add(ModelParser.ParseMessage(
+                    "{\"id\":\"" + id + "\",\"body\":1,\"contentType\":\"application/json\",\"receiptToken\":\"rt-" + id + "\"}"));
+            }
+            IList<BatchResult> acked = batch.AckBatch("q", messages);
+            seen = rig.Handler.Last;
+            Assert.That(seen.Path, Is.EqualTo("/topics/q/messages/ack"));
+            Assert.That(Encoding.UTF8.GetString(seen.Body), Is.EqualTo(
+                "{\"messages\":[{\"id\":\"m1\",\"receiptToken\":\"rt-m1\"},{\"id\":\"m2\",\"receiptToken\":\"rt-m2\"}]}"));
+            Assert.That(acked[0].IsOk, Is.True);
+            Assert.That(acked[1].ErrorCode, Is.EqualTo("message.stale-receipt"));
+
+            IList<BatchResult> changed = batch.ChangeVisibilityBatch("q", messages.GetRange(0, 1), 30);
+            seen = rig.Handler.Last;
+            Assert.That(seen.Path, Is.EqualTo("/topics/q/messages/visibility"));
+            Assert.That(Encoding.UTF8.GetString(seen.Body), Is.EqualTo(
+                "{\"messages\":[{\"id\":\"m1\",\"receiptToken\":\"rt-m1\",\"visibilityTimeout\":30}]}"));
+            Assert.That(changed[0].InvisibleUntil, Is.EqualTo("2026-10-29T10:00:00Z"));
+        }
+
         /// UC: UC-CNT-004
         [Test]
         public void a_distributor_answer_lists_each_copy_and_the_partial_failures()

@@ -3,7 +3,7 @@ título: Entrega de mensagens
 resumo: Como o Taba entrega, confirma e reentrega mensagens — invisibilidade, lista de prontos, dono da entrega, long polling, canal entre nós, ack, limite de entregas, dead-letter e entrega justa entre grupos.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-11-02 @ ccbb961
 fontes: [crates/taba-node/src/engine/messages, crates/taba-node/src/engine/messages/index, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/cluster/replication/signals.rs, crates/taba-node/src/cluster/channel, crates/taba-node/src/http/messages]
 ---
 
@@ -56,21 +56,19 @@ A resposta traz **de 1 a `maxMessages`** mensagens: devolve o que está pronto, 
 
 ![Consumo: entrega e ack](../diagrams/img/pt-BR/consumption.svg)
 
-1. O nó que atende escolhe um ID da **lista de prontos** do tópico, que só contém mensagens de que ele é o **dono da entrega**.
-2. Calcula os nós responsáveis pelo bloco do ID.
-3. **Fase 1:** registra em todos que a mensagem fica invisível até `agora + visibilityTimeout`, com `deliveryCount + 1` e um novo `receiptToken`.
-4. **Fase 2:** quando o **quórum** confirma (**primário sempre incluso**), decide o commit.
-5. **Só então** a mensagem é devolvida ao cliente. No commit, cada nó do quórum remove o ID da sua lista de prontos.
-6. **Falha antes do quórum:** repete e, esgotado, **rollback** do pendente; o `GET` **segue imediatamente para o próximo ID** (o rollback termina em outra tarefa), até `delivery.get.max-attempts` falhas (padrão 3). Ao fim responde com o que capturou; se **nada** foi capturado e houve falhas, responde **`503` com `Retry-After`**, nunca vazio (o cliente leria como fila sem mensagens).
+1. O nó que atende escolhe IDs da **lista de prontos** do tópico, que só contém mensagens de que ele é o **dono da entrega**.
+2. **Fila comum (D199):** o dono as marca invisíveis até `agora + visibilityTimeout`, com `deliveryCount + 1` e um novo `receiptToken`, **sozinho** e num passo só para o `GET` inteiro, e as devolve. Só então, em segundo plano, ele conta aos outros nós de cada bloco o que entregou (um grupo por nó, que cada nó aplica na hora, sem registro nem commit). Um nó que não recebe o aviso (está fora do ar, a chamada falhou) fica com a entrega de antes.
+3. **Fila FIFO:** a entrega continua passando pelas duas fases. **Fase 1:** registra em todos os nós responsáveis que a mensagem fica invisível, com o novo contador e o novo token. **Fase 2:** quando o **quórum** confirma (**primário e secundário sempre inclusos**), decide o commit, e só então a mensagem é devolvida ao cliente.
+4. **Falha antes do quórum (FIFO):** repete e, esgotado, **rollback** do pendente; o `GET` **segue imediatamente para o próximo ID** (o rollback termina em outra tarefa), até `delivery.get.max-attempts` falhas (padrão 3). Ao fim responde com o que capturou; se **nada** foi capturado e houve falhas, responde **`503` com `Retry-After`**, nunca vazio (o cliente leria como fila sem mensagens).
 
-A mensagem só chega ao cliente depois de a invisibilidade estar marcada no quórum com o primário; uma queda do coordenador logo após a entrega **não** faz outro nó entregá-la em paralelo a partir do mesmo bloco.
+Nos dois tipos de fila só o dono entrega, então dois nós nunca entregam a mesma mensagem em paralelo enquanto o dono está vivo. O que a D199 cede está na **troca de dono**: se o dono cai antes de uma cópia saber de uma entrega, o novo dono vê a mensagem como ela era antes e pode entregá-la de novo **antes do prazo** que o primeiro consumidor recebeu. Nada se perde e a entrega continua pelo menos uma vez ([11-durabilidade.md](11-durabilidade.md)); a janela é o tempo que o aviso leva para chegar às cópias (milissegundos), mais o tempo em que uma cópia ficou inalcançável. Em troca, o `GET` da fila comum não espera outro nó, e uma entrega custa um passo no dono em vez de uma operação de duas fases em cada nó responsável.
 
 ## Dono da entrega
 
 Cada mensagem tem **um único dono**: o **primário do bloco** dela ([06-anel-e-replicacao.md](06-anel-e-replicacao.md)). Se todas as réplicas entregassem, disputariam o commit de invisibilidade da mesma mensagem.
 
 - O tópico **não pertence a nenhum nó**: as mensagens estão espalhadas por todo o anel, e o tópico completo é a **união das listas de prontos** dos nós.
-- **A partição por dono não é o que garante a correção.** O registro de invisibilidade continua **exclusivo**: um nó recusa o pedido se já há outro pendente ou se a mensagem já está invisível, e o `GET` tenta outro ID. Mesmo com tabelas de membros divergentes por instantes, **nenhuma mensagem é entregue em duplicidade**.
+- **Na FIFO, a partição por dono não é o que garante a correção.** O registro de invisibilidade continua **exclusivo**: um nó recusa o pedido se já há outro pendente ou se a mensagem já está invisível, e o `GET` tenta outro ID. Mesmo com tabelas de membros divergentes por instantes, **nenhuma mensagem é entregue em duplicidade**. Na fila comum o dono decide sozinho (D199): com tabelas de membros divergentes por instantes, dois nós que se acham donos podem entregar a mensagem uma vez cada um, o que a entrega pelo menos uma vez admite.
 - **Novo primário ainda sincronizando:** as mensagens dos blocos dele **não são entregues por ninguém** até ele ficar pronto (o primário antigo as tira da lista no commit do registro). Dura só o tempo da sincronização.
 - **Dono fora do ar** e ainda na tabela: as mensagens dele ficam sem entrega até a exclusão. Os demais nós do bloco são cópias de segurança e **não** assumem a entrega.
 - **Ordem:** **nenhuma garantia** de ordem (nem por tópico, nem por `groupId` em filas comuns); a reentrega por invisibilidade também embaralha. Quem precisa de ordem usa uma **fila FIFO** ou ordena no consumo pelo `id` (GUID v7).
@@ -85,7 +83,7 @@ Por tópico e por nó, a **lista de IDs prontos** de que o nó é dono.
 - **Quando falta lugar na memória**, quem sai primeiro é o que está em processamento e, depois, o **meio** da lista de prontos (o último que a sanfona alcançaria); as pontas ficam, por serem as próximas a entregar.
 - O índice é **derivado** dos metadados: refeito quando o tópico é aberto (reinício ou novo dono).
 
-> **Como o código é.** O índice (`engine/messages/index`) guarda os **contadores exatos** (prontas, em processamento, por grupo) e duas listas **limitadas**. A **lista de prontas** é uma janela de `delivery.ready-list.size` IDs, reposta por dois cursores (do mais antigo para a frente e do mais novo para trás, por GUID v7, alternando as pontas) só quando abre lugar (o motor lê os metadados quando um quarto da janela abriu, ou quando a ponta mais antiga ficou sem ID, para não ler a cada entrega); a mensagem que volta à lista entra pela posição do GUID v7 e, com a janela cheia, o ID do meio sai e é reencontrado pelo cursor. A **lista de invisíveis** guarda até `delivery.invisible-list.size` pares (ID, prazo) por prazo; o que não cabe vai para a tabela `expiry` do banco do tópico, e a lista é recarregada dela abaixo de `delivery.invisible.reload-threshold`. O índice **não guarda uma entrada por mensagem**: só a de quem está na janela ou na lista de invisíveis (na fila FIFO e no grupo de transbordo, todas). Das demais ele só tem a contagem. Antes de agir sobre uma delas (ack, remoção, novo prazo, `ttl`), o motor lê o grupo, a idade e as entregas dos metadados (a memória do tópico ou o banco) e os entrega ao índice; a reposição da janela e a escolha do fim de um grupo também leem os metadados, em páginas (o fim de um grupo, pelo índice do grupo no banco, em ordem de `id`). O índice continua sem I/O: o que ele não tem, o motor traz. Assim a memória do índice na fila justa é a janela, a lista e os contadores por grupo, e não cresce com o backlog.
+> **Como o código é.** O índice (`engine/messages/index`) guarda os **contadores exatos** (prontas, em processamento, por grupo) e duas listas **limitadas**. A **lista de prontas** é uma janela de `delivery.ready-list.size` IDs, reposta por dois cursores (do mais antigo para a frente e do mais novo para trás, por GUID v7, alternando as pontas) só quando abre lugar (o motor lê os metadados quando um quarto da janela abriu, ou quando a ponta mais antiga ficou sem ID, para não ler a cada entrega; quando a ponta mais antiga fica sem ID, a janela antes cede a borda da ponta mais nova até ficar com um quarto livre, e esse reabastecimento lê só a ponta mais antiga, para que as publicações que tomam cada vaga aberta não a façam reabastecer um ID por entrega, D194); a mensagem que volta à lista entra pela posição do GUID v7 e, com a janela cheia, o ID do meio sai (a borda do lado por onde o novo ID entra: uma mensagem publicada agora toma o lugar da ponta nova, e a ponta velha, a próxima a ser entregue, fica inteira, D194) e é reencontrado pelo cursor. A **lista de invisíveis** guarda até `delivery.invisible-list.size` pares (ID, prazo) por prazo; o que não cabe vai para a tabela `expiry` do banco do tópico, e a lista é recarregada dela abaixo de `delivery.invisible.reload-threshold`. O índice **não guarda uma entrada por mensagem**: só a de quem está na janela ou na lista de invisíveis (na fila FIFO e no grupo de transbordo, todas). Das demais ele só tem a contagem. Antes de agir sobre uma delas (ack, remoção, novo prazo, `ttl`), o motor lê o grupo, a idade e as entregas dos metadados (a memória do tópico ou o banco) e os entrega ao índice; a reposição da janela e a escolha do fim de um grupo também leem os metadados, em páginas (o fim de um grupo, pelo índice do grupo no banco, em ordem de `id`). O índice continua sem I/O: o que ele não tem, o motor traz. Assim a memória do índice na fila justa é a janela, a lista e os contadores por grupo, e não cresce com o backlog.
 
 ## Alterar a invisibilidade
 
@@ -95,7 +93,7 @@ curl -s -X PUT "localhost:8080/topics/pedidos/messages/<id>/visibility?receiptTo
 # 200 {"id":"…","invisibleUntil":"2026-10-13T17:10:13.601Z"}
 ```
 
-- Usa o **mesmo registro + commit por quórum** da entrega, **sem** incrementar `deliveryCount` e sem mexer na lista de prontos.
+- Usa um **registro + commit por quórum** (primário incluso), **sem** incrementar `deliveryCount` e sem mexer na lista de prontos.
 - O valor é o **novo tempo a partir de agora** (`agora + visibilityTimeout`), **não** um acréscimo; respeita `delivery.visibility-timeout.max`.
 - **`0` libera a mensagem na hora**: o dono a recoloca na lista de prontos como num vencimento. Se `deliveryCount ≥ maxDeliveries`, ela vai para a dead-letter.
 - `409 message.stale-receipt` se o token está obsoleto.
@@ -108,7 +106,9 @@ curl -s -i -X DELETE "localhost:8080/topics/pedidos/messages/<id>?receiptToken=<
 ```
 
 - Exige o `receiptToken` da última entrega. Token que não confere → `409`, nada muda.
-- Mesmo protocolo de registro + commit: o quórum (primário incluso) confirma e o commit **remove a mensagem e seus metadados**, **sem tombstone** (a ausência do ID basta; a verificação final da sincronização cobre a janela residual). As réplicas fora do quórum removem em segundo plano.
+- Protocolo de registro + commit: o quórum (primário incluso) confirma e o commit **remove a mensagem e seus metadados**, **sem tombstone** (a ausência do ID basta; a verificação final da sincronização cobre a janela residual). As réplicas fora do quórum removem em segundo plano.
+- **Quem confere o token.** Na fila comum só o **dono** confere o `receiptToken` (e, numa alteração, o mesmo); os outros nós só conferem que a mensagem existe, porque a entrega chega a eles depois dela (D199) e um ack enviado logo após o `GET` pode chegar antes. O dono está sempre no quórum, então a conferência dele decide. O dono também pode entregar uma mensagem antes de o commit da publicação dela chegar aos outros nós; um nó que não é o primário e responde ao registro de um ack ou de uma alteração com "mensagem inexistente" ou "outra operação pendente" é consultado de novo algumas vezes, por cerca de 1 s, antes de a resposta dele contar. Na FIFO todo nó do quórum confere.
+- **Lote** (`POST /topics/{topic}/messages/ack`): os acks das mensagens com os mesmos nós responsáveis passam pelas duas fases como **um grupo** (D198), com o mesmo resultado por mensagem da chamada avulsa.
 - **Fila FIFO:** o ack grava `deleteAt` e apaga só o corpo, para a deduplicação ([09-topicos.md](09-topicos.md)). É a única exceção ao "sem tombstone".
 - **Falha antes do quórum:** o ack é **cancelado** e a mensagem continua disponível (o cliente repete). Nunca há ack parcial visível.
 
@@ -136,7 +136,7 @@ Cluster de 3 nós (A, B, C), tópico `pedidos` com 6 mensagens, cada nó primár
 
 | Cenário | O que acontece |
 |---|---|
-| **1. Lista local com mensagem** | O `GET` chega a A; A é o dono de m1: registra, commita no quórum e devolve. Nenhum outro nó é consultado. É o caso comum com fila cheia |
+| **1. Lista local com mensagem** | O `GET` chega a A; A é o dono de m1: a entrega (sozinho na fila comum, por quórum na FIFO) e devolve. Nenhum outro nó é consultado. É o caso comum com fila cheia |
 | **2. Lista local vazia, outro nó tem** | A esvaziou e avisou "sem prontas em `pedidos`"; B e C têm a tabela `{A: não, B: sim, C: sim}` em memória. A sorteia um (com peso pela quantidade informada), chama `take` em B (`POST /cluster/topics/{topic}/messages/take`); B, o dono, faz o registro + commit e devolve a mensagem a A, que a repassa. Se B já esvaziou, A tenta C, até `delivery.take.max-attempts` (padrão 3) |
 | **3. Nenhum nó tem** | A vira **ouvinte local** e avisa os demais, **uma vez**, "`pedidos` tem ouvintes em A". Quando chega mensagem pronta em B, B vê o ouvinte em A e manda "há mensagens novas aqui"; A chama `take` em B e entrega ao ouvinte. Sem mensagem até `waitTime`, responde vazio |
 

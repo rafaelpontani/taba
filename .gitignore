@@ -20,3 +20,9 @@ admin-token
 /docker/.local/
 /connectors/rust/contract/Cargo.lock
 /connectors/rust/contract/target
+
+/connectors/omb/.work
+/connectors/omb/target
+doc/plans/*
+
+/bench/results

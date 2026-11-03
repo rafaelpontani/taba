@@ -165,7 +165,7 @@ async fn a_deduplicated_publication_raises_the_event_and_the_counters() {
         .await
         .unwrap();
     let request = PublishRequest {
-        body: b"1".to_vec(),
+        body: b"1".to_vec().into(),
         group_id: Some("g".into()),
         deduplication_id: Some("k".into()),
         ..Default::default()
@@ -305,7 +305,7 @@ async fn group_snapshots_show_counts_bands_and_the_oldest_of_each_group() {
     let h = harness();
     h.topics.create(queue("orders")).await.unwrap();
     let group = |g: &str| PublishRequest {
-        body: b"1".to_vec(),
+        body: b"1".to_vec().into(),
         group_id: Some(g.into()),
         ..Default::default()
     };
@@ -350,7 +350,7 @@ async fn publish_errors_are_counted_per_topic_and_not_for_missing_topics() {
         &h,
         "orders",
         PublishRequest {
-            body: b"{".to_vec(),
+            body: b"{".to_vec().into(),
             content_type: Some("application/json".into()),
             ..Default::default()
         },

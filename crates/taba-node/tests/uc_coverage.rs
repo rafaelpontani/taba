@@ -146,6 +146,7 @@ fn connector_files(dir: &Path, out: &mut Vec<PathBuf>) {
                 "obj",
                 "dist",
                 "build",
+                ".work",
                 "node_modules",
                 "__pycache__",
                 ".venv",
@@ -155,18 +156,19 @@ fn connector_files(dir: &Path, out: &mut Vec<PathBuf>) {
             {
                 connector_files(&path, out);
             }
-        } else if path
-            .extension()
-            .is_some_and(|e| ["rs", "cs", "java", "js", "py"].iter().any(|x| e == *x))
-        {
+        } else if path.extension().is_some_and(|e| {
+            ["rs", "cs", "java", "js", "mjs", "py"]
+                .iter()
+                .any(|x| e == *x)
+        }) {
             out.push(path);
         }
     }
 }
 
 /// The sources that may cite use cases, each with the folder the shown path is relative to:
-/// the `src` and `tests` of this crate (relative to the crate) and all of each connector in `connectors/<language>`
-/// (relative to the repository root).
+/// the `src` and `tests` of this crate (relative to the crate), all of each connector in `connectors/<language>` and the
+/// tests of `bench/` (relative to the repository root).
 fn source_files() -> Vec<(PathBuf, PathBuf)> {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut found = Vec::new();
@@ -181,6 +183,10 @@ fn source_files() -> Vec<(PathBuf, PathBuf)> {
             out.extend(found.into_iter().map(|f| (f, root())));
         }
     }
+    // The local benchmark (bench/): its tests are Node.js files.
+    let mut found = Vec::new();
+    connector_files(&root().join("bench"), &mut found);
+    out.extend(found.into_iter().map(|f| (f, root())));
     out
 }
 
@@ -341,7 +347,7 @@ fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
                     .split("def ")
                     .nth(1)
                     .and_then(|after| after.split('(').next()),
-                "js" => line
+                "js" | "mjs" => line
                     .strip_prefix("test(")
                     .or_else(|| line.strip_prefix("it("))
                     .and_then(|after| after.split(['\'', '"']).nth(1)),

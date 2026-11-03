@@ -86,7 +86,7 @@ That is why the cluster tests (level `C`, [25-testing.md](25-testing.md)) run se
 ## Concurrency
 
 - **Runtime:** `tokio`, multiple threads.
-- **Single writer per database:** every write to a SQLite database (each topic's and `_node.db`) goes through **a single writer**; long reads, such as the synchronization streams, use their own read connections (WAL mode).
+- **Single writer per database:** every write to a SQLite database (each topic's and `_node.db`) goes through **a single writer**; in a topic database the frequent writes wait in a queue and go in one transaction (group commit, D192), and the reads use their own read connections (WAL mode).
 - **Shared state:** member table, topic table and tokens are in memory behind locks; membership changes are **one at a time** per node.
 - **Background tasks:** invisibility expiry, `ttl` sweep, volatile queue management, rejoin after a partition, overflow report.
 
@@ -102,12 +102,13 @@ crates/taba-node/src/
     params/ source/ otlp.rs error.rs
   core/              clock content error id pagination ring time token topic validation
   secrets/           secrets folder (cluster certificate, root token)
-  storage/           db (the `_node.db`) messages topics tokens state losses versions synclog
+  storage/           db (the `_node.db`) messages (excluded, writer) topics tokens state losses versions synclog
                      backup (store, keys, segment, journal, db: the `_backup.db`)
   engine/            topics tokens messages (blocks, index, rates, replicas, stats)
   cluster/           backup (upload, evict, definitions, heartbeat, restore, stop, topology)
-                     channel drain health members protocol recovery replication restore
-                     service state sync tls transport (http, memory) upgrade vote volatile
+                     channel drain health members protocol (wire: the protobuf of the calls) recovery
+                     replication restore service (batch) state sync tls transport (http, memory)
+                     upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
                      nodes openapi operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace
@@ -127,6 +128,6 @@ The detail of joining and synchronization is in [07-cluster.md](07-cluster.md).
 
 ## Sources and evidence
 
-- `crates/taba-node/src/lib.rs` (the dependency rule), `node.rs`, `http/mod.rs` (`client_router`, `operations_router`, `cluster_router`, `drain_guard`), `cluster/transport/mod.rs` (`Transport`), `core/clock/mod.rs`.
+- `crates/taba-node/src/lib.rs` (the dependency rule), `node.rs`, `http/mod.rs` (`client_router`, `operations_router`, `cluster_router`, `client_gate`, `drain_route`), `cluster/transport/mod.rs` (`Transport`), `core/clock/mod.rs`.
 - Use cases: UC-SEG (ports and mutual TLS), UC-DEV (one-node profile), UC-FWD (forwarding), UC-CFG (configuration); see [26a](26a-implemented-use-cases.md).
 - History: `02-arquitetura.md`, `18-estrutura-codigo.md`.

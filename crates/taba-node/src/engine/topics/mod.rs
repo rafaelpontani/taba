@@ -36,10 +36,11 @@ use crate::core::topic::{QueueSpec, Spec, TopicDefinition, dead_letter_id};
 use crate::core::validation;
 use crate::storage::topics::TopicStore;
 
-/// A topic as the API shows it: the definition plus what is derived from it.
+/// A topic as the API shows it: the definition plus what is derived from it. The definition is shared
+/// with the topic table (`Arc`): a view costs no copy of it, and each publication asks for one.
 #[derive(Debug, Clone)]
 pub struct TopicView {
-    pub definition: TopicDefinition,
+    pub definition: Arc<TopicDefinition>,
     /// `Some(queue)` when it is the dead-letter of `queue`.
     pub dead_letter_of: Option<String>,
     /// `maxMessageBytes`, `ttl` and `maxDeliveries` in force, with the default applied.
@@ -117,7 +118,7 @@ pub struct Topics {
     rules: TopicRules,
     store: Arc<dyn TopicStore>,
     clock: Arc<dyn Clock>,
-    map: RwLock<BTreeMap<String, TopicDefinition>>,
+    map: RwLock<BTreeMap<String, Arc<TopicDefinition>>>,
     /// One change at a time: validates, writes to disk and only then applies in memory.
     writer: tokio::sync::Mutex<()>,
     removed_hooks: Mutex<Vec<RemovedHook>>,
@@ -175,7 +176,7 @@ impl Topics {
     ) -> Self {
         let map = definitions
             .into_iter()
-            .map(|d| (d.name.clone(), d))
+            .map(|d| (d.name.clone(), Arc::new(d)))
             .collect();
         Self {
             rules,
@@ -277,7 +278,7 @@ impl Topics {
         let to_save = definition.clone();
         self.persist(move |store| store.save(&to_save)).await?;
         self.write()
-            .insert(definition.name.clone(), definition.clone());
+            .insert(definition.name.clone(), Arc::new(definition.clone()));
         self.emit(&TopicEvent::Saved(definition));
         Ok(())
     }
@@ -321,7 +322,7 @@ impl Topics {
             .read()
             .values()
             .filter(|d| from.is_none_or(|f| d.id.as_str() >= f))
-            .cloned()
+            .map(|d| TopicDefinition::clone(d))
             .collect();
         all.sort_by(|a, b| a.id.cmp(&b.id));
         let more = all.len() > limit;
@@ -343,7 +344,7 @@ impl Topics {
 
     /// A topic's stored definition (the one the cluster replicates), without the dead-letter.
     pub fn definition(&self, name: &str) -> Option<TopicDefinition> {
-        self.read().get(name).cloned()
+        self.read().get(name).map(|d| TopicDefinition::clone(d))
     }
 
     /// The topic names (queues and distributors).
@@ -383,15 +384,15 @@ impl Topics {
         self.read().len()
     }
 
-    fn read(&self) -> RwLockReadGuard<'_, BTreeMap<String, TopicDefinition>> {
+    fn read(&self) -> RwLockReadGuard<'_, BTreeMap<String, Arc<TopicDefinition>>> {
         self.map.read().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn write(&self) -> RwLockWriteGuard<'_, BTreeMap<String, TopicDefinition>> {
+    fn write(&self) -> RwLockWriteGuard<'_, BTreeMap<String, Arc<TopicDefinition>>> {
         self.map.write().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn view(&self, definition: &TopicDefinition) -> TopicView {
+    fn view(&self, definition: &Arc<TopicDefinition>) -> TopicView {
         let effective = definition.queue().map(|q| {
             [
                 q.max_message_bytes
@@ -402,7 +403,7 @@ impl Topics {
             ]
         });
         TopicView {
-            definition: definition.clone(),
+            definition: Arc::clone(definition),
             dead_letter_of: None,
             effective,
         }
@@ -410,11 +411,12 @@ impl Topics {
 
     /// A queue's dead-letter: the values are the source's, read-only, and it
     /// is not FIFO (doc 13, section 12.10).
-    fn dead_letter_view(&self, source: &TopicDefinition) -> TopicView {
+    fn dead_letter_view(&self, source: &Arc<TopicDefinition>) -> TopicView {
         let mut view = self.view(source);
-        view.definition.name = format!("{}{}", source.name, self.rules.dead_letter_suffix);
-        view.definition.id = dead_letter_id(&source.id);
-        if let Spec::Queue(q) = &mut view.definition.spec {
+        let definition = Arc::make_mut(&mut view.definition);
+        definition.name = format!("{}{}", source.name, self.rules.dead_letter_suffix);
+        definition.id = dead_letter_id(&source.id);
+        if let Spec::Queue(q) = &mut definition.spec {
             q.fifo = false;
         }
         view.dead_letter_of = Some(source.name.clone());
@@ -422,7 +424,7 @@ impl Topics {
     }
 
     /// The source queue, if `name` is the name of the dead-letter of a queue that exists.
-    fn dead_letter_source(&self, name: &str) -> Option<TopicDefinition> {
+    fn dead_letter_source(&self, name: &str) -> Option<Arc<TopicDefinition>> {
         let source = name.strip_suffix(self.rules.dead_letter_suffix.as_str())?;
         self.read()
             .get(source)
@@ -437,7 +439,7 @@ impl Topics {
     /// `404` if it does not exist, `409` if it is the dead-letter (read-only).
     fn writable(&self, name: &str) -> Result<TopicDefinition, TabaError> {
         if let Some(definition) = self.read().get(name) {
-            return Ok(definition.clone());
+            return Ok(TopicDefinition::clone(definition));
         }
         if self.dead_letter_source(name).is_some() {
             return Err(TabaError::new(
@@ -532,7 +534,7 @@ impl Topics {
             }
             None => self.apply_save(definition.clone()).await?,
         }
-        Ok(self.view(&definition))
+        Ok(self.view(&Arc::new(definition)))
     }
 
     pub async fn update(&self, name: &str, request: UpdateTopic) -> Result<TopicView, TabaError> {
@@ -547,7 +549,7 @@ impl Topics {
             }
             None => self.apply_save(updated.clone()).await?,
         }
-        Ok(self.view(&updated))
+        Ok(self.view(&Arc::new(updated)))
     }
 
     /// Removes the topic. The messages go with it, when there are any. Always works,

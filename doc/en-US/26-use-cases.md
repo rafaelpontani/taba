@@ -124,6 +124,7 @@ Both are **maintained by hand**, in both languages: a new case goes in as a card
 | `CFG` | Configuration and startup validations |
 | `BKP` | Optional S3 backup: upload, restore, heartbeat, eviction, flush and stop |
 | `CHS` | Chaos with a verified history: seeded faults, the history checker and the network faults |
+| `BNC` | Local comparative benchmark: the plan of `bench/run.sh`, the system folders and the report |
 
 (The number of cases per area and the coverage are in [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md).)
 

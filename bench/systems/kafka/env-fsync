@@ -1,0 +1,1 @@
+# fsync: o descarregamento por mensagem fica no driver (topicConfig flush.messages=1).

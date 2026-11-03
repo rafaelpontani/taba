@@ -6,6 +6,7 @@ import unittest
 from typing import Any, List
 
 from taba import (
+    BatchMessage,
     CONTRACT_VERSION,
     VERSION,
     Cancelled,
@@ -17,6 +18,7 @@ from taba import (
     TopicUpdate,
 )
 from taba._calls import consume_call
+from taba.models import parse_message
 from taba.aio import AsyncClient
 
 from .support import (
@@ -132,6 +134,79 @@ class OperationsTests(ClientTestCase):
         self.assertEqual(self.server.requests[2].text, '{"n": 1.0}')
         self.client.publish("q", b"{}")
         self.assertEqual(self.server.requests[3].headers["content-type"], "application/json")
+
+    # UC: UC-CNT-041
+    def test_the_batches_send_one_json_and_read_one_result_per_item(self) -> None:
+        self.server.fallback(
+            reply(
+                200,
+                {
+                    "results": [
+                        {"status": 201, "id": "m1"},
+                        {"status": 200, "id": "m0", "duplicate": True},
+                        {"status": 400, "error": {"code": "validation.invalid-content-type", "message": "bad"}},
+                    ]
+                },
+            )
+        )
+        results = self.client.publish_batch(
+            "q",
+            [
+                BatchMessage(
+                    bytes([0, 1, 255]), content_type="application/octet-stream", group_id="g1", deduplication_id="d1"
+                ),
+                BatchMessage("olá", content_type="text/plain; charset=utf-8"),
+                BatchMessage(b"{}", content_type="nope"),
+            ],
+        )
+        request = self.server.requests[0]
+        self.assertEqual(request.method, "POST")
+        self.assertTrue(request.url.startswith("/topics/q/messages/batch"), request.url)
+        self.assertEqual(
+            request.text,
+            '{"messages":[{"body":"AAH/","bodyEncoding":"base64","contentType":"application/octet-stream",'
+            '"groupId":"g1","deduplicationId":"d1"},'
+            '{"body":"b2zDoQ==","bodyEncoding":"base64","contentType":"text/plain; charset=utf-8"},'
+            '{"body":"e30=","bodyEncoding":"base64","contentType":"nope"}]}',
+        )
+        self.assertTrue(results[0].ok)
+        self.assertEqual((results[0].status, results[0].id), (201, "m1"))
+        self.assertIs(results[1].duplicate, True)
+        self.assertFalse(results[2].ok)
+        self.assertEqual(results[2].error_code, "validation.invalid-content-type")
+
+        messages = [parse_message('{"id":"%s","body":1,"receiptToken":"rt-%s"}' % (i, i)) for i in ("m1", "m2")]
+        self.server.fallback(
+            reply(
+                200,
+                {
+                    "results": [
+                        {"status": 204, "id": "m1"},
+                        {"status": 409, "error": {"code": "message.stale-receipt", "message": "old"}},
+                    ]
+                },
+            )
+        )
+        acked = self.client.ack_batch("q", messages)
+        request = self.server.requests[1]
+        self.assertTrue(request.url.startswith("/topics/q/messages/ack"), request.url)
+        self.assertEqual(
+            request.text,
+            '{"messages":[{"id":"m1","receiptToken":"rt-m1"},{"id":"m2","receiptToken":"rt-m2"}]}',
+        )
+        self.assertTrue(acked[0].ok)
+        self.assertEqual(acked[1].error_code, "message.stale-receipt")
+
+        self.server.fallback(
+            reply(200, {"results": [{"status": 200, "id": "m1", "invisibleUntil": "2026-10-29T10:00:00Z"}]})
+        )
+        changed = self.client.change_visibility_batch("q", messages[:1], 30)
+        request = self.server.requests[2]
+        self.assertTrue(request.url.startswith("/topics/q/messages/visibility"), request.url)
+        self.assertEqual(
+            request.text, '{"messages":[{"id":"m1","receiptToken":"rt-m1","visibilityTimeout":30}]}'
+        )
+        self.assertEqual(changed[0].invisible_until, "2026-10-29T10:00:00Z")
 
     # UC: UC-CNT-004
     def test_a_distributor_answer_lists_each_copy_and_the_partial_failures(self) -> None:

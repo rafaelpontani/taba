@@ -59,13 +59,16 @@ impl Cluster {
         if owner {
             self.owners.0.lock().unwrap().insert(meta.id.clone());
         }
-        (meta, body)
+        (meta, body.to_vec())
     }
 
     fn publish(&self, topic: &str, body: &str, owner: bool) -> String {
         let (meta, body) = self.draft(topic, body, owner);
         let id = meta.id.clone();
-        self.h.messages.apply_publish(topic, meta, body).unwrap();
+        self.h
+            .messages
+            .apply_publish(topic, meta, body.into())
+            .unwrap();
         id
     }
 
@@ -203,6 +206,66 @@ async fn the_registration_of_a_visibility_is_checked_against_the_message() {
             .code,
         ErrorCode::MessageNotFound
     );
+}
+
+/// UC: UC-INV-033
+#[tokio::test]
+async fn on_a_plain_queue_a_copy_that_is_not_the_owner_only_checks_that_the_message_exists() {
+    // D199: the owner delivers alone and tells the copies after; an ack or a change that reaches a copy before the
+    // delivery does is not refused there (the owner's check, which the quorum always includes, is the one that decides).
+    let c = clustered();
+    queue_in(&c, "orders").await;
+    let id = c.publish("orders", "1", false);
+    c.h.messages
+        .apply_visibility(
+            "orders",
+            &id,
+            c.h.clock.now_millis() + 60_000,
+            Some((1, "tok")),
+        )
+        .unwrap();
+    let check = |kind, token: &str| c.h.messages.check_visibility("orders", &id, kind, token);
+    assert!(check(VisibilityCheck::Receipt, "newer-delivery").is_ok());
+    assert!(check(VisibilityCheck::Delivery, "x").is_ok());
+    assert_eq!(
+        c.h.messages
+            .check_visibility("orders", "nao-exists", VisibilityCheck::Receipt, "tok")
+            .unwrap_err()
+            .code,
+        ErrorCode::MessageNotFound
+    );
+}
+
+/// UC: UC-INV-033
+#[tokio::test]
+async fn a_replicated_delivery_never_takes_the_copy_back_to_an_earlier_delivery() {
+    let c = clustered();
+    queue_in(&c, "orders").await;
+    let id = c.publish("orders", "1", false);
+    let until = c.h.clock.now_millis() + 60_000;
+    let applied =
+        c.h.messages
+            .apply_deliveries("orders", &[(id.clone(), until, 2, "second".to_owned())]);
+    assert!(applied.iter().all(Result::is_ok));
+    // The first delivery arrives late: the copy keeps the second.
+    let late = c.h.messages.apply_deliveries(
+        "orders",
+        &[
+            (id.clone(), until - 30_000, 1, "first".to_owned()),
+            // A message the copy no longer has (the ack got there first): nothing to do.
+            (
+                "01900000-0000-7000-8000-00000000000f".to_owned(),
+                until,
+                1,
+                "x".to_owned(),
+            ),
+        ],
+    );
+    assert!(late.iter().all(Result::is_ok), "{late:?}");
+    let info = c.h.messages.message_info("orders", &id).unwrap().unwrap();
+    assert_eq!(info.meta.delivery_count, 2);
+    assert_eq!(info.meta.receipt_token.as_deref(), Some("second"));
+    assert_eq!(info.meta.invisible_until_ms, until);
 }
 
 /// UC: UC-INV-008
@@ -491,9 +554,11 @@ async fn applying_a_commit_twice_changes_nothing() {
     queue_in(&c, "orders").await;
     let (meta, body) = c.draft("orders", "1", true);
     c.h.messages
-        .apply_publish("orders", meta.clone(), body.clone())
+        .apply_publish("orders", meta.clone(), body.clone().into())
         .unwrap();
-    c.h.messages.apply_publish("orders", meta, body).unwrap();
+    c.h.messages
+        .apply_publish("orders", meta, body.into())
+        .unwrap();
     assert_eq!(c.h.messages.pending(), 1);
     let snapshot =
         c.h.messages
@@ -509,7 +574,7 @@ async fn the_id_of_a_group_keeps_growing_even_if_the_clock_of_the_new_primary_is
     c.h.topics.create(fifo("f")).await.unwrap();
     let view = c.view("f");
     let request = |key: &str| PublishRequest {
-        body: b"{}".to_vec(),
+        body: b"{}".to_vec().into(),
         content_type: Some("application/json".into()),
         group_id: Some("g".into()),
         deduplication_id: Some(key.to_owned()),
@@ -562,7 +627,7 @@ async fn the_owner_reserves_and_aborts_with_small_lists_as_with_large_ones() {
             c.publish("orders", &i.to_string(), true);
         }
         let view = c.view("orders");
-        let body = |t: &Candidate| String::from_utf8(t.body.clone()).unwrap();
+        let body = |t: &Candidate| String::from_utf8(t.body.to_vec()).unwrap();
 
         // Deadlines that do not fit the invisible list.
         let mut seen = Vec::new();
@@ -626,4 +691,44 @@ async fn a_failed_table_write_undoes_a_reservation_of_the_owner() {
     let again = c.h.messages.take_candidates(&view, 1, 60).unwrap();
     assert_eq!(again.len(), 1);
     assert_eq!(again[0].meta.delivery_count, 1);
+}
+
+/// UC: UC-ARM-001
+#[tokio::test]
+async fn asking_whether_a_message_is_in_memory_does_not_hold_the_map_of_topics_while_it_waits_for_the_topic()
+ {
+    // PRB-088: a replica asking whether a message is in memory, a topic being deleted and a publication that looks
+    // for memory to free in the other topics (it is over `memory.limit`) stopped every thread of a node.
+    let h = harness_with(&[("TABA_MEMORY_LIMIT", "3")]);
+    h.topics.create(queue("orders")).await.unwrap();
+    h.topics.create(queue("other")).await.unwrap();
+    let id = publish_ok(&h, "orders", "1");
+    publish_ok(&h, "other", "2");
+    // The publication holds its topic, as `publish_held` does.
+    let state = h.messages.state_of("orders");
+    let held = lock(&state);
+
+    // The replica asks about a message of that topic: it has to wait for the topic.
+    let m = h.messages.clone();
+    let asking = std::thread::spawn(move || m.is_in_memory("orders", &id));
+    std::thread::sleep(Duration::from_millis(100));
+    // A topic is deleted: it waits to write in the map of topics.
+    let m = h.messages.clone();
+    let dropping = std::thread::spawn(move || m.drop_topic("other"));
+    std::thread::sleep(Duration::from_millis(100));
+    // Still holding its topic, the publication lists the other topics to demote messages. If the question held the
+    // map while waiting for the topic, this read would queue behind the deletion for good.
+    let (tx, rx) = std::sync::mpsc::channel();
+    let m = h.messages.clone();
+    std::thread::spawn(move || {
+        tx.send(m.existing_states().len()).ok();
+    });
+    let listed = rx.recv_timeout(Duration::from_secs(5));
+    drop(held);
+    assert!(
+        listed.is_ok(),
+        "the list of topics waited for the deletion, which waited for the question, which waited for the topic"
+    );
+    asking.join().unwrap();
+    dropping.join().unwrap();
 }

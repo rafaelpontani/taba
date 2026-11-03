@@ -28,7 +28,7 @@ async fn waiting(h: &Harness, topic: &str) -> usize {
 
 fn with_group(body: &str, group: &str, dedup: Option<&str>) -> PublishRequest {
     PublishRequest {
-        body: body.as_bytes().to_vec(),
+        body: body.as_bytes().to_vec().into(),
         group_id: Some(group.into()),
         deduplication_id: dedup.map(Into::into),
         ..Default::default()

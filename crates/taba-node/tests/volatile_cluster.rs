@@ -253,19 +253,6 @@ async fn the_idle_route_answers_a_duration_and_says_when_it_counts_from_the_star
     cluster.shutdown().await;
 }
 
-async fn publish_many(node: &TestNode, topic: &str, count: usize) {
-    for n in 0..count {
-        let response = node
-            .client
-            .post(node.client_url(&format!("/topics/{topic}/messages")))
-            .json(&json!({ "n": n }))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 201);
-    }
-}
-
 fn messages_of(node: &TestNode) -> std::sync::Arc<taba_node::engine::messages::Messages> {
     node.node
         .cluster()
@@ -282,8 +269,32 @@ fn delivered(body: &Value) -> usize {
 #[tokio::test]
 async fn a_get_tries_the_next_ids_after_a_failed_registration_up_to_the_attempt_limit() {
     let cluster = TestCluster::start(3).await;
-    common::cluster::create_queue(cluster.node(1), "orders").await;
-    publish_many(cluster.node(1), "orders", 30).await;
+    // On a plain queue the owner delivers alone (D199) and no register can fail: the attempts are those of the FIFO
+    // queue, whose delivery still goes through the quorum. One message per group, so there are next IDs to try.
+    let created = cluster
+        .node(1)
+        .client
+        .post(cluster.node(1).client_url("/topics"))
+        .json(&json!({ "name": "orders", "type": "queue", "fifo": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 201);
+    for n in 0..30 {
+        let response = cluster
+            .node(1)
+            .client
+            .post(
+                cluster
+                    .node(1)
+                    .client_url(&format!("/topics/orders/messages?groupId=g{n}")),
+            )
+            .json(&json!({ "n": n }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 201);
+    }
 
     // An invisibility register that does not close does not bring the `GET` down: it goes on to the next
     // ID and delivers a message from another.

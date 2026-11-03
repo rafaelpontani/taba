@@ -3,7 +3,7 @@ título: Garantias e como são verificadas
 resumo: As garantias que o Taba declara, escritas de forma que uma máquina consiga checar (I1 a I6 e o risco assumido R1), a rodada de caos que as verifica contra um histórico gravado, quais falhas ela aplica, o que ainda não cobre e como rodar ou varrer sementes.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-27 @ ada9ff1
+verificado-em: 2026-10-29 @ 1f43daf
 fontes: [crates/taba-node/tests/chaos.rs, crates/taba-node/tests/common/history.rs, crates/taba-node/src/cluster/transport/memory/mod.rs, crates/taba-node/tests/common/cluster.rs, .github/workflows/chaos.yml]
 ---
 
@@ -27,7 +27,7 @@ Valem para o cluster padrão (3 nós, `replication.factor=3`, `write.quorum=2`) 
 | **I6** Perda declarada | Toda perda aparece em `/cluster/message-loss`, nunca em silêncio: uma mensagem confirmada que não foi entregue precisa ter sido declarada | ✅ |
 | **R1** Risco assumido | Uma partição com nós suficientes nos dois lados deixa cada lado excluir o outro e seguir ([07-cluster.md](07-cluster.md), "Risco aceito"): pode haver escritas nos dois lados, duplicadas ou perdidas na junção | ✅ medido por `tests/partition.rs`: partição 2 + 2 de 4 nós, escritas nas duas metades, o reencontro; toda escrita respondida `201` é entregue uma vez (D181). O padrão de `cluster.vote.min-voters` segue em aberto (D182) |
 
-Duas coisas que as garantias não dizem: a entrega é **ao-menos-uma-vez**, então uma mensagem entregue sem ack volta e um ack perdido repete a entrega (isso não viola o I3: o ack não respondeu `204`); e, depois da parada de todo o cluster, a **reentrega residual** do [07-cluster.md](07-cluster.md) (seção 10.10) é a exceção documentada ao I3.
+Três coisas que as garantias não dizem: a entrega é **ao-menos-uma-vez**, então uma mensagem entregue sem ack volta e um ack perdido repete a entrega (isso não viola o I3: o ack não respondeu `204`); depois da parada de todo o cluster, a **reentrega residual** do [07-cluster.md](07-cluster.md) (seção 10.10) é a exceção documentada ao I3; e, com `replication.factor` 1, uma queda do processo logo depois de uma entrega pode perder o contador dessa entrega ([11-durabilidade.md](11-durabilidade.md), "Trade-off aceito na entrega do nó sozinho", D193), a exceção documentada ao limite do I5. A mesma exceção vale para uma fila comum em cluster quando o dono cai alguns milissegundos depois de uma entrega, antes de as cópias saberem dela (o dono entrega sozinho e conta a elas depois, D199; "Trade-off aceito na invisibilidade" em [11-durabilidade.md](11-durabilidade.md)).
 
 ## Verificando um histórico
 
@@ -72,7 +72,7 @@ No fim os publicadores param, toda falha é curada (`heal_all`), o relógio avan
 | Morte abrupta e volta de um nó, drain durante a rodada | ainda não estão no nemesis |
 | Disco lento ou com erro | o armazenamento ainda não tem gancho para isso |
 | TCP real, TLS mútuo, timeouts do kernel, disco real | a rede em memória não os reproduz (previsto: rodada em Docker) |
-| Uma parada maior que o `write.pending.ttl` (30 s) no meio de uma operação, ou um salto de relógio além dele | os saltos da rodada (8 s) ficam abaixo dele; com saltos de 35 s a rodada acha uma mensagem confirmada e depois entregue de novo pela dead-letter ([PRB-077](31-pendencias.md)) |
+| Uma parada maior que o `write.pending.ttl` (30 s) no meio de uma operação, ou um salto de relógio além dele | os saltos da rodada (8 s) ficam abaixo dele; um register expirado que libera a mensagem para outra operação não é exercitado ([PRB-085](31-pendencias.md)). As falhas de I3 e I5 vistas com saltos de 35 s eram outra corrida, corrigida ([PRB-077](30-decisoes.md#problemas-resolvidos-prb)) |
 | Dois nós prejudicados ao mesmo tempo, ou partição com maioria nos dois lados (R1) | fora do que o cluster padrão promete, e o `NO_VOTE` esconde a votação de exclusão; o R1 tem teste próprio (`tests/partition.rs`, veja a linha dele) |
 
 ## Como rodar

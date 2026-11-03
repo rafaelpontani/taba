@@ -122,3 +122,63 @@ fn names_follow_the_opentelemetry_vocabulary() {
         );
     }
 }
+
+#[test]
+fn series_updated_by_many_threads_at_once_lose_nothing() {
+    let registry = std::sync::Arc::new(Registry::default());
+    let threads: Vec<_> = (0..8)
+        .map(|t| {
+            let registry = registry.clone();
+            std::thread::spawn(move || {
+                let route = if t % 2 == 0 { "/a" } else { "/b" };
+                for _ in 0..1000 {
+                    registry.add(&RATELIMIT_REJECTED, &[("taba.key", route)], 1.0);
+                    registry.observe(&HTTP_SERVER_DURATION, &[("http.route", route)], 0.001);
+                }
+            })
+        })
+        .collect();
+    for thread in threads {
+        thread.join().unwrap();
+    }
+    for route in ["/a", "/b"] {
+        assert_eq!(
+            registry.get(&RATELIMIT_REJECTED, &[("taba.key", route)]),
+            Some(4000.0)
+        );
+        let h = registry
+            .histogram(&HTTP_SERVER_DURATION, &[("http.route", route)])
+            .unwrap();
+        assert_eq!(h.count(), 4000);
+        assert!((h.sum() - 4.0).abs() < 1e-9);
+    }
+}
+
+#[test]
+fn series_with_many_attributes_and_similar_values_stay_apart() {
+    let registry = Registry::default();
+    let many: Vec<(String, String)> = (0..12)
+        .map(|i| (format!("k{i}"), format!("v{i}")))
+        .collect();
+    let labels: Vec<(&str, &str)> = many.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    registry.add(&RATELIMIT_REJECTED, &labels, 2.0);
+    let mut reversed = labels.clone();
+    reversed.reverse();
+    assert_eq!(registry.get(&RATELIMIT_REJECTED, &reversed), Some(2.0));
+    // The separator keeps ("ab", "c") apart from ("a", "bc").
+    registry.add(&RATELIMIT_REJECTED, &[("ab", "c")], 1.0);
+    registry.add(&RATELIMIT_REJECTED, &[("a", "bc")], 5.0);
+    assert_eq!(registry.get(&RATELIMIT_REJECTED, &[("ab", "c")]), Some(1.0));
+    assert_eq!(registry.get(&RATELIMIT_REJECTED, &[("a", "bc")]), Some(5.0));
+    let snapshot = registry.snapshot();
+    let series = &snapshot
+        .iter()
+        .find(|s| s.def.name == RATELIMIT_REJECTED.name)
+        .unwrap()
+        .series;
+    assert_eq!(series.len(), 3);
+    assert!(
+        series.windows(2).all(|w| w[0].0 < w[1].0),
+        "attribute order"
+    );
+}

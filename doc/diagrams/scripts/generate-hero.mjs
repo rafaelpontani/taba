@@ -35,14 +35,14 @@ const TABLE = LANG === 'en-US' ? {} : JSON.parse(readFileSync(resolve(root, 'doc
 const translate = (v) => (Array.isArray(v) ? v.map(translate) : typeof v === 'string' ? TABLE[v] ?? v : v);
 const SOURCE_TEXT = {
   label: 'OPEN SOURCE MESSAGING · AGPLv3',
-  promise: ['Replace SQS, SNS, Kafka', 'and RabbitMQ with '],
-  promiseHighlight: 'a single image.',
-  support: ['Speed and availability at almost', 'zero cost. No cloud required.'],
-  chips: ['1 Docker image', 'HTTP API', 'no coordinator'],
+  promise: ['Queues, FIFO and pub/sub', 'that run '],
+  promiseHighlight: 'themselves.',
+  support: ['Scales, rebalances and recovers on its own,', 'with few resources and no external services.'],
+  chips: ['1 image', 'self-managing', 'low footprint'],
   center: ['same image', 'on every node'],
   producer: 'producer', consumer: 'consumer', primary: 'primary', replica: 'replica',
   caption: ['producers publish without waiting', 'each node is the primary of some messages', 'consumers read whenever they want', 'the ack removes the message from all 3 nodes', 'producers and consumers come and go'],
-  title: 'Taba: open-source messaging that replaces SQS, SNS, Kafka and RabbitMQ with a single Docker image',
+  title: 'Taba: efficient open-source messaging (queues, FIFO and pub/sub) that scales and manages itself, from a single Docker image',
   desc: 'A 3-node cluster, every node running the same image, drawn as 3-story buildings. Several producers come and go and publish messages; each message has a primary node, which replicates it to the other two, and every node is the primary of some of them. Consumers arrive later, read asynchronously and confirm with an ack, and the message leaves all 3 nodes.',
 };
 const TXT = Object.fromEntries(Object.entries(SOURCE_TEXT).map(([k, v]) => [k, translate(v)]));

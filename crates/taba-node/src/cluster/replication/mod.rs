@@ -26,7 +26,7 @@ pub use replica::Replica;
 pub use signals::{ListenerGuard, Signals};
 
 use super::channel::Channels;
-use super::protocol::{Request, Response};
+use super::protocol::{Request, Response, Step};
 use super::recovery::Recovery;
 use super::service::ClusterService;
 use super::state::NodeState;
@@ -102,6 +102,7 @@ pub fn attach(
         messages.clone(),
         topics.clone(),
         signals.clone(),
+        replica.clone(),
     );
     let definitions = Definitions::new(
         service.clone(),
@@ -245,6 +246,151 @@ impl Replication {
         self.channels.accept(&open.from, link);
     }
 
+    /// `handle` as a boxed future: a batch serves its items with it, and the cycle `handle` → `handle_batch` → `handle`
+    /// needs the indirection.
+    fn handle_boxed<'a>(
+        &'a self,
+        caller: &'a str,
+        request: Request,
+    ) -> crate::cluster::transport::BoxFuture<'a, Result<Response, TabaError>> {
+        Box::pin(self.handle(caller, request))
+    }
+
+    /// Serves the items of a batch one after the other, each as the call it would have been on its own, and answers
+    /// with one result per item, in order. An item that failed (or could not be read) is an error of that item only.
+    async fn handle_batch(
+        &self,
+        caller: &str,
+        entries: Vec<crate::cluster::protocol::wire::Entry>,
+    ) -> Result<Response, TabaError> {
+        let max_items = self.service.rules().batch_max_items;
+        if entries.len() > max_items {
+            return Err(TabaError::new(
+                ErrorCode::MessageTooLarge,
+                format!("The batch has more than {max_items} items (`cluster.batch.max-items`)."),
+            ));
+        }
+        // The registers and the commits of the message operations go together (D196): one blocking call for each group
+        // instead of one per item. An item with a trace context keeps its own call, to continue the trace.
+        let mut commits: Vec<(usize, String)> = Vec::new();
+        let mut registers: Vec<(usize, Result<replica::RegisterItem, TabaError>)> = Vec::new();
+        let mut early: Vec<(usize, Result<Response, TabaError>)> = Vec::new();
+        let mut rest: Vec<(usize, crate::cluster::protocol::wire::Entry)> = Vec::new();
+        // The deliveries the owner already made (D199), applied together without a register.
+        let mut deliveries: Vec<(usize, Delivery)> = Vec::new();
+        let total = entries.len();
+        for (index, entry) in entries.into_iter().enumerate() {
+            let item = match entry {
+                Ok(item) if item.traceparent.is_none() => item,
+                other => {
+                    rest.push((index, other));
+                    continue;
+                }
+            };
+            let replicated = is_replicated(&item.request);
+            let commit = commit_of(&item.request);
+            if !replicated && commit.is_none() && !register_of(&item.request) {
+                rest.push((index, Ok(item)));
+                continue;
+            }
+            // What `handle` does first with each call: a node that is syncing records it instead.
+            match self.syncer.intercept(&item.request) {
+                Ok(Some(reply)) => early.push((index, Ok(reply))),
+                Err(error) => early.push((index, Err(error))),
+                Ok(None) if replicated => match delivery_of(item.request) {
+                    Ok(delivery) => deliveries.push((index, delivery)),
+                    Err(error) => early.push((index, Err(error))),
+                },
+                Ok(None) => match commit {
+                    Some(operation_id) => commits.push((index, operation_id)),
+                    None => registers.push((index, self.replica.register_item(item.request))),
+                },
+            }
+        }
+        let committed = async {
+            if commits.is_empty() {
+                return Vec::new();
+            }
+            let ids: Vec<String> = commits.iter().map(|(_, id)| id.clone()).collect();
+            self.replica.commit_many(&ids).await
+        };
+        let (register_at, register_items): (Vec<usize>, Vec<_>) = registers.into_iter().unzip();
+        let registered = async {
+            if register_items.is_empty() {
+                return Vec::new();
+            }
+            self.replica.register_many(register_items).await
+        };
+        // At once, like the calls would have been on their own: an item that waits for other nodes (a FIFO publication, a
+        // `Take`) does not hold back the rest of its batch.
+        let (rest_at, rest): (Vec<usize>, Vec<_>) = rest.into_iter().unzip();
+        let served = rest.into_iter().map(|entry| async move {
+            match entry {
+                Ok(item) => {
+                    // The operation continues the trace of the call that asked for it, if it came with one.
+                    let span = item.traceparent.as_ref().and_then(|traceparent| {
+                        crate::telemetry::trace::inbound_span(
+                            &format!("POST /cluster/batch {}", item.request.name()),
+                            &[("traceparent".to_owned(), traceparent.clone())],
+                        )
+                    });
+                    let served = self.handle_boxed(caller, item.request);
+                    let served = match span {
+                        Some(span) => tracing::Instrument::instrument(served, span).await,
+                        None => served.await,
+                    };
+                    match served {
+                        Ok(
+                            response @ (Response::Ack(_)
+                            | Response::Taken(_)
+                            | Response::FifoPublished(_)),
+                        ) => Ok(response),
+                        Ok(_) => Err(TabaError::internal()),
+                        Err(error) => Err(error),
+                    }
+                }
+                Err(error) => Err(error),
+            }
+        });
+        let (delivered_at, delivery_items): (Vec<usize>, Vec<_>) = deliveries.into_iter().unzip();
+        let delivered = async {
+            if delivery_items.is_empty() {
+                return Vec::new();
+            }
+            self.replica.apply_deliveries(delivery_items).await
+        };
+        let (committed, registered, delivered, served) = futures_util::future::join4(
+            committed,
+            registered,
+            delivered,
+            futures_util::future::join_all(served),
+        )
+        .await;
+        for (index, result) in delivered_at.into_iter().zip(delivered) {
+            early.push((index, result.map(Response::Ack)));
+        }
+        // Each result goes back to the position of its item.
+        let mut placed: Vec<Option<Result<Response, TabaError>>> =
+            (0..total).map(|_| None).collect();
+        for ((index, _), result) in commits.into_iter().zip(committed) {
+            placed[index] = Some(result.map(Response::Ack));
+        }
+        for (index, result) in register_at.into_iter().zip(registered) {
+            placed[index] = Some(result.map(Response::Ack));
+        }
+        for (index, result) in rest_at.into_iter().zip(served) {
+            placed[index] = Some(result);
+        }
+        for (index, result) in early {
+            placed[index] = Some(result);
+        }
+        let results = placed
+            .into_iter()
+            .map(|slot| slot.unwrap_or_else(|| Err(TabaError::internal())))
+            .collect();
+        Ok(Response::Batch(results))
+    }
+
     /// Serves a call from another member (the member check was already done).
     pub async fn handle(&self, caller: &str, request: Request) -> Result<Response, TabaError> {
         // A node that is syncing stores the events in the database instead of processing them (doc 05, 7.3).
@@ -252,6 +398,7 @@ impl Replication {
             return Ok(reply);
         }
         match request {
+            Request::Batch(entries) => self.handle_batch(caller, entries).await,
             Request::Write { topic, id, step } => {
                 crate::cluster::protocol::validate_message_path(&topic, &id)?;
                 step.validate_reference()?;
@@ -336,4 +483,91 @@ impl Replication {
             _ => Err(TabaError::route_not_found()),
         }
     }
+}
+
+/// A delivery the owner already made (D199): `(operationId, topic, id, deadline, deliveryCount, receiptToken)`.
+type Delivery = (String, String, String, u64, u32, String);
+
+/// Whether the item is a delivery the owner already made (D199).
+fn is_replicated(request: &Request) -> bool {
+    matches!(
+        request,
+        Request::Visibility {
+            step: Step::Register(register),
+            ..
+        } if register.kind == super::protocol::VisibilityKind::Replicated
+    )
+}
+
+/// The delivery of an item [`is_replicated`], with the checks `handle` makes before serving it.
+fn delivery_of(request: Request) -> Result<Delivery, TabaError> {
+    let Request::Visibility {
+        topic,
+        id,
+        step: Step::Register(register),
+    } = request
+    else {
+        return Err(TabaError::internal());
+    };
+    super::protocol::validate_message_path(&topic, &id)?;
+    let count = replica::delivery_count_of(&register)?;
+    Ok((
+        register.operation_id,
+        topic,
+        id,
+        register.invisible_until_ms,
+        count,
+        register.receipt_token,
+    ))
+}
+
+/// Whether the item is the `register` of a publication, a delivery, a change of deadline or an ack that passes the
+/// checks `handle` makes before serving it. A move to the dead-letter keeps its own call.
+fn register_of(request: &Request) -> bool {
+    use super::protocol::WriteKind;
+    let (topic, id) = match request {
+        Request::Write {
+            topic,
+            id,
+            step: Step::Register(register),
+        } if matches!(register.kind, WriteKind::Publish) => (topic, id),
+        Request::Visibility {
+            topic,
+            id,
+            step: Step::Register(_),
+        }
+        | Request::Ack {
+            topic,
+            id,
+            step: Step::Register(_),
+        } => (topic, id),
+        _ => return false,
+    };
+    super::protocol::validate_message_path(topic, id).is_ok()
+}
+
+/// The `operationId` of a commit of a message operation (a publication, a delivery or an ack) that passes the checks
+/// `handle` makes before serving it; `None` for any other item, which then goes through `handle`.
+fn commit_of(request: &Request) -> Option<String> {
+    let (topic, id, operation) = match request {
+        Request::Write {
+            topic,
+            id,
+            step: Step::Commit(op),
+        } => (topic, id, op),
+        Request::Visibility {
+            topic,
+            id,
+            step: Step::Commit(op),
+        } => (topic, id, op),
+        Request::Ack {
+            topic,
+            id,
+            step: Step::Commit(op),
+        } => (topic, id, op),
+        _ => return None,
+    };
+    super::protocol::validate_message_path(topic, id).ok()?;
+    operation.validate().ok()?;
+    Some(operation.operation_id.clone())
 }

@@ -9,6 +9,7 @@ mod messages;
 mod recovery;
 mod signals;
 mod vote;
+pub mod wire;
 
 pub use backup::{BACKUP_SAVED_MAX_ITEMS, BackupSaved, BackupSavedItem};
 pub use definitions::{
@@ -151,6 +152,10 @@ pub enum Request {
         id: String,
         step: Step<AckRegisterRequest>,
     },
+    /// `POST /cluster/batch`: several operations (the two-phase writes `Write`, `Visibility` and `Ack` in any phase, `Take`
+    /// and `FifoPublish`) in one call, in protobuf. Each entry has its own result in [`Response::Batch`], in the same order. On the
+    /// sending side every entry is `Ok`; on the receiving side an entry that could not be read is the error of its item.
+    Batch(Vec<wire::Entry>),
     /// `GET /cluster/topics/{id}/idle`
     Idle { topic_id: String },
     /// `POST /cluster/topics/{topic}/messages/take`
@@ -264,6 +269,19 @@ impl Request {
         }
     }
 
+    /// Whether the call between nodes travels in a [`Request::Batch`] (as one of its items) instead of in a route of its
+    /// own: the two-phase writes, `Take` and the forward of a FIFO publication.
+    pub const fn is_batchable(&self) -> bool {
+        matches!(
+            self,
+            Request::Write { .. }
+                | Request::Visibility { .. }
+                | Request::Ack { .. }
+                | Request::Take { .. }
+                | Request::FifoPublish { .. }
+        )
+    }
+
     /// A short name, for logs and to check what passed through the in-memory network.
     pub const fn name(&self) -> &'static str {
         match self {
@@ -314,6 +332,7 @@ impl Request {
                 step: Step::Rollback(_),
                 ..
             } => "ack-rollback",
+            Request::Batch(_) => "batch",
             Request::Idle { .. } => "idle",
             Request::Take { .. } => "take",
             Request::Vote(_) => "vote",
@@ -351,6 +370,8 @@ impl Request {
 pub enum Response {
     Members(MemberTable),
     Ack(Ack),
+    /// The results of a [`Request::Batch`], one per entry and in the same order.
+    Batch(Vec<wire::Outcome>),
     /// A definition's change as the owner decided it (response of `propose` and `apply`).
     Definition(DefinitionApply),
     /// A stretch of `GET /cluster/topics` or `/cluster/tokens`.

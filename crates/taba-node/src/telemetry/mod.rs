@@ -13,8 +13,11 @@ pub mod prometheus;
 pub mod trace;
 
 use std::collections::BTreeMap;
+use tracing::Metadata;
+use tracing::subscriber::Interest;
 use tracing_subscriber::EnvFilter;
-use tracing_subscriber::layer::{Layer, SubscriberExt};
+use tracing_subscriber::filter::{FilterExt, filter_fn};
+use tracing_subscriber::layer::{Context as FilterContext, Filter, Layer, SubscriberExt};
 use tracing_subscriber::registry::Registry as SpanRegistry;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -70,6 +73,27 @@ impl Telemetry {
     }
 }
 
+/// The spans of [`trace`] (request, call to a node, cluster operation) exist for OTLP only: the log
+/// lines do not carry them, so formatting their fields on every request is not paid.
+fn is_node_span(metadata: &Metadata<'_>) -> bool {
+    metadata.is_span() && metadata.target() == concat!(module_path!(), "::trace")
+}
+
+/// The spans layer only sees spans while an OTLP pipeline is attached. Without it, and with the log
+/// lines refusing the node spans, a span is not even created ([`tracing::Span::none`]).
+struct WhileAttached;
+
+impl<S> Filter<S> for WhileAttached {
+    fn enabled(&self, _: &Metadata<'_>, _: &FilterContext<'_, S>) -> bool {
+        otlp::hub().is_attached()
+    }
+
+    fn callsite_enabled(&self, _: &'static Metadata<'static>) -> Interest {
+        // Decided on each span, never cached: the pipeline is attached after the start.
+        Interest::sometimes()
+    }
+}
+
 /// Turns on logging in the format of `telemetry.logs.format` (plain text, colored text or JSON), at the
 /// level of `telemetry.logs.level` (`info` while the default is still to be defined) and the OTLP
 /// layers (spans and logs), which only export after an [`otlp::Pipeline::attach`]. Calling again is
@@ -85,9 +109,9 @@ pub fn init_logging(level: Option<&str>, format: LogFormat) {
         LogFormat::Text => tracing_subscriber::fmt::layer().with_ansi(false).boxed(),
         LogFormat::Color => tracing_subscriber::fmt::layer().with_ansi(true).boxed(),
     }
-    .with_filter(filter);
+    .with_filter(filter.and(filter_fn(|metadata| !is_node_span(metadata))));
     let _ = SpanRegistry::default()
-        .with(hub.trace_layer())
+        .with(hub.trace_layer().with_filter(WhileAttached))
         .with(hub.log_layer())
         .with(fmt)
         .try_init();

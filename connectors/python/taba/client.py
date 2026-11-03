@@ -9,6 +9,8 @@ from ._transport import Sleep, Transport
 from .cancel import Cancelled, CancelToken
 from .errors import TabaError
 from .models import (
+    BatchMessage,
+    BatchResult,
     Config,
     ConsumeOptions,
     Message,
@@ -19,6 +21,7 @@ from .models import (
     TopicRequest,
     TopicUpdate,
     VisibilityResponse,
+    parse_batch_results,
     parse_messages,
     parse_page,
     parse_publish_response,
@@ -162,6 +165,17 @@ class Client:
         options["content_type"] = "text/plain; charset=utf-8"
         return self.publish(topic, text.encode("utf-8"), **options)
 
+    def publish_batch(
+        self, topic: str, messages: List[BatchMessage], *, cancel: Optional[CancelToken] = None
+    ) -> List[BatchResult]:
+        """
+        `POST /topics/{topic}/messages/batch`: publishes many messages in one request (1 to the server's
+        `api.batch.max-messages`, 1000 by default). Each item is answered as its single publication and one that
+        fails does not undo the others (look at `ok`). On a FIFO queue the items of a group are published in the
+        order of the list. A failure of the network is not repeated (it could duplicate).
+        """
+        return parse_batch_results(self._send(_calls.publish_batch_call(topic, messages), cancel).text)
+
     # -- consuming -----------------------------------------------------------------------------------------
 
     def consume(self, topic: str, *, cancel: Optional[CancelToken] = None, **options: Any) -> List[Message]:
@@ -202,6 +216,19 @@ class Client:
         message_id, token = _calls.reference(message, receipt_token)
         reply = self._send(_calls.change_visibility_call(topic, message_id, token, seconds), cancel)
         return parse_visibility_response(reply.text)
+
+    def ack_batch(
+        self, topic: str, messages: List[Message], *, cancel: Optional[CancelToken] = None
+    ) -> List[BatchResult]:
+        """`POST /topics/{topic}/messages/ack`: acknowledges many messages `consume` returned, in one request."""
+        return parse_batch_results(self._send(_calls.receipts_call(topic, "ack", messages), cancel).text)
+
+    def change_visibility_batch(
+        self, topic: str, messages: List[Message], seconds: int, *, cancel: Optional[CancelToken] = None
+    ) -> List[BatchResult]:
+        """`POST /topics/{topic}/messages/visibility`: the invisibility of each message, `seconds` from now."""
+        call = _calls.receipts_call(topic, "visibility", messages, seconds)
+        return parse_batch_results(self._send(call, cancel).text)
 
     def consume_with(
         self,

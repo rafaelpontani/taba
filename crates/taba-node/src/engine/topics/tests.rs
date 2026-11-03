@@ -166,7 +166,7 @@ async fn the_store_keeps_the_definitions_that_were_created() {
 
     let stored = h.topics.stored().await.unwrap();
     let orders = stored.iter().find(|d| d.name == "orders").unwrap();
-    assert_eq!(orders, &h.topics.get("orders").unwrap().definition);
+    assert_eq!(orders, h.topics.get("orders").unwrap().definition.as_ref());
     assert!(stored.iter().any(|d| d.name == "dist"));
 
     // A registry built from nothing does not see them: the node takes them over only through the restoration.
@@ -782,8 +782,8 @@ async fn changing_the_default_ttl_affects_the_queues_without_their_own_ttl_only(
     let rules = TopicRules::from_config(&Config::parse(None, &env).unwrap());
     assert_eq!(rules.ttl_default, 3600);
     let definitions = vec![
-        h.topics.get("plain").unwrap().definition,
-        h.topics.get("own").unwrap().definition,
+        h.topics.get("plain").unwrap().definition.as_ref().clone(),
+        h.topics.get("own").unwrap().definition.as_ref().clone(),
     ];
     let changed = Topics::new(rules, h.store.clone(), h.clock.clone(), definitions);
     assert_eq!(

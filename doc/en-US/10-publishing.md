@@ -3,7 +3,7 @@ title: Publishing messages
 summary: The path of a published message — from the node that receives the call to the response to the client — with register, quorum, commit, rollback and the possible failures at each point.
 type: explanation
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-28 @ 2447d5e
 sources: [crates/taba-node/src/cluster/replication/coordinator.rs, crates/taba-node/src/cluster/replication/replica.rs, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/http/messages/mod.rs, crates/taba-node/src/engine/messages/mod.rs]
 ---
 
@@ -64,9 +64,21 @@ It is the same rule as the cluster protocol ([07-cluster.md](07-cluster.md)). Wh
 - **Distributor:** the coordinator matches the prefixes and runs **this same procedure once per destination queue**, with copies of their own `id`. The copies are independent.
 - **FIFO:** the node that received **forwards to the group's primary**, which generates the monotonic `id`, deduplicates and coordinates; the quorum includes **primary and secondary**.
 
+## Between nodes: batches
+
+With a factor above 1, each publication makes calls to the other responsible nodes: the `register` and, after the decision, the `commit`. Those calls do not go one by one: **the operations waiting for the same node go together** in `POST /cluster/batch`, in protobuf ([18-cluster-api.md](18-cluster-api.md)). The coordinator does not know: it keeps calling once per operation, with the same attempts and the same errors, and the batch is under that call.
+
+A batch closes when a send slot opens (each node has 4), with what is waiting, up to `cluster.batch.max-items` and the soft `cluster.batch.max-bytes` ([22-configuration.md](22-configuration.md)). There is no timer and no waiting for it to fill: with little load each operation goes alone, at once; with a lot, the queue grows while the slots are busy and the next batch leaves full. The `commit` of one publication and the `register` of the next fall in the same batch when they coincide. Each item has its own result: the failure of one operation does not touch the others of its batch, and a failure of the whole call (network, timeout) makes each operation repeat on its own, in a later batch.
+
+A **batch of publications** of the client (`POST /topics/{topic}/messages/batch`) on a plain queue goes further ([D198](30-decisions.md)): its publications with the same responsible nodes (the same primary; the order of the others does not matter) go through the two phases as **one group**, with one task per node instead of one per node and publication. The registers of the group reach each node at once and are answered once, the coordinator decides each publication as it would decide it alone (one whose register failed does not hold back the others), and the commits of the decided ones go together the same way. What is rare (a node that lost a register, a commit that did not go through at the first attempt) goes back to the insistence of one publication. A group has at most `cluster.batch.max-items` operations. The same applies to a batch of acks. A single publication still has its own two phases (and its calls still share the batches between nodes).
+
 ## On a single node
 
 In the one-node profile (factor 1) the node is the primary of everything and the quorum is 1: register and commit happen only on it, with no replicas, no repetition between nodes and no rollback for lack of quorum.
+
+When the node that receives the call is the **only responsible node** of the message and `write.quorum` is 1 (factor 1, in any cluster size, with the node active), there is nobody to agree with, so the operation does not go through the two phases ([D191](30-decisions.md)): the node applies it straight to the engine with the same check and the same application that the register and the commit of its replica would do, and takes the message through the replica while it does (`Replica::hold`), so no register of another operation on the same message (a move to the dead-letter, for example) runs at the same time. It is the same for the publication, the delivery of a `GET`, the ack and the change of invisibility. The batch routes ([16-client-api.md](16-client-api.md)) go to the engine in **one hold of the topic** for the whole batch when every item has the node alone (on a queue, or on a distributor with a single queue); otherwise the batch goes through the two phases in groups (D198, above), and on FIFO or a distributor with several queues each item goes through its single call. A publication that only touches memory (no live message of the topic on disk, the memory limit has room, the node is not draining and the S3 backup is off) is applied on the request's thread; otherwise on a blocking thread, because it reads or writes the disk. The FIFO queue keeps the two phases. An operation applied like this counts in `taba.write.coordinated` and not in `taba.write.received` (there is no register nor commit to itself).
+
+With a single responsible node that is **another** node (factor 1 in a cluster of several), the coordinator calls it: its register is already the decision, so the coordinator registers and commits in sequence on the request's own task, with no task per node and no wait for the quorum; only a commit that fails at the first attempt goes to the insistence the coordinator keeps in the background after the decision (see Failures).
 
 ## Example
 

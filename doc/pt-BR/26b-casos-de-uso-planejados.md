@@ -30,7 +30,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `LIM` | Rate limit e IP do cliente | 2 | 13 |
 | `PAG` | Paginação | 1 | 8 |
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 3 | 14 |
-| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 9 | 29 |
+| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 9 | 31 |
 | `ANE` | Anel de hash, blocos e papéis | 3 | 8 |
 | `DEF` | Definição de tópicos e de tokens replicada no cluster | 7 | 24 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 12 | 18 |
@@ -46,8 +46,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `DRN` | Parada e modo drain | 2 | 19 |
 | `DEV` | Perfil de um nó (o antigo modo desenvolvimento) | 0 | 3 |
 | `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 6 | 41 |
-| `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 2 | 8 |
+| `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 2 | 10 |
 | `CFG` | Configuração e validações de partida | 1 | 10 |
+| `BNC` | Benchmark comparativo local (`bench/run.sh`) | 1 | 4 |
 
 ## TOP: Tópicos: criar, listar, ler, alterar e remover
 
@@ -910,6 +911,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+
+## BNC: Benchmark comparativo local (`bench/run.sh`)
+
+### UC-BNC-004
+
+**Caso:** O `bench/run.sh` roda um workload de ponta a ponta: constrói (ou recebe) as imagens, sobe um nó do Taba em Docker com os limites, espera ficar saudável, roda o OMB no contêiner executor, remove o nó e o volume e grava o JSON bruto, o `machine.json` e o relatório; o mesmo para Kafka, Redpanda, RabbitMQ e NATS JetStream
+**Nível:** K
+**Motivo de não ter teste citado pelo `uc_coverage`:** o `bench/test.sh` confere isso com o perfil `smoke` contra o Taba, mas precisa de Docker e leva minutos, então é um script e nenhum arquivo de teste cita o caso; os outros sistemas foram rodados uma vez à mão
+
+---
 
 ## Casos retirados
 

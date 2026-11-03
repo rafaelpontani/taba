@@ -22,7 +22,7 @@ fn store(dir: &Path) -> MessageStore {
 
 /// UC: UC-ARM-002, UC-ARM-010, UC-ARM-011
 #[test]
-fn a_message_is_a_body_file_plus_a_row_in_the_topic_database() {
+fn a_message_is_a_row_with_its_body_in_the_topic_database_and_no_file() {
     let tmp = tempfile::tempdir().unwrap();
     let store = store(tmp.path());
     let mut m = meta("a1");
@@ -32,14 +32,204 @@ fn a_message_is_a_body_file_plus_a_row_in_the_topic_database() {
     store.put("orders", &m, &bytes).unwrap();
 
     assert!(tmp.path().join("orders").join(TOPIC_DB_FILE).is_file());
+    assert!(
+        !tmp.path().join("orders").join("a1.body").exists(),
+        "nothing writes a body file"
+    );
+    assert_eq!(store.get("orders", "a1").unwrap(), Some(m));
     assert_eq!(
-        std::fs::read(tmp.path().join("orders").join("a1.body")).unwrap(),
+        store.body("orders", "a1").unwrap(),
         bytes,
         "only the body bytes, as they came"
     );
-    assert_eq!(store.get("orders", "a1").unwrap(), Some(m));
-    assert_eq!(store.body("orders", "a1").unwrap(), bytes);
+    assert!(store.has_body("orders", "a1"));
     assert_eq!(store.count("orders").unwrap(), 1);
+}
+
+/// UC: UC-ARM-002, UC-ARM-014
+#[test]
+fn a_body_above_the_inline_limit_goes_to_the_bodies_table_and_leaves_with_its_message() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path()).with_body_inline_max(8);
+    let small = [1u8; 8];
+    let big: Vec<u8> = (0..100_000u32).map(|n| n as u8).collect();
+    store.put("orders", &meta("small"), &small).unwrap();
+    store.put("orders", &meta("big"), &big).unwrap();
+    store.put("orders", &meta("empty"), &[]).unwrap();
+
+    assert_eq!(store.body("orders", "small").unwrap(), small);
+    assert_eq!(store.body("orders", "big").unwrap(), big);
+    assert_eq!(store.body("orders", "empty").unwrap(), Vec::<u8>::new());
+    assert_eq!(store.body_bytes("orders").unwrap(), 8 + 100_000);
+    let in_bodies = |id: &str| -> bool {
+        let disk = store.disk("orders", false).unwrap().unwrap();
+        let found = disk
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM bodies WHERE id = ?1",
+                params![id],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap();
+        found == 1
+    };
+    assert!(!in_bodies("small") && in_bodies("big") && !in_bodies("empty"));
+
+    // Written again with a body of the other size, the message is in one place only.
+    store.put("orders", &meta("big"), &small).unwrap();
+    assert!(!in_bodies("big"));
+    assert_eq!(store.body("orders", "big").unwrap(), small);
+    store.put("orders", &meta("big"), &big).unwrap();
+    assert!(in_bodies("big"));
+
+    store.remove("orders", "big").unwrap();
+    assert!(!in_bodies("big"));
+    assert_eq!(
+        store.body("orders", "big").unwrap_err().kind(),
+        io::ErrorKind::NotFound
+    );
+    assert_eq!(store.body_bytes("orders").unwrap(), 8);
+}
+
+/// Um lote adiado: tudo que o lote escreveu fica depois do commit, o escopo de dentro fica com o de fora e a
+/// conexão volta ao normal depois (D192).
+///
+/// UC: UC-ARM-013
+#[test]
+fn a_deferred_batch_keeps_every_write_and_leaves_the_connection_usable() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path()).with_body_inline_max(2);
+    store.put("orders", &meta("seed"), b"s").unwrap();
+    let ((), written) = store.deferred(|| {
+        for id in ["a1", "a2", "a3"] {
+            store
+                .put("orders", &meta(id), b"larger than the inline limit")
+                .unwrap();
+        }
+        store.remove("orders", "a2").unwrap();
+        // Um escopo dentro de outro só roda: as escritas ficam com o de fora.
+        let ((), inner) = store.deferred(|| store.put("orders", &meta("a4"), b"x").unwrap());
+        inner.wait().unwrap();
+    });
+    written.wait().unwrap();
+    store.put("orders", &meta("after"), b"y").unwrap();
+    let reopened = MessageStore::new(tmp.path(), DbSynchronous::Normal);
+    drop(store);
+    for id in ["seed", "a1", "a3", "a4", "after"] {
+        assert!(reopened.get("orders", id).unwrap().is_some(), "{id}");
+    }
+    assert!(reopened.get("orders", "a2").unwrap().is_none());
+    assert_eq!(
+        reopened.body("orders", "a3").unwrap(),
+        b"larger than the inline limit"
+    );
+}
+
+/// O índice por posição do log de excluídos só nasce na primeira leitura de bloco (UC-ARM-002).
+///
+/// UC: UC-ARM-002
+#[test]
+fn the_position_index_of_the_excluded_log_is_created_when_a_block_is_read() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    store.put("orders", &meta("a1"), b"x").unwrap();
+    store.remove_excluded("orders", "a1", 1).unwrap();
+    let has_index = |store: &MessageStore| -> bool {
+        let disk = store.disk("orders", false).unwrap().unwrap();
+        let found = disk
+            .conn()
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name = 'excluded_position'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap();
+        found == 1
+    };
+    assert!(!has_index(&store));
+    assert_eq!(
+        store
+            .excluded_rows("orders", &[(0, u64::MAX)], None, None, 10)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(has_index(&store));
+}
+
+/// UC: UC-ARM-002
+#[test]
+fn a_zero_inline_limit_puts_every_body_in_the_bodies_table() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path()).with_body_inline_max(0);
+    store.put("orders", &meta("a1"), b"x").unwrap();
+    assert_eq!(store.body("orders", "a1").unwrap(), b"x");
+    let reopened = MessageStore::new(tmp.path(), DbSynchronous::Normal);
+    assert_eq!(
+        reopened.body("orders", "a1").unwrap(),
+        b"x",
+        "found by a store with another limit"
+    );
+    assert_eq!(reopened.body_bytes("orders").unwrap(), 1);
+}
+
+/// UC: UC-ARM-002, UC-ARM-014
+#[test]
+fn the_body_files_of_the_old_layout_are_still_read_and_leave_with_their_message() {
+    let tmp = tempfile::tempdir().unwrap();
+    let first = store(tmp.path());
+    first.put("orders", &meta("old"), b"unused").unwrap();
+    first.release_files();
+    // The old layout: the row without a body and the bytes in a file beside the database.
+    {
+        let conn = Connection::open(tmp.path().join("orders").join(TOPIC_DB_FILE)).unwrap();
+        conn.execute("UPDATE messages SET body = NULL", []).unwrap();
+    }
+    let file = tmp.path().join("orders").join("old.body");
+    std::fs::write(&file, b"from a file").unwrap();
+
+    let store = store(tmp.path());
+    assert_eq!(store.body("orders", "old").unwrap(), b"from a file");
+    assert!(store.has_body("orders", "old"));
+    assert_eq!(store.body_bytes("orders").unwrap(), 11);
+    assert_eq!(store.evict_body("orders", "old").unwrap(), 11);
+    assert!(!file.exists() && !store.has_body("orders", "old"));
+    std::fs::write(&file, b"again").unwrap();
+    store.remove("orders", "old").unwrap();
+    assert!(!file.exists());
+}
+
+/// UC: UC-ARM-002
+#[test]
+fn evicting_a_body_keeps_the_row_wherever_the_body_was() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path()).with_body_inline_max(4);
+    store.put("orders", &meta("small"), b"abc").unwrap();
+    store.put("orders", &meta("big"), b"abcdefgh").unwrap();
+    assert_eq!(store.evict_body("orders", "small").unwrap(), 3);
+    assert_eq!(store.evict_body("orders", "big").unwrap(), 8);
+    assert_eq!(store.evict_body("orders", "big").unwrap(), 0);
+    assert!(!store.has_body("orders", "small") && !store.has_body("orders", "big"));
+    assert_eq!(store.count("orders").unwrap(), 2, "the rows stay");
+    assert_eq!(store.body_bytes("orders").unwrap(), 0);
+}
+
+/// UC: UC-ARM-002
+#[test]
+fn moving_a_message_takes_its_body_to_the_other_topic() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path()).with_body_inline_max(4);
+    let big = vec![7u8; 1000];
+    store.put("orders", &meta("m1"), &big).unwrap();
+    store.put("orders", &meta("m2"), b"ab").unwrap();
+    for id in ["m1", "m2"] {
+        store.move_to("orders", "dead", &meta(id)).unwrap();
+    }
+    assert_eq!(store.body("dead", "m1").unwrap(), big);
+    assert_eq!(store.body("dead", "m2").unwrap(), b"ab");
+    assert_eq!(store.count("orders").unwrap(), 0);
+    assert_eq!(store.body_bytes("orders").unwrap(), 0);
+    assert_eq!(store.body_bytes("dead").unwrap(), 1002);
 }
 
 #[test]
@@ -51,6 +241,53 @@ fn reads_do_not_create_folders_for_topics_without_disk() {
     assert_eq!(store.count("nothing").unwrap(), 0);
     store.remove("nothing", "x").unwrap();
     assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn a_topic_seen_without_disk_is_remembered_until_the_store_writes_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    assert!(!store.known_without_disk("orders"), "not looked up yet");
+    assert_eq!(store.get_live("orders", "a1").unwrap(), None);
+    assert!(store.known_without_disk("orders"));
+    // The write creates the database even after the topic was seen without one, and the reads find it.
+    let m = meta("a1");
+    store.put("orders", &m, b"x").unwrap();
+    assert!(!store.known_without_disk("orders"));
+    assert_eq!(store.get_live("orders", "a1").unwrap(), Some(m.clone()));
+    // A database a previous run left on disk is found by a new store at the first read.
+    let reopened = MessageStore::new(tmp.path(), DbSynchronous::Normal);
+    assert_eq!(reopened.get("orders", "a1").unwrap(), Some(m));
+    assert!(!reopened.known_without_disk("orders"));
+    // (an open database does not let its folder go on Windows)
+    drop(reopened);
+    // A dropped topic is looked up again.
+    store.drop_topic("orders").unwrap();
+    assert!(!store.known_without_disk("orders"));
+    assert_eq!(store.get("orders", "a1").unwrap(), None);
+    assert!(store.known_without_disk("orders"));
+}
+
+#[test]
+fn a_database_without_live_messages_answers_the_id_lookup_without_reading() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    let m = meta("a1");
+    store.put("orders", &m, b"x").unwrap();
+    store.remove("orders", "a1").unwrap();
+    // The row went, but the store only learns that when the database opens again.
+    assert!(!store.known_without_disk("orders"));
+    let reopened = MessageStore::new(tmp.path(), DbSynchronous::Normal);
+    assert_eq!(reopened.get_live("orders", "a1").unwrap(), None);
+    assert!(
+        reopened.known_without_disk("orders"),
+        "a database with an empty table"
+    );
+    // The first row written is found again.
+    let b = meta("b1");
+    reopened.put("orders", &b, b"y").unwrap();
+    assert!(!reopened.known_without_disk("orders"));
+    assert_eq!(reopened.get_live("orders", "b1").unwrap(), Some(b));
 }
 
 /// UC: UC-ARM-014

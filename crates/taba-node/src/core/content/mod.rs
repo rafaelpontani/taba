@@ -175,6 +175,35 @@ impl Body {
     pub fn encoding(&self) -> Option<&'static str> {
         matches!(self, Self::Base64(_)).then_some("base64")
     }
+
+    /// The opposite of [`Body::render`], for a message of a publication in batch: the bytes of a `body` sent in the
+    /// form the `GET` delivers. With `bodyEncoding: "base64"` the `body` is a string in base64 of any type; without
+    /// it, `application/json` takes the JSON as it came, `text/*` takes the text of a string, and another type must
+    /// come in base64. What does not fit is `400` `validation.invalid-body`.
+    pub fn decode(
+        content_type: &ContentType,
+        body: &RawValue,
+        encoding: Option<&str>,
+    ) -> Result<Vec<u8>, TabaError> {
+        let bad = |message: &str| TabaError::new(ErrorCode::ValidationInvalidBody, message);
+        let string = || {
+            serde_json::from_str::<String>(body.get())
+                .map_err(|_| bad("The body must be a string in this form."))
+        };
+        match encoding {
+            Some("base64") => STANDARD
+                .decode(string()?)
+                .map_err(|_| bad("The body is not valid base64.")),
+            Some(_) => Err(bad("The only bodyEncoding is `base64`.")),
+            None => match content_type.kind {
+                BodyKind::Json => Ok(body.get().as_bytes().to_vec()),
+                BodyKind::Text => string().map(String::into_bytes),
+                BodyKind::Binary => Err(bad(
+                    "A body that is not JSON nor text goes in base64, with `bodyEncoding: \"base64\"`.",
+                )),
+            },
+        }
+    }
 }
 
 #[cfg(test)]

@@ -446,7 +446,7 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
         <g data-graph-role="automatic-crossover" style="--step:2">
           <path data-graph-role="automatic-crossover-underlay" d="M 640 222 L 740 222" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="topicdb" data-edge-to="body" data-edge-label="points to" data-edge-key="2" data-edge-id="w3" data-composition-points="640,222;740,222" data-composition-crossover="halo" data-composition-independent="true" d="M 640 222 L 740 222" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-edge-from="topicdb" data-edge-to="body" data-edge-label="same transaction" data-edge-key="2" data-edge-id="w3" data-composition-points="640,222;740,222" data-composition-crossover="halo" data-composition-independent="true" d="M 640 222 L 740 222" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:3">
           <path data-graph-role="automatic-crossover-underlay" d="M 115 190 L 115 174 Q 115 166 123 166 L 398 166 Q 406 166 406 158 L 406 107 Q 406 99 414 99 L 430 99" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
@@ -530,16 +530,16 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="535" y="236" class="t-muted" font-size="9" text-anchor="middle">messages on disk</text>
         </g>
 
-        <g id="node-body" data-node-id="body" data-node-label="&lt;topic&gt;/&lt;id&gt;.body" tabindex="0" role="button" aria-label="Focus &lt;topic&gt;/&lt;id&gt;.body, body bytes, storage.dir (the last folder is named taba)" aria-pressed="false" data-node-kind="database" data-node-sublabel="body bytes" data-node-context="storage.dir (the last folder is named taba)">
-          <title>&lt;topic&gt;/&lt;id&gt;.body · body bytes · storage.dir (the last folder is named taba)</title>
+        <g id="node-body" data-node-id="body" data-node-label="bodies table" tabindex="0" role="button" aria-label="Focus bodies table, bodies above 256 B, storage.dir (the last folder is named taba)" aria-pressed="false" data-node-kind="database" data-node-sublabel="bodies above 256 B" data-node-context="storage.dir (the last folder is named taba)">
+          <title>bodies table · bodies above 256 B · storage.dir (the last folder is named taba)</title>
           <rect x="740" y="190" width="210" height="64" rx="6" class="c-mask"/>
           <rect x="740" y="190" width="210" height="64" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(746 196) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="845" y="220" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">&lt;topic&gt;/&lt;id&gt;.body</text>
-        <text x="845" y="236" class="t-muted" font-size="9" text-anchor="middle">body bytes</text>
+          <text data-node-label="" x="845" y="220" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">bodies table</text>
+        <text x="845" y="236" class="t-muted" font-size="9" text-anchor="middle">bodies above 256 B</text>
         </g>
 
         <g id="node-syncdb" data-node-id="syncdb" data-node-label="_sync/sync.db" tabindex="0" role="button" aria-label="Focus _sync/sync.db, events during the load, storage.dir (the last folder is named taba)" aria-pressed="false" data-node-kind="database" data-node-sublabel="events during the load" data-node-context="storage.dir (the last folder is named taba)">
@@ -575,9 +575,9 @@ rect.c-bg-rect { fill: var(--bg); }
           <rect x="290.8" y="140.5" width="48.4" height="14" rx="3" class="c-mask"/>
           <text x="315" y="150.5" class="t-edge-default" font-size="8" text-anchor="middle">overflow</text>
         </g>
-        <g data-edge-from="topicdb" data-edge-to="body" data-edge-label="points to" data-edge-key="2" data-edge-id="w3">
-          <rect x="663.4" y="202" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="690" y="212" class="t-edge-default" font-size="8" text-anchor="middle">points to</text>
+        <g data-edge-from="topicdb" data-edge-to="body" data-edge-label="same transaction" data-edge-key="2" data-edge-id="w3">
+          <rect x="646.6" y="202" width="86.8" height="14" rx="3" class="c-mask"/>
+          <text x="690" y="212" class="t-edge-default" font-size="8" text-anchor="middle">same transaction</text>
         </g>
         <g data-edge-from="cluster" data-edge-to="nodedb" data-edge-label="state" data-edge-key="3" data-edge-id="w4">
           <rect x="243.5" y="146" width="34" height="14" rx="3" class="c-mask"/>

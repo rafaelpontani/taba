@@ -8,6 +8,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use super::wire;
 use super::{
     AckRegisterRequest, BackupSaved, DefinitionApply, DefinitionProposal, FifoPublished,
     ForwardRequest, ForwardResponse, IdleResponse, JoinRequest, LossAck, LossRecord, MessageRecord,
@@ -41,6 +42,27 @@ pub struct HttpReply {
 
 const JSON: &str = "application/json";
 const NDJSON: &str = "application/x-ndjson";
+
+/// The route that carries the message operations (`register`, `commit` and `rollback` of a write, an invisibility or
+/// an ack) between nodes, in protobuf.
+pub const BATCH_PATH: &str = "/cluster/batch";
+
+/// `415` if the call does not declare a protobuf body.
+fn require_protobuf(headers: &[(String, String)]) -> Result<(), TabaError> {
+    let media = headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+        .and_then(|(_, value)| value.split(';').next())
+        .map(|value| value.trim().to_ascii_lowercase());
+    if media.as_deref() == Some(wire::CONTENT_TYPE) {
+        Ok(())
+    } else {
+        Err(TabaError::new(
+            ErrorCode::MediaUnsupported,
+            "Use `Content-Type: application/x-protobuf`.",
+        ))
+    }
+}
 
 fn json_headers() -> Vec<(String, String)> {
     vec![("content-type".to_owned(), JSON.to_owned())]
@@ -410,6 +432,12 @@ impl Request {
                 format!("/cluster/topics/{topic}/prune"),
                 &serde_json::json!({ "pruneId": prune_id }),
             ),
+            Request::Batch(entries) => HttpCall {
+                method: "POST".to_owned(),
+                path: BATCH_PATH.to_owned(),
+                headers: vec![("content-type".to_owned(), wire::CONTENT_TYPE.to_owned())],
+                body: wire::encode_batch(entries),
+            },
             Request::TopicStats => get_call("/cluster/stats/topics".to_owned()),
             Request::TopicGroups { topic } => {
                 get_call(format!("/cluster/stats/topics/{topic}/groups"))
@@ -441,6 +469,40 @@ impl Request {
                 }
             }
         }
+    }
+
+    /// Like [`from_http`](Self::from_http), for what arrives on the cluster port: the message operations travel in
+    /// `POST /cluster/batch` and have no route of their own (`from_http` still reads their form, because that is
+    /// how the synchronization log keeps the events it receives).
+    pub fn from_wire(
+        method: &str,
+        path_and_query: &str,
+        headers: &[(String, String)],
+        body: &[u8],
+    ) -> Result<Request, TabaError> {
+        // Decided by the path, before the body is read: the old form must be a `404` however its body looks.
+        let path = path_and_query.split('?').next().unwrap_or_default();
+        let segments: Vec<&str> = path.trim_matches('/').split('/').collect();
+        let is_phase = |s: &&str| matches!(*s, "register" | "commit" | "rollback");
+        let one_operation = match segments.as_slice() {
+            ["cluster", "topics", _, "messages", _, phase] => is_phase(phase),
+            [
+                "cluster",
+                "topics",
+                _,
+                "messages",
+                _,
+                "visibility" | "ack",
+                phase,
+            ] => is_phase(phase),
+            ["cluster", "topics", _, "messages", "take"]
+            | ["cluster", "topics", _, "fifo", "publish"] => true,
+            _ => false,
+        };
+        if one_operation && method.eq_ignore_ascii_case("POST") {
+            return Err(TabaError::route_not_found());
+        }
+        Self::from_http(method, path_and_query, headers, body)
     }
 
     /// The inverse of [`to_http`](Self::to_http): reads a call that arrived on the cluster port.
@@ -608,6 +670,10 @@ impl Request {
                     step: parse_step::<AckRegisterRequest>(phase, headers, body)?,
                 })
             }
+            ["cluster", "batch"] if post() => {
+                require_protobuf(headers)?;
+                Ok(Request::Batch(wire::decode_batch(body)?))
+            }
             ["cluster", "vote-remove"] if post() => {
                 Ok(Request::Vote(parse_body::<VoteRequest>(headers, body)?))
             }
@@ -702,6 +768,7 @@ impl Request {
             serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))
         };
         match self {
+            Request::Batch(_) => wire::decode_results(&reply.body).map(Response::Batch),
             Request::ListNodes | Request::Join(_) => {
                 let table: MemberTable = serde_json::from_value(json(&reply)?)
                     .map_err(|e| unreadable(&e.to_string()))?;
@@ -850,6 +917,11 @@ impl Response {
         match self {
             Response::Members(table) => json(&table),
             Response::Ack(ack) => json(&ack),
+            Response::Batch(results) => HttpReply {
+                status: 200,
+                headers: vec![("content-type".to_owned(), wire::CONTENT_TYPE.to_owned())],
+                body: wire::encode_results(&results),
+            },
             Response::Definition(change) => json(&change),
             Response::Taken(taken) => json(&taken),
             Response::Idle(idle) => json(&idle),

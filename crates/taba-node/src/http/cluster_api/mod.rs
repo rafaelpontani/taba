@@ -21,10 +21,14 @@ use tracing::Instrument;
 use super::AppState;
 use super::common::ApiError;
 use crate::cluster::protocol::Request;
+use crate::cluster::protocol::http::BATCH_PATH;
 use crate::cluster::transport::ChannelOpen;
 use crate::cluster::transport::http::bridge;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::telemetry::trace;
+
+/// What a batch can weigh beyond its items' bodies and the soft limit: the fields around each message.
+const BATCH_ENVELOPE_SLACK: usize = 64 * 1024;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -92,13 +96,32 @@ async fn dispatch(
         .uri
         .path_and_query()
         .map_or_else(|| parts.uri.path().to_owned(), |pq| pq.as_str().to_owned());
-    let body = to_bytes(body, usize::MAX).await.map_err(|_| {
-        ApiError(TabaError::new(
-            ErrorCode::ValidationFailed,
-            "Could not read the request body.",
-        ))
+    // A batch is cut by the sender at `cluster.batch.max-bytes`, soft: it stops adding items when it is reached, so it
+    // can pass it by one item, and an item is at most `message.max-bytes`. Beyond that (plus the envelope) it is refused
+    // before it is read.
+    let limit = if parts.uri.path() == BATCH_PATH {
+        let rules = service.rules();
+        rules
+            .batch_max_bytes
+            .saturating_add(rules.message_max_bytes)
+            .saturating_add(BATCH_ENVELOPE_SLACK)
+    } else {
+        usize::MAX
+    };
+    let body = to_bytes(body, limit).await.map_err(|_| {
+        if limit == usize::MAX {
+            ApiError(TabaError::new(
+                ErrorCode::ValidationFailed,
+                "Could not read the request body.",
+            ))
+        } else {
+            ApiError(TabaError::new(
+                ErrorCode::MessageTooLarge,
+                "The batch is larger than `cluster.batch.max-bytes` plus one message.",
+            ))
+        }
     })?;
-    let request = Request::from_http(parts.method.as_str(), &path_and_query, &headers, &body)?;
+    let request = Request::from_wire(parts.method.as_str(), &path_and_query, &headers, &body)?;
     let caller_ip = caller.ip().to_string();
     let handled = service.handle(&caller_ip, request);
     // A call that came from an operation with a trace continues the same trace on this node.

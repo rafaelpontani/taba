@@ -14,6 +14,7 @@ use serde_json::value::RawValue;
 use tokio::task::JoinSet;
 
 use super::coordinator::{self, Plan};
+use super::replica::{Replica, check_publish};
 use super::signals::Signals;
 use crate::cluster::members::Member;
 use crate::cluster::protocol::{
@@ -32,16 +33,23 @@ use crate::engine::messages::{
     Published, VisibilityUpdated,
 };
 use crate::engine::topics::{TopicView, Topics};
+use crate::storage::messages::MessageMeta;
 use crate::telemetry::metrics::{DELIVERY_TAKE, FIFO_FORWARD};
 
 /// One lock per FIFO (topic, group).
 type GroupLocks = Mutex<HashMap<(String, String), Arc<tokio::sync::Mutex<()>>>>;
+
+/// An item of a batch of publications: refused (the outer error), or drafted (the inner one is the error of a
+/// distributor's copy).
+type Drafted = Result<Result<(MessageMeta, bytes::Bytes), TabaError>, TabaError>;
 
 pub struct ClusterMessages {
     service: Arc<ClusterService>,
     messages: Arc<Messages>,
     topics: Arc<Topics>,
     signals: Arc<Signals>,
+    /// The replica of this node: the node alone takes each message through it (D191).
+    replica: Arc<Replica>,
     /// One publication at a time in each FIFO group of this node (the primary): it is what orders the group and
     /// serializes deduplication (doc 17, sections 16.4 and 16.7).
     group_locks: GroupLocks,
@@ -69,12 +77,14 @@ impl ClusterMessages {
         messages: Arc<Messages>,
         topics: Arc<Topics>,
         signals: Arc<Signals>,
+        replica: Arc<Replica>,
     ) -> Arc<Self> {
         Arc::new(Self {
             service,
             messages,
             topics,
             signals,
+            replica,
             group_locks: Mutex::new(HashMap::new()),
         })
     }
@@ -93,7 +103,7 @@ impl ClusterMessages {
         &self,
         topic: &str,
         route: (u64, usize),
-        make: impl Fn(&str) -> Request,
+        make: impl FnOnce(&str) -> Request,
         commit: impl Fn(&str, OperationRef) -> Request,
         rollback: impl Fn(&str, OperationRef) -> Request,
         operation_id: &str,
@@ -183,9 +193,27 @@ impl ClusterMessages {
         let (meta, body) = self.messages.draft_publish(view, request)?;
         let topic = view.definition.name.clone();
         let id = meta.id.clone();
+        if self.alone(message_position(&id)) {
+            let result = self.publish_alone(&topic, meta, body).await;
+            coordinator::count(&self.service, result.is_ok());
+            return result.map(|()| (id, None));
+        }
+        let plan = self.publish_plan(&topic, &meta, body)?;
+        coordinator::run(&self.service, plan).await?;
+        Ok((id, None))
+    }
+
+    /// The two phases of a publication on a plain queue: the register carries the message to every responsible node.
+    fn publish_plan(
+        &self,
+        topic: &str,
+        meta: &MessageMeta,
+        body: bytes::Bytes,
+    ) -> Result<Plan, TabaError> {
+        let id = meta.id.clone();
         let record = MessageRecord {
             id: id.clone(),
-            topic: topic.clone(),
+            topic: topic.to_owned(),
             body,
             content_type: meta.content_type.clone(),
             group_id: meta.group_id.clone(),
@@ -199,17 +227,17 @@ impl ClusterMessages {
         };
         let operation_id = self.service.new_operation_id();
         let coordinator_id = self.service.node_id().to_owned();
-        let plan = self.operation_plan(
-            &topic,
+        self.operation_plan(
+            topic,
             (message_position(&id), 1),
             |op| Request::Write {
-                topic: topic.clone(),
+                topic: topic.to_owned(),
                 id: id.clone(),
                 step: Step::Register(MessageRegisterRequest {
                     operation_id: op.to_owned(),
                     coordinator_id: coordinator_id.clone(),
                     kind: WriteKind::Publish,
-                    message: record.clone(),
+                    message: record,
                     source_topic: None,
                 }),
             },
@@ -224,9 +252,465 @@ impl ClusterMessages {
                 step: Step::Rollback(op),
             },
             &operation_id,
-        )?;
-        coordinator::run(&self.service, plan).await?;
-        Ok((id, None))
+        )
+    }
+
+    // ---- The node alone (factor 1) ----
+
+    /// The node is the only responsible node of the position and the quorum is one (factor 1, D191): the two
+    /// phases would only talk to this node, so the operation goes straight to the engine, with the same check
+    /// and the same application the replica does on the register and on the commit.
+    fn alone(&self, position: u64) -> bool {
+        self.service.rules().quorum <= 1
+            && self.service.node_state() == NodeState::Active
+            && self
+                .service
+                .owners_of(position)
+                .is_ok_and(|owners| owners.len() == 1 && self.service.is_self(&owners[0]))
+    }
+
+    /// A batch of publications (`POST /topics/{topic}/messages/batch`) on a queue, or on a distributor with a single
+    /// queue. When the node is alone for all of them, the batch goes to the engine in one hold of the topic (D191);
+    /// otherwise the publications go through the two phases as groups (D198). `None` when that does not apply (FIFO,
+    /// more than one queue); the caller then takes each item through its single call. Nothing was stored in that case.
+    pub async fn publish_many(
+        self: &Arc<Self>,
+        topic: &str,
+        items: &[Result<PublishRequest, TabaError>],
+    ) -> Option<Vec<Result<Published, TabaError>>> {
+        let view = self.topics.get(topic).ok()?;
+        let (target, distributor) = match view.definition.prefixes() {
+            Some(prefixes) => {
+                if self.messages.distributor_max_targets() == Some(0) {
+                    return None;
+                }
+                let targets = self.topics.queues_with_prefix(prefixes);
+                let [target] = <[TopicView; 1]>::try_from(targets).ok()?;
+                (target, true)
+            }
+            None => (view, false),
+        };
+        if target.definition.queue().is_none_or(|q| q.fifo) {
+            return None;
+        }
+        // Each item is checked and drafted as in its single call; the drafts have no effect yet. The outer error
+        // refuses the call (as `publish` does); the inner one, on a distributor, is the copy's (as in
+        // `publish_distributor`).
+        type Draft = Result<(MessageMeta, bytes::Bytes), TabaError>;
+        let mut drafts: Vec<Result<Draft, TabaError>> = Vec::with_capacity(items.len());
+        let mut alone = true;
+        for item in items {
+            let draft = item.as_ref().map_err(Clone::clone).and_then(|request| {
+                if distributor {
+                    self.messages.validate_publish(request)?;
+                    if request.body.len() as u64 > self.messages.distributor_limit() {
+                        return Err(TabaError::new(
+                            ErrorCode::MessageTooLarge,
+                            format!(
+                                "The body exceeds the topic's limit of {} bytes.",
+                                self.messages.distributor_limit()
+                            ),
+                        ));
+                    }
+                    return Ok(self.messages.draft_publish(&target, request));
+                }
+                self.messages.draft_publish(&target, request).map(Ok)
+            });
+            let mut draft = draft;
+            if let Ok(Ok((meta, _))) = &mut draft {
+                // The position of a plain queue's message: what `alone` asks and what the engine stores.
+                meta.position = message_position(&meta.id);
+                alone = alone && self.alone(meta.position);
+            }
+            drafts.push(draft);
+        }
+        let name = target.definition.name.clone();
+        // The queue's histogram has the latency of the publications made to it (a distributor's copy does not
+        // count there, as in the single call).
+        let started = (!distributor).then(std::time::Instant::now);
+        if !alone {
+            let applied = self.publish_replicated(&name, &drafts, started).await;
+            return Some(self.published_of(topic, &name, distributor, drafts, applied));
+        }
+        let ready: Vec<(MessageMeta, bytes::Bytes, Option<std::time::Instant>)> = drafts
+            .iter()
+            .filter_map(|d| d.as_ref().ok()?.as_ref().ok())
+            .map(|(meta, body)| (meta.clone(), body.clone(), started))
+            .collect();
+        let size: u64 = ready.iter().map(|(_, body, _)| body.len() as u64).sum();
+        let applied = if self.messages.publish_is_light(&name, size) {
+            self.messages.publish_alone_batch(&name, ready)
+        } else {
+            let (messages, name) = (self.messages.clone(), name.clone());
+            match tokio::task::spawn_blocking(move || messages.publish_alone_batch(&name, ready))
+                .await
+            {
+                Ok(applied) => applied,
+                Err(_) => return Some(items.iter().map(|_| Err(TabaError::internal())).collect()),
+            }
+        };
+        let committed = applied.iter().filter(|r| r.is_ok()).count() as u64;
+        coordinator::count_many(&self.service, committed, applied.len() as u64 - committed);
+        Some(self.published_of(topic, &name, distributor, drafts, applied))
+    }
+
+    /// The publications of a batch that has another responsible node: one plan per drafted message, all through the
+    /// two phases as groups (D198). One result per drafted message, in order, as the engine's batch returns them.
+    async fn publish_replicated(
+        &self,
+        name: &str,
+        drafts: &[Drafted],
+        started: Option<std::time::Instant>,
+    ) -> Vec<Result<(), TabaError>> {
+        let planned: Vec<Result<Plan, TabaError>> = drafts
+            .iter()
+            .filter_map(|d| d.as_ref().ok()?.as_ref().ok())
+            .map(|(meta, body)| self.publish_plan(name, meta, body.clone()))
+            .collect();
+        let mut plans = Vec::with_capacity(planned.len());
+        let mut slots = Vec::with_capacity(planned.len());
+        for plan in planned {
+            match plan {
+                Ok(plan) => {
+                    slots.push(None);
+                    plans.push(plan);
+                }
+                Err(error) => slots.push(Some(Err(error))),
+            }
+        }
+        let mut ran = coordinator::run_many(&self.service, plans)
+            .await
+            .into_iter();
+        let applied: Vec<Result<(), TabaError>> = slots
+            .into_iter()
+            .map(|slot| {
+                slot.unwrap_or_else(|| ran.next().unwrap_or_else(|| Err(TabaError::internal())))
+            })
+            .collect();
+        if let Some(started) = started {
+            let elapsed = started.elapsed().as_secs_f64();
+            for _ in applied.iter().filter(|r| r.is_ok()) {
+                self.messages.record_publish_latency(name, elapsed);
+            }
+        }
+        applied
+    }
+
+    /// The answer of each item of a batch of publications, from its draft and from what the engine (or the two phases)
+    /// did with the drafted messages, in order.
+    fn published_of(
+        &self,
+        topic: &str,
+        name: &str,
+        distributor: bool,
+        drafts: Vec<Drafted>,
+        applied: Vec<Result<(), TabaError>>,
+    ) -> Vec<Result<Published, TabaError>> {
+        let mut applied = applied.into_iter();
+        drafts
+            .into_iter()
+            .map(|draft| {
+                let copy = draft?.and_then(|(meta, _)| {
+                    applied
+                        .next()
+                        .unwrap_or_else(|| Err(TabaError::internal()))?;
+                    Ok(meta.id)
+                });
+                if !distributor {
+                    return copy.map(|id| Published::Queue {
+                        id,
+                        duplicate: None,
+                    });
+                }
+                let deliveries = vec![DistributorDelivery {
+                    topic: name.to_owned(),
+                    result: copy,
+                }];
+                self.messages.record_distributor(topic, &deliveries);
+                Ok(Published::Distributor { deliveries })
+            })
+            .collect()
+    }
+
+    /// A batch of acks (`POST /topics/{topic}/messages/ack`) on a plain queue. When the node is alone for all of them,
+    /// one hold of the topic for the whole batch (D191); otherwise the acks go through the two phases as groups (D198).
+    /// `None` on a FIFO queue; nothing was applied then.
+    pub async fn ack_many(
+        self: &Arc<Self>,
+        topic: &str,
+        items: &[(String, Option<String>)],
+    ) -> Option<Vec<Result<(), TabaError>>> {
+        let view = self.messages.queue_view(topic).ok()?;
+        if view.definition.queue().is_some_and(|q| q.fifo) {
+            return None;
+        }
+        let name = view.definition.name.clone();
+        let mut checked = Vec::with_capacity(items.len());
+        let mut alone = true;
+        for (id, token) in items {
+            let receipt = self
+                .messages
+                .ack_params(token.as_deref())
+                .and_then(|receipt| {
+                    crate::cluster::protocol::validate_message_path(&name, id)?;
+                    Ok(receipt)
+                });
+            alone = alone && self.alone(message_position(id));
+            checked.push(receipt.map(|receipt| (id.clone(), receipt)));
+        }
+        if !alone {
+            let mut plans = Vec::with_capacity(checked.len());
+            let mut slots = Vec::with_capacity(checked.len());
+            for item in checked {
+                match item.and_then(|(id, receipt)| {
+                    self.ack_plan(&name, &id, &receipt, (message_position(&id), 1))
+                }) {
+                    Ok(plan) => {
+                        slots.push(None);
+                        plans.push(plan);
+                    }
+                    Err(error) => slots.push(Some(Err(error))),
+                }
+            }
+            let mut ran = coordinator::run_many(&self.service, plans)
+                .await
+                .into_iter();
+            return Some(
+                slots
+                    .into_iter()
+                    .map(|slot| {
+                        slot.unwrap_or_else(|| {
+                            ran.next().unwrap_or_else(|| Err(TabaError::internal()))
+                        })
+                    })
+                    .collect(),
+            );
+        }
+        // Each message is taken through the replica first, as in the single call; an `id` that repeats in the
+        // batch is already taken by the batch itself and goes in order (the second ack finds it gone).
+        let (replica, messages) = (self.replica.clone(), self.messages.clone());
+        let applied = tokio::task::spawn_blocking(move || {
+            let mut taken = std::collections::HashSet::new();
+            let held: Vec<_> = checked
+                .iter()
+                .map(|item| match item {
+                    Ok((id, _)) if !taken.insert(id.as_str()) => Ok(None),
+                    Ok((id, _)) => replica.hold(&name, id).map(Some),
+                    Err(error) => Err(error.clone()),
+                })
+                .collect();
+            let free: Vec<(String, String)> = checked
+                .iter()
+                .zip(&held)
+                .filter_map(|(item, held)| match (item, held) {
+                    (Ok(pair), Ok(_)) => Some(pair.clone()),
+                    _ => None,
+                })
+                .collect();
+            let mut done = messages.ack_alone_batch(&name, &free).into_iter();
+            held.into_iter()
+                .map(|held| match held {
+                    Ok(_) => done.next().unwrap_or_else(|| Err(TabaError::internal())),
+                    Err(error) => Err(error),
+                })
+                .collect::<Vec<_>>()
+        })
+        .await
+        .ok()?;
+        let committed = applied.iter().filter(|r| r.is_ok()).count() as u64;
+        coordinator::count_many(&self.service, committed, applied.len() as u64 - committed);
+        Some(applied)
+    }
+
+    /// With factor 1 and quorum 1, a message this node owns has no other responsible node: what its index
+    /// chooses to deliver is always the node alone (D191).
+    fn alone_owner(&self) -> bool {
+        let rules = self.service.rules();
+        rules.replication_factor <= 1
+            && rules.quorum <= 1
+            && self.service.node_state() == NodeState::Active
+    }
+
+    /// The `GET` of the node alone, in one blocking call: chooses the messages, takes each one through the
+    /// replica, applies the deliveries in one hold of the topic, puts back those that did not close and counts
+    /// the rest. Returns the delivered and how many did not close.
+    async fn take_alone(
+        &self,
+        view: &TopicView,
+        max: usize,
+        visibility_secs: u64,
+        started: std::time::Instant,
+    ) -> Result<(Vec<Candidate>, usize), TabaError> {
+        let (replica, messages, view) = (self.replica.clone(), self.messages.clone(), view.clone());
+        let span = tracing::Span::current();
+        let (confirmed, failed) = tokio::task::spawn_blocking(move || {
+            span.in_scope(|| -> Result<_, TabaError> {
+                let topic = view.definition.name.as_str();
+                let candidates = messages.take_candidates(&view, max, visibility_secs)?;
+                let held: Vec<_> = candidates
+                    .iter()
+                    .map(|c| replica.hold(topic, &c.meta.id).ok())
+                    .collect();
+                let free: Vec<(String, u64, u32, String)> = candidates
+                    .iter()
+                    .zip(&held)
+                    .filter(|(_, held)| held.is_some())
+                    .map(|(c, _)| {
+                        (
+                            c.meta.id.clone(),
+                            c.meta.invisible_until_ms,
+                            c.meta.delivery_count,
+                            c.meta.receipt_token.clone().unwrap_or_default(),
+                        )
+                    })
+                    .collect();
+                let mut closed = messages.deliver_alone(topic, &free).into_iter();
+                let ok: Vec<bool> = held
+                    .iter()
+                    .map(|held| held.is_some() && closed.next().unwrap_or(false))
+                    .collect();
+                drop(held);
+                let (mut confirmed, mut failed) = (Vec::new(), 0usize);
+                for (candidate, ok) in candidates.into_iter().zip(ok) {
+                    if ok {
+                        confirmed.push(candidate);
+                    } else {
+                        failed += 1;
+                        messages.abort_take(topic, &candidate);
+                    }
+                }
+                let refs: Vec<&Candidate> = confirmed.iter().collect();
+                messages.finish_take(topic, &refs, started);
+                Ok((confirmed, failed))
+            })
+        })
+        .await
+        .map_err(|_| TabaError::internal())??;
+        coordinator::count_many(&self.service, confirmed.len() as u64, failed as u64);
+        Ok((confirmed, failed))
+    }
+
+    /// Tells the other responsible nodes of each message about the deliveries this node, the owner, already made
+    /// (D199): one group per node, in the background, which the node applies at once. A node of an earlier version, which
+    /// does not know that kind of item, gets the same delivery as a register and a commit. A node that does not get it
+    /// (it is down, the call failed) keeps the delivery before: if it becomes the owner, the message can be delivered
+    /// again before the deadline of this delivery, which the at-least-once delivery already allows.
+    fn replicate_deliveries(self: &Arc<Self>, topic: &str, delivered: &[Candidate]) {
+        if delivered.is_empty() {
+            return;
+        }
+        let coordinator_id = self.service.node_id();
+        let mut by_member: HashMap<String, (Member, Vec<Request>)> = HashMap::new();
+        for candidate in delivered {
+            let Ok(owners) = self.service.owners_of(candidate.meta.position) else {
+                continue;
+            };
+            let register = VisibilityRegisterRequest {
+                operation_id: self.service.new_operation_id(),
+                coordinator_id: coordinator_id.clone(),
+                kind: VisibilityKind::Replicated,
+                invisible_until_ms: candidate.meta.invisible_until_ms,
+                receipt_token: candidate.meta.receipt_token.clone().unwrap_or_default(),
+                delivery_count: Some(candidate.meta.delivery_count),
+            };
+            for member in owners.into_iter().filter(|m| !self.service.is_self(m)) {
+                by_member
+                    .entry(member.node_id.clone())
+                    .or_insert_with(|| (member, Vec::new()))
+                    .1
+                    .push(Request::Visibility {
+                        topic: topic.to_owned(),
+                        id: candidate.meta.id.clone(),
+                        step: Step::Register(register.clone()),
+                    });
+            }
+        }
+        for (member, requests) in by_member.into_values() {
+            let service = self.service.clone();
+            tokio::spawn(async move {
+                // With the attempts of `write.retry.*`, as the other calls of an operation: a passing failure does not
+                // leave the copy behind.
+                let results = service
+                    .call_member_many_retrying(&member, requests.clone())
+                    .await;
+                // A node of an earlier version: the delivery as a register and a commit.
+                let (mut older, mut failed) = (Vec::new(), 0usize);
+                for (request, result) in requests.into_iter().zip(results) {
+                    match result {
+                        Ok(_) => {}
+                        Err(CallError::Remote(error))
+                            if error.code == ErrorCode::ValidationFailed =>
+                        {
+                            older.push(request);
+                        }
+                        Err(_) => failed += 1,
+                    }
+                }
+                if !older.is_empty() {
+                    failed += replicate_as_two_phases(&service, &member, older).await;
+                }
+                if failed > 0 {
+                    tracing::debug!(node_id = %member.node_id, failed, "deliveries not replicated to the node: it keeps the delivery before");
+                }
+            });
+        }
+    }
+
+    /// The publication of the node alone: the register's check and the commit's application in one step,
+    /// on this thread when it only touches memory.
+    async fn publish_alone(
+        &self,
+        topic: &str,
+        meta: MessageMeta,
+        body: bytes::Bytes,
+    ) -> Result<(), TabaError> {
+        let size = body.len() as u64;
+        let work = |replica: &Replica, messages: &Messages, topics: &Topics, topic: &str| {
+            let _held = replica.hold(topic, &meta.id)?;
+            check_publish(messages, topics, topic, &meta.id, &body)?;
+            messages.apply_publish(topic, meta, body)
+        };
+        if self.messages.publish_is_light(topic, size) {
+            return work(&self.replica, &self.messages, &self.topics, topic);
+        }
+        let (replica, messages, topics, topic) = (
+            self.replica.clone(),
+            self.messages.clone(),
+            self.topics.clone(),
+            topic.to_owned(),
+        );
+        tokio::task::spawn_blocking(move || work(&replica, &messages, &topics, &topic))
+            .await
+            .map_err(|_| TabaError::internal())?
+    }
+
+    /// The ack or the change of invisibility of the node alone: the register's check (the `receiptToken`) and
+    /// the commit's application.
+    async fn settle_alone(
+        &self,
+        topic: &str,
+        id: &str,
+        receipt_token: &str,
+        change: Option<u64>,
+    ) -> Result<(), TabaError> {
+        // The same check of the path the replica's route does.
+        crate::cluster::protocol::validate_message_path(topic, id)?;
+        let work =
+            move |replica: &Replica, messages: &Messages, topic: &str, id: &str, token: &str| {
+                let _held = replica.hold(topic, id)?;
+                messages.settle_alone(topic, id, token, change)
+            };
+        let result = if self.messages.is_in_memory(topic, id) {
+            work(&self.replica, &self.messages, topic, id, receipt_token)
+        } else {
+            let (replica, messages) = (self.replica.clone(), self.messages.clone());
+            let (topic, id, token) = (topic.to_owned(), id.to_owned(), receipt_token.to_owned());
+            tokio::task::spawn_blocking(move || work(&replica, &messages, &topic, &id, &token))
+                .await
+                .map_err(|_| TabaError::internal())?
+        };
+        coordinator::count(&self.service, result.is_ok());
+        result
     }
 
     // ---- Publishing to the FIFO queue ----
@@ -457,6 +941,16 @@ impl ClusterMessages {
                 format!("The publication matches more than {max} queues."),
             ));
         }
+        // A single queue goes on this task: a task per message would cost more than the publication.
+        if let [view] = targets.as_slice() {
+            let result = self.publish_queue(view, &request).await.map(|(id, _)| id);
+            let deliveries = vec![DistributorDelivery {
+                topic: view.definition.name.clone(),
+                result,
+            }];
+            self.messages.record_distributor(name, &deliveries);
+            return Ok(Published::Distributor { deliveries });
+        }
         let mut set = JoinSet::new();
         for (position, view) in targets.into_iter().enumerate() {
             let (me, request) = (self.clone(), request.clone());
@@ -493,19 +987,34 @@ impl ClusterMessages {
         let receipt = self.messages.ack_params(receipt_token)?;
         let topic = view.definition.name.clone();
         let route = self.route_of(&view, id, &receipt)?;
+        if route.1 == 1 && self.alone(route.0) {
+            return self.settle_alone(&topic, id, &receipt, None).await;
+        }
+        let plan = self.ack_plan(&topic, id, &receipt, route)?;
+        coordinator::run(&self.service, plan).await
+    }
+
+    /// The two phases of an ack: the register checks the `receiptToken` on every responsible node.
+    fn ack_plan(
+        &self,
+        topic: &str,
+        id: &str,
+        receipt: &str,
+        route: (u64, usize),
+    ) -> Result<Plan, TabaError> {
         let delete_at_ms = (route.1 > 1).then(|| self.messages.fifo_delete_at(id));
         let operation_id = self.service.new_operation_id();
         let coordinator_id = self.service.node_id().to_owned();
-        let plan = self.operation_plan(
-            &topic,
+        self.operation_plan(
+            topic,
             route,
             |op| Request::Ack {
-                topic: topic.clone(),
+                topic: topic.to_owned(),
                 id: id.to_owned(),
                 step: Step::Register(AckRegisterRequest {
                     operation_id: op.to_owned(),
                     coordinator_id: coordinator_id.clone(),
-                    receipt_token: receipt.clone(),
+                    receipt_token: receipt.to_owned(),
                     delete_at_ms,
                     discard: false,
                 }),
@@ -521,8 +1030,7 @@ impl ClusterMessages {
                 step: Step::Rollback(op),
             },
             &operation_id,
-        )?;
-        coordinator::run(&self.service, plan).await
+        )
     }
 
     /// The release of the restoration discards a FIFO duplicate this node, the group's primary, accepted while the
@@ -580,6 +1088,14 @@ impl ClusterMessages {
             .visibility_params(receipt_token, visibility_timeout)?;
         let until_ms = self.messages.now_millis() + secs * 1000;
         let route = self.route_of(&view, id, &receipt)?;
+        if route.1 == 1 && self.alone(route.0) {
+            self.settle_alone(&view.definition.name, id, &receipt, Some(until_ms))
+                .await?;
+            return Ok(VisibilityUpdated {
+                id: id.to_owned(),
+                invisible_until_ms: until_ms,
+            });
+        }
         self.replicate_visibility(
             view.definition.name.as_str(),
             id,
@@ -835,6 +1351,16 @@ impl ClusterMessages {
         let started = std::time::Instant::now();
         let topic = view.definition.name.clone();
         let fifo = view.definition.queue().is_some_and(|q| q.fifo);
+        if !fifo && self.alone_owner() {
+            return self.take_alone(view, max, visibility_secs, started).await;
+        }
+        // On a plain queue the owner delivers alone, as the node of factor 1 does, and the other responsible nodes learn
+        // of the deliveries after them, in the background (D199).
+        if !fifo && self.service.node_state() == NodeState::Active {
+            let (confirmed, failed) = self.take_alone(view, max, visibility_secs, started).await?;
+            self.replicate_deliveries(&topic, &confirmed);
+            return Ok((confirmed, failed));
+        }
         let attempts = self.service.rules().get_max_attempts;
         let (mut confirmed, mut failed) = (Vec::new(), 0usize);
         let mut aborted = Vec::new();
@@ -1028,6 +1554,55 @@ impl ClusterMessages {
             })
             .unwrap_or_default()
     }
+}
+
+/// The deliveries of [`ClusterMessages::replicate_deliveries`] to a node that does not know the `replicated` kind: each
+/// as the register of a delivery, then the commit of the ones it accepted. Returns how many did not get there.
+async fn replicate_as_two_phases(
+    service: &Arc<ClusterService>,
+    member: &Member,
+    requests: Vec<Request>,
+) -> usize {
+    let mut registers = Vec::with_capacity(requests.len());
+    let mut commits = Vec::with_capacity(requests.len());
+    for request in requests {
+        let Request::Visibility {
+            topic,
+            id,
+            step: Step::Register(mut register),
+        } = request
+        else {
+            continue;
+        };
+        register.kind = VisibilityKind::Delivery;
+        commits.push(Request::Visibility {
+            topic: topic.clone(),
+            id: id.clone(),
+            step: Step::Commit(OperationRef {
+                operation_id: register.operation_id.clone(),
+            }),
+        });
+        registers.push(Request::Visibility {
+            topic,
+            id,
+            step: Step::Register(register),
+        });
+    }
+    let total = registers.len();
+    let registered = service.call_member_many(member, registers).await;
+    let accepted: Vec<Request> = commits
+        .into_iter()
+        .zip(&registered)
+        .filter(|(_, result)| result.is_ok())
+        .map(|(commit, _)| commit)
+        .collect();
+    let committed = service
+        .call_member_many(member, accepted)
+        .await
+        .iter()
+        .filter(|result| result.is_ok())
+        .count();
+    total - committed
 }
 
 /// The message a `take` brought, as the client's `GET` returns it.

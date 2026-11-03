@@ -1,0 +1,27 @@
+# RabbitMQ: três nós no mesmo cluster (descoberta classic_config), filas de quórum com um membro em cada nó. Cada nó
+# tem os mesmos limites de CPU e memória (BENCH_CPUS e BENCH_MEMORY são por nó). O cliente conecta direto nos nós.
+x-node: &node
+  image: rabbitmq:3.13.7
+  cpus: ${BENCH_CPUS}
+  mem_limit: ${BENCH_MEMORY}
+  env_file: env-${BENCH_DURABILITY}
+  environment:
+    RABBITMQ_ERLANG_COOKIE: bench-cookie-0123456789
+  volumes:
+    - ./rabbitmq-cluster.conf:/etc/rabbitmq/conf.d/90-cluster.conf:ro
+  healthcheck:
+    test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+    interval: 3s
+    timeout: 10s
+    retries: 80
+
+services:
+  node-0:
+    <<: *node
+    hostname: node-0
+  node-1:
+    <<: *node
+    hostname: node-1
+  node-2:
+    <<: *node
+    hostname: node-2

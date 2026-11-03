@@ -356,7 +356,7 @@ async fn a_node_that_is_not_the_primary_of_the_group_answers_421() {
     let record = MessageRecord {
         id: FIFO_PLACEHOLDER_ID.into(),
         topic: TOPIC.into(),
-        body: br#"{"a":1}"#.to_vec(),
+        body: br#"{"a":1}"#.to_vec().into(),
         content_type: "application/json".into(),
         group_id: Some("g1".into()),
         deduplication_id: None,
@@ -403,7 +403,7 @@ fn draft(
         .draft_fifo_publish(
             &view,
             &taba_node::engine::messages::PublishRequest {
-                body: body.as_bytes().to_vec(),
+                body: body.as_bytes().to_vec().into(),
                 content_type: Some("application/json".into()),
                 group_id: Some(group.to_owned()),
                 deduplication_id: Some(key.to_owned()),
@@ -651,4 +651,47 @@ async fn auto_create_accepts_fifo_with_any_replication_factor() {
         .unwrap();
     assert_eq!(published.status(), 201, "{:?}", published.text().await);
     single.shutdown().await;
+}
+
+/// UC: UC-CNS-019, UC-CNS-021, UC-INV-012
+#[tokio::test]
+async fn a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready() {
+    let cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    let topic_id = fifo_queue(cluster.node(1), TOPIC).await;
+    for n in 0..3 {
+        let published = publish(cluster.node(1), "g1", None, &format!("{{\"n\":{n}}}")).await;
+        assert_eq!(published.status(), 201);
+    }
+    let owner = owners_of_group(&cluster, &topic_id, "g1")[0];
+
+    // On FIFO the delivery still goes through the quorum (D199 only spares the plain queue): no invisibility register
+    // reaches another node, so the quorum closes for no one.
+    for number in 1..=3 {
+        cluster
+            .network
+            .lose_kind(&host_of(number), "visibility-register", 1_000_000);
+    }
+    let response = cluster
+        .node(owner)
+        .client_get(&format!(
+            "/topics/{TOPIC}/messages?maxMessages=10&visibilityTimeout=60"
+        ))
+        .await;
+    assert!(response.headers().contains_key("retry-after"));
+    assert_eq!(
+        common::error_code(response, 503).await,
+        "delivery.unavailable"
+    );
+
+    // The messages that failed never entered the response and stay ready, as they were.
+    for number in 1..=3 {
+        cluster
+            .network
+            .lose_kind(&host_of(number), "visibility-register", 0);
+    }
+    let got = get_some(cluster.node(owner), 10).await;
+    assert!(!got.is_empty());
+    assert!(got.iter().all(|m| m["deliveryCount"] == 1));
+    cluster.shutdown().await;
 }

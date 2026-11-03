@@ -8,6 +8,11 @@ use taba_node::config::Config;
 use taba_node::node::{self, Deps};
 use taba_node::{cli, telemetry};
 
+// O alocador do musl (a imagem é estática) serializa as threads num lock global e ocupava cerca de um quinto da CPU
+// do nó sob carga; o mimalloc tem cache por thread.
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let args = match cli::parse(std::env::args().skip(1)) {
