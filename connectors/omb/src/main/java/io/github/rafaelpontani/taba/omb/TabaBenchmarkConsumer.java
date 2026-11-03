@@ -7,7 +7,10 @@ import io.openmessaging.benchmark.driver.BenchmarkConsumer;
 import io.openmessaging.benchmark.driver.ConsumerCallback;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,7 +91,14 @@ final class TabaBenchmarkConsumer implements BenchmarkConsumer {
                     } else {
                         long refused = results.stream().filter(r -> !r.isOk()).count();
                         if (refused > 0) {
-                            LOG.warn("{} of {} acks on {} were refused", refused, messages.size(), queue);
+                            // Which errors, so a run says why (a stale receipt is a redelivery, a 503 a quorum).
+                            Map<String, Long> codes = results.stream()
+                                    .filter(r -> !r.isOk())
+                                    .collect(Collectors.groupingBy(
+                                            r -> r.getStatus() + " " + r.getErrorCode(),
+                                            TreeMap::new,
+                                            Collectors.counting()));
+                            LOG.warn("{} of {} acks on {} were refused: {}", refused, messages.size(), queue, codes);
                         }
                     }
                 });

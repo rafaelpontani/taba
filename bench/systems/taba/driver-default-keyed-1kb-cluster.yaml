@@ -12,4 +12,4 @@ consumer:
   maxMessages: 500
   visibilityTimeout: 60
   ackBatch: true
-  pollers: 4
+  pollers: 16
