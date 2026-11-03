@@ -980,11 +980,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-CNS-019
 
-**Caso:** O registro de invisibilidade de uma mensagem falha e há outras prontas  
+**Caso:** O registro de invisibilidade de uma mensagem falha e há outras prontas (fila FIFO; na fila comum o dono entrega sozinho, D199)  
 **Então:** o rollback segue em outra thread, o `GET` passa ao próximo ID sem esperar, e a mensagem que falhou **nunca** entra na resposta.  
 **Nível:** C  
 **Testes:**
-  - `tests/replication.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
+  - `tests/fifo_cluster.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
 
 ---
 
@@ -1004,13 +1004,13 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Então:** `503` `delivery.unavailable` com `Retry-After`, nunca `200` vazio.  
 **Nível:** C  
 **Testes:**
-  - `tests/replication.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
+  - `tests/fifo_cluster.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
 
 ---
 
 ### UC-CNS-022
 
-**Caso:** O número de falhas toleradas por `GET` é limitado por `delivery.get.max-attempts`; esgotado, aplica-se UC-CNS-020 ou UC-CNS-021.  
+**Caso:** O número de falhas toleradas por `GET` é limitado por `delivery.get.max-attempts`; esgotado, aplica-se UC-CNS-020 ou UC-CNS-021. Só na fila FIFO: na fila comum o dono entrega sozinho (D199, UC-ENT-032) e nenhum registro pode falhar.  
 **Nível:** C  
 **Testes:**
   - `tests/volatile_cluster.rs::a_get_tries_the_next_ids_after_a_failed_registration_up_to_the_attempt_limit`
@@ -5056,6 +5056,17 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-ESC-042
+
+**Caso:** Um lote do cliente com outro nó responsável passa pelas duas fases em grupos (D198): as operações com os mesmos nós responsáveis são registradas, decididas e confirmadas juntas, e o lote entre nós responde a um grupo uma vez só, na ordem dele, mesmo quando os seus itens saem em lotes diferentes  
+**Então:** toda publicação do lote é `201`, e as fases de um lote de 100 publicações chegam aos outros dois nós de um cluster de três nós em no máximo 12 chamadas.  
+**Nível:** U, C  
+**Testes:**
+  - `tests/batch.rs::a_batch_of_publications_goes_through_each_phase_in_one_call_per_node_and_group`
+  - `src/cluster/service/batch/tests.rs::a_group_is_answered_once_in_its_order_even_when_its_items_leave_in_different_batches`
+
+---
+
 
 ## ANE: Anel de hash, blocos e papéis
 
@@ -5602,6 +5613,18 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-ENT-032
+
+**Caso:** Numa fila comum em cluster, o dono entrega sozinho e os outros nós responsáveis sabem da entrega depois dela (D199)  
+**Então:** o `GET` não faz `commit` de entrega nem espera outro nó: entrega mesmo quando nenhum outro nó é alcançável, e esses nós ficam com a entrega de antes; quando são alcançáveis, toda cópia termina com o `receiptToken` da entrega; um ack que chega às cópias antes da publicação espera por ela e responde `204`.  
+**Nível:** C  
+**Testes:**
+  - `tests/batch.rs::on_a_plain_queue_the_owner_delivers_alone_and_the_other_nodes_learn_of_the_delivery_after`
+  - `tests/replication.rs::on_a_plain_queue_a_get_delivers_even_when_no_other_node_learns_of_the_delivery`
+  - `tests/replication.rs::an_ack_that_reaches_the_copies_before_the_publication_waits_for_them_instead_of_failing`
+
+---
+
 
 ## CAN: Canal permanente entre nós e filas de sinais
 
@@ -5969,7 +5992,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-INV-010
 
 **Caso:** O registro é exclusivo  
-**Então:** o nó rejeita se já há outro pendente para a mensagem (`409` `cluster.conflict`) ou, numa entrega, se ela já está invisível. Na alteração e no ack, também se o `receiptToken` não confere (`409` `message.stale-receipt`).  
+**Então:** o nó rejeita se já há outro pendente para a mensagem (`409` `cluster.conflict`) ou, numa entrega, se ela já está invisível. Na alteração e no ack, também se o `receiptToken` não confere (`409` `message.stale-receipt`). Na fila comum só o dono confere o prazo e o `receiptToken`; os outros nós só conferem que a mensagem existe (UC-INV-033).  
 **Nível:** C  
 **Testes:**
   - `src/engine/messages/tests/cluster.rs::the_registration_of_a_visibility_is_checked_against_the_message`
@@ -5987,7 +6010,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `tests/replication.rs::an_ack_that_cannot_reach_the_primary_fails_and_the_message_stays`
-  - `tests/replication.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
+  - `tests/fifo_cluster.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
 
 ---
 
@@ -6164,6 +6187,17 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `src/engine/messages/tests/cluster.rs::when_the_ring_changes_the_owner_is_recomputed_from_the_metadata`
+
+---
+
+### UC-INV-033
+
+**Caso:** Uma cópia de uma mensagem de fila comum que não é a dona dela (D199)  
+**Então:** no registro de uma entrega, de uma alteração ou de um ack ela só confere que a mensagem existe (uma que falta continua `404`), e uma entrega que o dono já fez, aplicada nela, nunca a leva de volta a um `deliveryCount` anterior (uma atrasada não muda nada, e uma de uma mensagem que ela não tem mais é ignorada).  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/tests/cluster.rs::on_a_plain_queue_a_copy_that_is_not_the_owner_only_checks_that_the_message_exists`
+  - `src/engine/messages/tests/cluster.rs::a_replicated_delivery_never_takes_the_copy_back_to_an_earlier_delivery`
 
 ---
 

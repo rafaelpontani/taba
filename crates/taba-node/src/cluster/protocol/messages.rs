@@ -218,6 +218,9 @@ pub struct MessageRegisterRequest {
 pub enum VisibilityKind {
     Delivery,
     Change,
+    /// A delivery the owner already made, on a plain queue (D199): the copy applies it at once, without a pending
+    /// operation, a check or a commit. A node of an earlier version answers the item with an error of an unknown kind.
+    Replicated,
 }
 
 /// `VisibilityRegisterRequest` (doc 06c): the deadline is an **absolute** instant computed by the owner.

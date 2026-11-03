@@ -42,6 +42,8 @@ enum VisibilityMode {
   VISIBILITY_MODE_UNSPECIFIED = 0;
   VISIBILITY_MODE_DELIVERY = 1;
   VISIBILITY_MODE_CHANGE = 2;
+  // A delivery the owner already made on a plain queue: applied at once on the copy, with no commit (D199).
+  VISIBILITY_MODE_REPLICATED = 3;
 }
 
 message Item {

@@ -3366,6 +3366,17 @@ impl Messages {
         let info = self
             .info_held(topic, state, id)?
             .ok_or_else(message_not_found)?;
+        // On a plain queue the owner delivers alone and the copies learn of the delivery after it (D199): a copy that is
+        // not the owner only checks that the message exists. The owner's check is the one that decides, because the
+        // quorum always includes it.
+        if !self.owns(topic, id, info.meta.group_id.as_deref())
+            && !self
+                .topics
+                .get(topic)
+                .is_ok_and(|view| view.definition.queue().is_some_and(|q| q.fifo))
+        {
+            return Ok(());
+        }
         match check {
             VisibilityCheck::Delivery if info.meta.invisible_until_ms > now => Err(TabaError::new(
                 ErrorCode::ClusterConflict,
@@ -3487,6 +3498,33 @@ impl Messages {
         // espera a gravação. Numa queda do processo antes dela, a mensagem volta com o contador e o prazo de antes.
         written.detach();
         closed
+    }
+
+    /// The deliveries the owner already made, on a copy of another responsible node (D199): for each `(id, deadline,
+    /// deliveryCount, receiptToken)`, what the commit of the delivery applies, without a register and without the
+    /// check, under one hold of the topic. A message the copy no longer has (an ack got there first) or whose counter
+    /// is already greater (a later delivery got there first) stays as it is.
+    pub fn apply_deliveries(
+        &self,
+        topic: &str,
+        items: &[(String, u64, u32, String)],
+    ) -> Vec<Result<(), TabaError>> {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let results = items
+            .iter()
+            .map(
+                |(id, until, count, token)| match self.info_held(topic, &mut state, id)? {
+                    Some(info) if info.meta.delivery_count <= *count => self
+                        .visibility_held(topic, &mut state, id, *until, Some((*count, token)), now)
+                        .map(|_| ()),
+                    _ => Ok(()),
+                },
+            )
+            .collect();
+        self.ready_changed(topic, &mut state);
+        results
     }
 
     /// The acks of a node that is the only responsible one (factor 1, D191), `(id, receiptToken)` each, under one

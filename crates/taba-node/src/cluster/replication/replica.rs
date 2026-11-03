@@ -227,6 +227,21 @@ fn apply(messages: &Messages, topic: &str, id: &str, action: Action) -> Result<(
     }
 }
 
+/// The new counter a delivery carries (required).
+pub(super) fn delivery_count_of(request: &VisibilityRegisterRequest) -> Result<u32, TabaError> {
+    request.delivery_count.ok_or_else(|| {
+        TabaError::new(
+            ErrorCode::ValidationRequired,
+            "The delivery requires `deliveryCount`.",
+        )
+        .with_detail(
+            "deliveryCount",
+            ErrorCode::ValidationRequired,
+            "Required field.",
+        )
+    })
+}
+
 /// The message a register of a publication brings, as the engine stores it.
 fn publish_of(record: crate::cluster::protocol::MessageRecord) -> (MessageMeta, Bytes) {
     let meta = MessageMeta {
@@ -495,22 +510,11 @@ impl Replica {
                 let (check, delivery) = match request.kind {
                     VisibilityKind::Delivery => (
                         VisibilityCheck::Delivery,
-                        Some((
-                            request.delivery_count.ok_or_else(|| {
-                                TabaError::new(
-                                    ErrorCode::ValidationRequired,
-                                    "The delivery requires `deliveryCount`.",
-                                )
-                                .with_detail(
-                                    "deliveryCount",
-                                    ErrorCode::ValidationRequired,
-                                    "Required field.",
-                                )
-                            })?,
-                            request.receipt_token.clone(),
-                        )),
+                        Some((delivery_count_of(&request)?, request.receipt_token.clone())),
                     ),
                     VisibilityKind::Change => (VisibilityCheck::Receipt, None),
+                    // Applied without a register: `handle_batch` sends it to `apply_deliveries`.
+                    VisibilityKind::Replicated => return Err(TabaError::internal()),
                 };
                 Ok(RegisterItem {
                     operation_id: request.operation_id,
@@ -739,6 +743,69 @@ impl Replica {
             .collect()
     }
 
+    /// The deliveries the owner already made (D199), `(operationId, topic, id, deadline, deliveryCount, receiptToken)`
+    /// each: applied at once, with no pending operation and no check, in one blocking call and one deferred scope for
+    /// the whole group (as the commits of [`commit_many`](Self::commit_many)). The results keep the order of `items`.
+    pub(super) async fn apply_deliveries(
+        &self,
+        items: Vec<(String, String, String, u64, u32, String)>,
+    ) -> Vec<Result<Ack, TabaError>> {
+        for _ in &items {
+            self.count("replicated");
+        }
+        let operation_ids: Vec<String> = items.iter().map(|(op, ..)| op.clone()).collect();
+        // By topic, keeping where each item goes back.
+        type Wanted = Vec<(String, u64, u32, String)>;
+        let mut by_topic: Vec<(String, Vec<usize>, Wanted)> = Vec::new();
+        for (index, (_, topic, id, until, count, token)) in items.into_iter().enumerate() {
+            let at = match by_topic.iter().position(|(t, ..)| *t == topic) {
+                Some(at) => at,
+                None => {
+                    by_topic.push((topic, Vec::new(), Vec::new()));
+                    by_topic.len() - 1
+                }
+            };
+            by_topic[at].1.push(index);
+            by_topic[at].2.push((id, until, count, token));
+        }
+        // The order in which the engine answers: topic after topic.
+        let order: Vec<usize> = by_topic
+            .iter()
+            .flat_map(|(_, indexes, _)| indexes.iter().copied())
+            .collect();
+        let messages = self.messages.clone();
+        let applied = tokio::task::spawn_blocking(move || {
+            messages.apply_replicated(|| {
+                by_topic
+                    .iter()
+                    .flat_map(|(topic, _, wanted)| messages.apply_deliveries(topic, wanted))
+                    .collect()
+            })
+        })
+        .await;
+        let mut placed: Vec<Option<Result<(), TabaError>>> =
+            (0..operation_ids.len()).map(|_| None).collect();
+        match applied {
+            Ok(applied) => {
+                for (index, result) in order.into_iter().zip(applied) {
+                    placed[index] = Some(result);
+                }
+            }
+            Err(_) => placed
+                .iter_mut()
+                .for_each(|slot| *slot = Some(Err(TabaError::internal()))),
+        }
+        placed
+            .into_iter()
+            .zip(&operation_ids)
+            .map(|(result, operation_id)| {
+                result
+                    .unwrap_or_else(|| Err(TabaError::internal()))
+                    .map(|()| ack(operation_id))
+            })
+            .collect()
+    }
+
     fn rollback(&self, operation_id: &str) -> Result<Ack, TabaError> {
         let mut state = self.lock();
         self.purge(&mut state);
@@ -910,22 +977,24 @@ impl Replica {
                 let (check, delivery) = match request.kind {
                     VisibilityKind::Delivery => (
                         VisibilityCheck::Delivery,
-                        Some((
-                            request.delivery_count.ok_or_else(|| {
-                                TabaError::new(
-                                    ErrorCode::ValidationRequired,
-                                    "The delivery requires `deliveryCount`.",
-                                )
-                                .with_detail(
-                                    "deliveryCount",
-                                    ErrorCode::ValidationRequired,
-                                    "Required field.",
-                                )
-                            })?,
-                            request.receipt_token.clone(),
-                        )),
+                        Some((delivery_count_of(&request)?, request.receipt_token.clone())),
                     ),
                     VisibilityKind::Change => (VisibilityCheck::Receipt, None),
+                    VisibilityKind::Replicated => {
+                        let count = delivery_count_of(&request)?;
+                        return self
+                            .apply_deliveries(vec![(
+                                request.operation_id,
+                                topic.to_owned(),
+                                id.to_owned(),
+                                request.invisible_until_ms,
+                                count,
+                                request.receipt_token,
+                            )])
+                            .await
+                            .pop()
+                            .unwrap_or_else(|| Err(TabaError::internal()));
+                    }
                 };
                 let (t, i, token) = (
                     topic.to_owned(),

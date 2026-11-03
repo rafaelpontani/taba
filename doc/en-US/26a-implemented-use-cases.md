@@ -980,11 +980,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-CNS-019
 
-**Case:** The invisibility register of a message fails and there are others ready  
+**Case:** The invisibility register of a message fails and there are others ready (FIFO queue; on a plain queue the owner delivers alone, D199)  
 **Then:** the rollback continues in another thread, the `GET` moves to the next ID without waiting, and the message that failed **never** enters the response.  
 **Level:** C  
 **Tests:**
-  - `tests/replication.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
+  - `tests/fifo_cluster.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
 
 ---
 
@@ -1004,13 +1004,13 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** `503` `delivery.unavailable` with `Retry-After`, never an empty `200`.  
 **Level:** C  
 **Tests:**
-  - `tests/replication.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
+  - `tests/fifo_cluster.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
 
 ---
 
 ### UC-CNS-022
 
-**Case:** The number of failures tolerated per `GET` is limited by `delivery.get.max-attempts`; when exhausted, UC-CNS-020 or UC-CNS-021 applies.  
+**Case:** The number of failures tolerated per `GET` is limited by `delivery.get.max-attempts`; when exhausted, UC-CNS-020 or UC-CNS-021 applies. Only on a FIFO queue: on a plain queue the owner delivers alone (D199, UC-ENT-032) and no register can fail.  
 **Level:** C  
 **Tests:**
   - `tests/volatile_cluster.rs::a_get_tries_the_next_ids_after_a_failed_registration_up_to_the_attempt_limit`
@@ -5056,6 +5056,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-ESC-042
+
+**Case:** A batch of the client with another responsible node goes through the two phases as groups (D198): the operations with the same responsible nodes are registered, decided and committed together, and the batch between nodes answers a group once, in its order, even when its items leave in different batches  
+**Then:** every publication of the batch is `201`, and the phases of a batch of 100 publications reach the other two nodes of a three-node cluster in at most 12 calls.  
+**Level:** U, C  
+**Tests:**
+  - `tests/batch.rs::a_batch_of_publications_goes_through_each_phase_in_one_call_per_node_and_group`
+  - `src/cluster/service/batch/tests.rs::a_group_is_answered_once_in_its_order_even_when_its_items_leave_in_different_batches`
+
+---
+
 
 ## ANE: Hash ring, blocks and roles
 
@@ -5602,6 +5613,18 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-ENT-032
+
+**Case:** On a plain queue in a cluster, the owner delivers alone and the other responsible nodes learn of the delivery after it (D199)  
+**Then:** the `GET` makes no `commit` of a delivery and does not wait for another node: it delivers even when no other node can be reached, and those nodes keep the delivery before; when they can be reached, every copy ends up with the `receiptToken` of the delivery; an ack that reaches the copies before the publication does waits for it and answers `204`.  
+**Level:** C  
+**Tests:**
+  - `tests/batch.rs::on_a_plain_queue_the_owner_delivers_alone_and_the_other_nodes_learn_of_the_delivery_after`
+  - `tests/replication.rs::on_a_plain_queue_a_get_delivers_even_when_no_other_node_learns_of_the_delivery`
+  - `tests/replication.rs::an_ack_that_reaches_the_copies_before_the_publication_waits_for_them_instead_of_failing`
+
+---
+
 
 ## CAN: Permanent channel between nodes and signal queues
 
@@ -5969,7 +5992,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-INV-010
 
 **Case:** The register is exclusive  
-**Then:** the node rejects if there is already another pending for the message (`409` `cluster.conflict`) or, on a delivery, if it is already invisible. On change and ack, also if the `receiptToken` does not match (`409` `message.stale-receipt`).  
+**Then:** the node rejects if there is already another pending for the message (`409` `cluster.conflict`) or, on a delivery, if it is already invisible. On change and ack, also if the `receiptToken` does not match (`409` `message.stale-receipt`). On a plain queue only the owner checks the deadline and the `receiptToken`; the other nodes only check that the message exists (UC-INV-033).  
 **Level:** C  
 **Tests:**
   - `src/engine/messages/tests/cluster.rs::the_registration_of_a_visibility_is_checked_against_the_message`
@@ -5987,7 +6010,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/replication.rs::an_ack_that_cannot_reach_the_primary_fails_and_the_message_stays`
-  - `tests/replication.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
+  - `tests/fifo_cluster.rs::a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready`
 
 ---
 
@@ -6164,6 +6187,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `src/engine/messages/tests/cluster.rs::when_the_ring_changes_the_owner_is_recomputed_from_the_metadata`
+
+---
+
+### UC-INV-033
+
+**Case:** A copy of a plain-queue message that is not its owner (D199)  
+**Then:** on the register of a delivery, a change or an ack it only checks that the message exists (a missing one is still `404`), and a delivery the owner already made, applied on it, never takes it back to an earlier `deliveryCount` (a late one changes nothing, and one for a message it no longer has is ignored).  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/tests/cluster.rs::on_a_plain_queue_a_copy_that_is_not_the_owner_only_checks_that_the_message_exists`
+  - `src/engine/messages/tests/cluster.rs::a_replicated_delivery_never_takes_the_copy_back_to_an_earlier_delivery`
 
 ---
 

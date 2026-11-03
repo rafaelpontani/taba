@@ -2,9 +2,11 @@
 //! writes that this node coordinates go to each responsible node in **one call** when several are waiting, instead of
 //! one call each.
 //!
-//! The coordinator does not know: it keeps calling [`ClusterService::call_member_retrying`] once per operation, with
-//! the same attempts and the same errors. Under that call, an operation for another node enters the queue of that
-//! node and waits for its result.
+//! The coordinator of one operation does not know: it keeps calling [`ClusterService::call_member_retrying`] once per
+//! operation, with the same attempts and the same errors. Under that call, an operation for another node enters the
+//! queue of that node and waits for its result. The coordinator of a **group** of operations (a batch of the client,
+//! the deliveries of a `GET`; D198) puts the whole group in the queue at once with [`ClusterService::call_member_many`]
+//! and waits once for all of it.
 //!
 //! **When a batch closes.** Each node has a queue (first in, first out) and [`IN_FLIGHT`] slots of batches on the way.
 //! A task per node repeats: wait for an item **and** a free slot, then close the batch at that instant with what is in
@@ -62,7 +64,66 @@ struct Pending {
     /// Estimated size for the byte limit.
     size: usize,
     queued: Instant,
-    reply: oneshot::Sender<Result<Response, CallError>>,
+    reply: Reply,
+}
+
+/// Where the result of an item goes: the caller of a single operation, or its place in a group.
+enum Reply {
+    One(oneshot::Sender<Result<Response, CallError>>),
+    /// An item of a group sent with [`ClusterService::call_batched_many`]: the group is answered once, when its last
+    /// item has a result, wherever its items went (they can be split over more than one batch).
+    Slot(Arc<Group>, usize),
+}
+
+/// The results of a group, filled as its items come back.
+struct Group {
+    state: Mutex<GroupState>,
+}
+
+struct GroupState {
+    results: Vec<Option<Result<Response, CallError>>>,
+    missing: usize,
+    reply: Option<oneshot::Sender<Vec<Result<Response, CallError>>>>,
+}
+
+impl Reply {
+    fn send(self, result: Result<Response, CallError>) {
+        match self {
+            Reply::One(reply) => {
+                let _ = reply.send(result);
+            }
+            Reply::Slot(group, index) => {
+                let mut state = group.state.lock().unwrap_or_else(|e| e.into_inner());
+                if state.results[index].replace(result).is_none() {
+                    state.missing -= 1;
+                }
+                if state.missing == 0
+                    && let Some(reply) = state.reply.take()
+                {
+                    let results = state
+                        .results
+                        .iter_mut()
+                        .map(|r| r.take().unwrap_or(Err(CallError::Timeout)))
+                        .collect();
+                    let _ = reply.send(results);
+                }
+            }
+        }
+    }
+
+    /// The caller gave up (its deadline passed or it was dropped).
+    fn is_closed(&self) -> bool {
+        match self {
+            Reply::One(reply) => reply.is_closed(),
+            Reply::Slot(group, _) => group
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .reply
+                .as_ref()
+                .is_none_or(oneshot::Sender::is_closed),
+        }
+    }
 }
 
 /// Whether the request is an operation the batch carries, and which one.
@@ -130,29 +191,82 @@ impl ClusterService {
                 .await;
         };
         let (reply, result) = oneshot::channel();
-        let traceparent = crate::telemetry::trace::current_traceparent();
-        let queue = self.batcher.queue_for(self, member);
-        {
-            let mut state = queue.state.lock().unwrap_or_else(|e| e.into_inner());
-            if state.member.addresses != member.addresses || state.member.port != member.port {
-                state.member = member.clone();
-            }
-            state.items.push_back(Pending {
-                request,
-                traceparent,
-                operation_id,
-                size: body + ITEM_OVERHEAD,
-                queued: Instant::now(),
-                reply,
-            });
-        }
-        queue.wake.notify_one();
+        let mut reply = Some(reply);
+        self.enqueue(member, vec![(request, operation_id, body)], |_| {
+            Reply::One(reply.take().expect("one item, one reply"))
+        });
         match tokio::time::timeout(self.rules.call_timeout, result).await {
             Ok(Ok(result)) => result,
             // The task that sends ended: the node is stopping.
             Ok(Err(_)) => Err(CallError::Unreachable("the node is stopping".into())),
             Err(_) => Err(CallError::Timeout),
         }
+    }
+
+    /// Sends a group of operations to the member through its queue, all at once, and waits once for all their results
+    /// (in the order of `requests`). The items enter the queue together and leave in as many batches as the limits
+    /// ask, mixed with the operations of other callers; the deadline is the `call_timeout`, as for one operation.
+    /// Every request must be a message operation ([`Request::is_batchable`]).
+    pub(super) async fn call_batched_many(
+        self: &Arc<Self>,
+        member: &Member,
+        requests: Vec<Request>,
+    ) -> Vec<Result<Response, CallError>> {
+        let total = requests.len();
+        if total == 0 {
+            return Vec::new();
+        }
+        let (reply, result) = oneshot::channel();
+        let group = Arc::new(Group {
+            state: Mutex::new(GroupState {
+                results: (0..total).map(|_| None).collect(),
+                missing: total,
+                reply: Some(reply),
+            }),
+        });
+        let items = requests
+            .into_iter()
+            .map(|request| {
+                let (operation_id, body) = operation_of(&request).unwrap_or_default();
+                (request, operation_id, body)
+            })
+            .collect();
+        self.enqueue(member, items, |index| Reply::Slot(group.clone(), index));
+        let failed = |error: CallError| (0..total).map(|_| Err(error.clone())).collect();
+        match tokio::time::timeout(self.rules.call_timeout, result).await {
+            Ok(Ok(results)) => results,
+            Ok(Err(_)) => failed(CallError::Unreachable("the node is stopping".into())),
+            Err(_) => failed(CallError::Timeout),
+        }
+    }
+
+    /// Puts the operations in the member's queue, in order, under one hold of the queue, and wakes its task.
+    fn enqueue(
+        self: &Arc<Self>,
+        member: &Member,
+        items: Vec<(Request, String, usize)>,
+        mut reply: impl FnMut(usize) -> Reply,
+    ) {
+        let traceparent = crate::telemetry::trace::current_traceparent();
+        let queue = self.batcher.queue_for(self, member);
+        let queued = Instant::now();
+        {
+            let mut state = queue.state.lock().unwrap_or_else(|e| e.into_inner());
+            if state.member.addresses != member.addresses || state.member.port != member.port {
+                state.member = member.clone();
+            }
+            for (index, (request, operation_id, body)) in items.into_iter().enumerate() {
+                state.items.push_back(Pending {
+                    request,
+                    traceparent: traceparent.clone(),
+                    operation_id,
+                    size: body + ITEM_OVERHEAD,
+                    queued,
+                    reply: reply(index),
+                });
+            }
+        }
+        queue.wake.notify_one();
     }
 }
 
@@ -283,7 +397,7 @@ async fn send(service: &Arc<ClusterService>, member: &Member, items: Vec<Pending
                 return;
             }
             for (result, (_, reply)) in results.into_iter().zip(waiting) {
-                let _ = reply.send(result.map_err(CallError::Remote));
+                reply.send(result.map_err(CallError::Remote));
             }
         }
         Ok(_) => fail_all(
@@ -294,12 +408,9 @@ async fn send(service: &Arc<ClusterService>, member: &Member, items: Vec<Pending
     }
 }
 
-fn fail_all(
-    waiting: Vec<(String, oneshot::Sender<Result<Response, CallError>>)>,
-    error: &CallError,
-) {
+fn fail_all(waiting: Vec<(String, Reply)>, error: &CallError) {
     for (_, reply) in waiting {
-        let _ = reply.send(Err(error.clone()));
+        reply.send(Err(error.clone()));
     }
 }
 

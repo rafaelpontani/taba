@@ -276,6 +276,8 @@ impl Replication {
         let mut registers: Vec<(usize, Result<replica::RegisterItem, TabaError>)> = Vec::new();
         let mut early: Vec<(usize, Result<Response, TabaError>)> = Vec::new();
         let mut rest: Vec<(usize, crate::cluster::protocol::wire::Entry)> = Vec::new();
+        // The deliveries the owner already made (D199), applied together without a register.
+        let mut deliveries: Vec<(usize, Delivery)> = Vec::new();
         let total = entries.len();
         for (index, entry) in entries.into_iter().enumerate() {
             let item = match entry {
@@ -285,8 +287,9 @@ impl Replication {
                     continue;
                 }
             };
+            let replicated = is_replicated(&item.request);
             let commit = commit_of(&item.request);
-            if commit.is_none() && !register_of(&item.request) {
+            if !replicated && commit.is_none() && !register_of(&item.request) {
                 rest.push((index, Ok(item)));
                 continue;
             }
@@ -294,6 +297,10 @@ impl Replication {
             match self.syncer.intercept(&item.request) {
                 Ok(Some(reply)) => early.push((index, Ok(reply))),
                 Err(error) => early.push((index, Err(error))),
+                Ok(None) if replicated => match delivery_of(item.request) {
+                    Ok(delivery) => deliveries.push((index, delivery)),
+                    Err(error) => early.push((index, Err(error))),
+                },
                 Ok(None) => match commit {
                     Some(operation_id) => commits.push((index, operation_id)),
                     None => registers.push((index, self.replica.register_item(item.request))),
@@ -345,12 +352,23 @@ impl Replication {
                 Err(error) => Err(error),
             }
         });
-        let (committed, registered, served) = futures_util::future::join3(
+        let (delivered_at, delivery_items): (Vec<usize>, Vec<_>) = deliveries.into_iter().unzip();
+        let delivered = async {
+            if delivery_items.is_empty() {
+                return Vec::new();
+            }
+            self.replica.apply_deliveries(delivery_items).await
+        };
+        let (committed, registered, delivered, served) = futures_util::future::join4(
             committed,
             registered,
+            delivered,
             futures_util::future::join_all(served),
         )
         .await;
+        for (index, result) in delivered_at.into_iter().zip(delivered) {
+            early.push((index, result.map(Response::Ack)));
+        }
         // Each result goes back to the position of its item.
         let mut placed: Vec<Option<Result<Response, TabaError>>> =
             (0..total).map(|_| None).collect();
@@ -465,6 +483,42 @@ impl Replication {
             _ => Err(TabaError::route_not_found()),
         }
     }
+}
+
+/// A delivery the owner already made (D199): `(operationId, topic, id, deadline, deliveryCount, receiptToken)`.
+type Delivery = (String, String, String, u64, u32, String);
+
+/// Whether the item is a delivery the owner already made (D199).
+fn is_replicated(request: &Request) -> bool {
+    matches!(
+        request,
+        Request::Visibility {
+            step: Step::Register(register),
+            ..
+        } if register.kind == super::protocol::VisibilityKind::Replicated
+    )
+}
+
+/// The delivery of an item [`is_replicated`], with the checks `handle` makes before serving it.
+fn delivery_of(request: Request) -> Result<Delivery, TabaError> {
+    let Request::Visibility {
+        topic,
+        id,
+        step: Step::Register(register),
+    } = request
+    else {
+        return Err(TabaError::internal());
+    };
+    super::protocol::validate_message_path(&topic, &id)?;
+    let count = replica::delivery_count_of(&register)?;
+    Ok((
+        register.operation_id,
+        topic,
+        id,
+        register.invisible_until_ms,
+        count,
+        register.receipt_token,
+    ))
 }
 
 /// Whether the item is the `register` of a publication, a delivery, a change of deadline or an ack that passes the

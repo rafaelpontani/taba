@@ -740,6 +740,68 @@ impl ClusterService {
             .await
     }
 
+    /// `call_member` for a group of message operations to the same member (D198): through its queue all at once, with
+    /// one wait for the whole group, when the batch is on; one call each otherwise. The results keep the order.
+    pub(crate) async fn call_member_many(
+        self: &Arc<Self>,
+        member: &Member,
+        requests: Vec<Request>,
+    ) -> Vec<Result<Response, CallError>> {
+        let batched = self.rules.batch_max_items > 1
+            && requests.iter().all(|request| {
+                if self.is_self(member) {
+                    batch::is_local_batchable(request)
+                } else {
+                    request.is_batchable()
+                }
+            });
+        if batched {
+            return self.call_batched_many(member, requests).await;
+        }
+        futures_util::future::join_all(
+            requests
+                .into_iter()
+                .map(|request| self.call_member(member, request)),
+        )
+        .await
+    }
+
+    /// `call_member_many` with the attempts of `write.retry.*`: only the items that failed by the network or with a
+    /// `5xx` go again, together.
+    pub(crate) async fn call_member_many_retrying(
+        self: &Arc<Self>,
+        member: &Member,
+        requests: Vec<Request>,
+    ) -> Vec<Result<Response, CallError>> {
+        let retryable = |result: &Result<Response, CallError>| match result {
+            Err(e) if e.is_network() => true,
+            Err(CallError::Remote(e)) => e.status() >= 500,
+            _ => false,
+        };
+        let mut results = self.call_member_many(member, requests.clone()).await;
+        let mut attempt = 1;
+        while attempt < self.rules.retry_attempts {
+            let again: Vec<usize> = (0..results.len())
+                .filter(|i| retryable(&results[*i]))
+                .collect();
+            if again.is_empty() {
+                break;
+            }
+            tokio::select! {
+                () = self.cancel.cancelled() => break,
+                () = tokio::time::sleep(self.rules.retry_backoff) => {}
+            }
+            attempt += 1;
+            let retried = self
+                .call_member_many(member, again.iter().map(|i| requests[*i].clone()).collect())
+                .await;
+            for (index, result) in again.into_iter().zip(retried) {
+                results[index] = result;
+            }
+        }
+        results
+    }
+
     /// `call_member` with the attempts and interval of `write.retry.*` for a network failure and
     /// `5xx` error from the peer.
     pub(crate) async fn call_member_retrying(

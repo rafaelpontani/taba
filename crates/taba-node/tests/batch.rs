@@ -407,6 +407,95 @@ async fn fifo_publications_forwarded_to_the_same_node_travel_in_fewer_calls_than
     cluster.shutdown().await;
 }
 
+/// UC: UC-ESC-042
+#[tokio::test(flavor = "multi_thread")]
+async fn a_batch_of_publications_goes_through_each_phase_in_one_call_per_node_and_group() {
+    let cluster = TestCluster::start(3).await;
+    create_queue(&cluster).await;
+    cluster.network.clear_calls();
+    let node = cluster.node(1);
+    let messages: Vec<Value> = (0..100).map(|n| json!({ "body": { "n": n } })).collect();
+    let reply: Value = node
+        .client
+        .post(node.client_url("/topics/orders/messages/batch"))
+        .json(&json!({ "messages": messages }))
+        .send()
+        .await
+        .expect("request")
+        .json()
+        .await
+        .expect("json");
+    let results = reply["results"].as_array().expect("results");
+    assert_eq!(results.len(), 100);
+    assert!(results.iter().all(|r| r["status"] == 201), "{reply}");
+
+    let operations =
+        cluster.network.count("write-register") + cluster.network.count("write-commit");
+    let batches = cluster.network.count("batch");
+    // Each of the 100 publications registers and commits on the two other nodes.
+    assert!(operations >= 400, "{operations}");
+    // D198: one group per order of the responsible nodes (three with three nodes); each phase of a group reaches each
+    // of the two other nodes in one call.
+    assert!(
+        batches <= 3 * 2 * 2,
+        "{operations} operations went in {batches} calls"
+    );
+    cluster.shutdown().await;
+}
+
+/// UC: UC-ENT-032
+#[tokio::test(flavor = "multi_thread")]
+async fn on_a_plain_queue_the_owner_delivers_alone_and_the_other_nodes_learn_of_the_delivery_after()
+{
+    let cluster = TestCluster::start(3).await;
+    create_queue(&cluster).await;
+    publish_concurrently(&cluster, 30).await;
+    cluster.network.clear_calls();
+
+    let node = cluster.node(1);
+    let mut delivered: Vec<(String, String)> = Vec::new();
+    while delivered.len() < 30 {
+        let got: Value = node
+            .client
+            .get(node.client_url("/topics/orders/messages?maxMessages=10&waitTime=1"))
+            .send()
+            .await
+            .expect("request")
+            .json()
+            .await
+            .expect("json");
+        for message in got["messages"].as_array().cloned().unwrap_or_default() {
+            delivered.push((
+                message["id"].as_str().unwrap().to_owned(),
+                message["receiptToken"].as_str().unwrap().to_owned(),
+            ));
+        }
+    }
+    // D199: a delivery has no commit and no quorum to wait for; the owner tells the other nodes after.
+    assert_eq!(cluster.network.count("visibility-commit"), 0);
+    assert!(cluster.network.count("visibility-register") > 0);
+    let copies: Vec<_> = (1..=3)
+        .map(|n| {
+            common::cluster::replication_of(cluster.node(n))
+                .messages
+                .messages()
+                .clone()
+        })
+        .collect();
+    common::cluster::eventually("every copy knows the delivery", || {
+        delivered.iter().all(|(id, token)| {
+            copies
+                .iter()
+                .all(|messages| match messages.message_info("orders", id) {
+                    Ok(Some(info)) => info.meta.receipt_token.as_deref() == Some(token.as_str()),
+                    _ => false,
+                })
+        })
+    })
+    .await;
+    cluster.shutdown().await;
+}
+
 /// UC: UC-ESC-039, UC-ARM-001
 #[tokio::test(flavor = "multi_thread")]
 async fn a_cluster_over_the_memory_limit_publishes_delivers_and_acks_everything_with_the_operations_batched()

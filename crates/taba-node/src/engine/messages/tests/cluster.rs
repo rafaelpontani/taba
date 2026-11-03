@@ -208,6 +208,66 @@ async fn the_registration_of_a_visibility_is_checked_against_the_message() {
     );
 }
 
+/// UC: UC-INV-033
+#[tokio::test]
+async fn on_a_plain_queue_a_copy_that_is_not_the_owner_only_checks_that_the_message_exists() {
+    // D199: the owner delivers alone and tells the copies after; an ack or a change that reaches a copy before the
+    // delivery does is not refused there (the owner's check, which the quorum always includes, is the one that decides).
+    let c = clustered();
+    queue_in(&c, "orders").await;
+    let id = c.publish("orders", "1", false);
+    c.h.messages
+        .apply_visibility(
+            "orders",
+            &id,
+            c.h.clock.now_millis() + 60_000,
+            Some((1, "tok")),
+        )
+        .unwrap();
+    let check = |kind, token: &str| c.h.messages.check_visibility("orders", &id, kind, token);
+    assert!(check(VisibilityCheck::Receipt, "newer-delivery").is_ok());
+    assert!(check(VisibilityCheck::Delivery, "x").is_ok());
+    assert_eq!(
+        c.h.messages
+            .check_visibility("orders", "nao-exists", VisibilityCheck::Receipt, "tok")
+            .unwrap_err()
+            .code,
+        ErrorCode::MessageNotFound
+    );
+}
+
+/// UC: UC-INV-033
+#[tokio::test]
+async fn a_replicated_delivery_never_takes_the_copy_back_to_an_earlier_delivery() {
+    let c = clustered();
+    queue_in(&c, "orders").await;
+    let id = c.publish("orders", "1", false);
+    let until = c.h.clock.now_millis() + 60_000;
+    let applied =
+        c.h.messages
+            .apply_deliveries("orders", &[(id.clone(), until, 2, "second".to_owned())]);
+    assert!(applied.iter().all(Result::is_ok));
+    // The first delivery arrives late: the copy keeps the second.
+    let late = c.h.messages.apply_deliveries(
+        "orders",
+        &[
+            (id.clone(), until - 30_000, 1, "first".to_owned()),
+            // A message the copy no longer has (the ack got there first): nothing to do.
+            (
+                "01900000-0000-7000-8000-00000000000f".to_owned(),
+                until,
+                1,
+                "x".to_owned(),
+            ),
+        ],
+    );
+    assert!(late.iter().all(Result::is_ok), "{late:?}");
+    let info = c.h.messages.message_info("orders", &id).unwrap().unwrap();
+    assert_eq!(info.meta.delivery_count, 2);
+    assert_eq!(info.meta.receipt_token.as_deref(), Some("second"));
+    assert_eq!(info.meta.invisible_until_ms, until);
+}
+
 /// UC: UC-INV-008
 #[tokio::test]
 async fn the_ack_removes_the_copy_and_only_the_owner_counts_it() {

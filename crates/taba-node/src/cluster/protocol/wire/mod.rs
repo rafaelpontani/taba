@@ -103,6 +103,8 @@ pub enum VisibilityMode {
     Unspecified = 0,
     Delivery = 1,
     Change = 2,
+    /// D199.
+    Replicated = 3,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -357,6 +359,7 @@ fn item_without_trace(request: &Request) -> Option<Item> {
                     mode: match register.kind {
                         VisibilityKind::Delivery => VisibilityMode::Delivery,
                         VisibilityKind::Change => VisibilityMode::Change,
+                        VisibilityKind::Replicated => VisibilityMode::Replicated,
                     } as i32,
                     invisible_until_ms: register.invisible_until_ms,
                     receipt_token: register.receipt_token.clone(),
@@ -534,6 +537,7 @@ fn request_without_trace(item: Item) -> Result<Request, TabaError> {
                     kind: match VisibilityMode::try_from(wire.mode) {
                         Ok(VisibilityMode::Delivery) => VisibilityKind::Delivery,
                         Ok(VisibilityMode::Change) => VisibilityKind::Change,
+                        Ok(VisibilityMode::Replicated) => VisibilityKind::Replicated,
                         _ => return Err(invalid("kind", "Unknown kind of visibility.")),
                     },
                     invisible_until_ms: wire.invisible_until_ms,

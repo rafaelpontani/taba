@@ -3,7 +3,7 @@ title: Message delivery
 summary: How Taba delivers, confirms and redelivers messages — invisibility, ready list, delivery owner, long polling, node channel, ack, delivery limit, dead-letter and fair delivery across groups.
 type: explanation
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-11-02 @ ccbb961
 sources: [crates/taba-node/src/engine/messages, crates/taba-node/src/engine/messages/index, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/cluster/replication/signals.rs, crates/taba-node/src/cluster/channel, crates/taba-node/src/http/messages]
 ---
 
@@ -56,21 +56,19 @@ The response carries **from 1 to `maxMessages`** messages: it returns what is re
 
 ![Consumption: delivery and ack](../diagrams/img/en-US/consumption.svg)
 
-1. The serving node picks an ID from the topic's **ready list**, which only holds messages of which it is the **delivery owner**.
-2. Computes the nodes responsible for the ID's block.
-3. **Phase 1:** registers on all that the message stays invisible until `now + visibilityTimeout`, with `deliveryCount + 1` and a new `receiptToken`.
-4. **Phase 2:** when the **quorum** confirms (**primary always included**), decides the commit.
-5. **Only then** is the message returned to the client. At the commit, each quorum node removes the ID from its ready list.
-6. **Failure before the quorum:** repeats and, when exhausted, **rollback** of the pending one; the `GET` **moves immediately to the next ID** (the rollback finishes in another task), up to `delivery.get.max-attempts` failures (default 3). At the end it answers with what it captured; if **nothing** was captured and there were failures, it answers **`503` with `Retry-After`**, never empty (the client would read that as a queue with no messages).
+1. The serving node picks IDs from the topic's **ready list**, which only holds messages of which it is the **delivery owner**.
+2. **Plain queue (D199):** the owner marks them invisible until `now + visibilityTimeout`, with `deliveryCount + 1` and a new `receiptToken`, **alone** and in one step for the whole `GET`, and returns them. Only then, in the background, it tells the other nodes of each block what it delivered (one group per node, which each node applies at once, with no register or commit). A node that does not get the notice (it is down, the call failed) keeps the delivery before.
+3. **FIFO queue:** the delivery still goes through the two phases. **Phase 1:** registers on all the responsible nodes that the message stays invisible, with the new counter and token. **Phase 2:** when the **quorum** confirms (**primary and secondary always included**), decides the commit, and only then is the message returned to the client.
+4. **Failure before the quorum (FIFO):** repeats and, when exhausted, **rollback** of the pending one; the `GET` **moves immediately to the next ID** (the rollback finishes in another task), up to `delivery.get.max-attempts` failures (default 3). At the end it answers with what it captured; if **nothing** was captured and there were failures, it answers **`503` with `Retry-After`**, never empty (the client would read that as a queue with no messages).
 
-The message only reaches the client after invisibility is marked on the quorum with the primary; a coordinator crash right after delivery does **not** make another node deliver it in parallel from the same block.
+On both kinds of queue only the owner delivers, so two nodes never deliver the same message in parallel while the owner is alive. What D199 gives up is on the **change of owner**: if the owner fails before a copy learned of a delivery, the new owner sees the message as it was before it and can deliver it again **before the deadline** the first consumer got. Nothing is lost and the delivery stays at least once ([11-durability.md](11-durability.md)); the window is the time the notice takes to reach the copies (milliseconds), plus the time a copy was unreachable. In exchange, the `GET` of a plain queue does not wait for another node, and a delivery costs one step on the owner instead of a two-phase operation on every responsible node.
 
 ## Delivery owner
 
 Each message has **a single owner**: the **primary of its block** ([06-ring-and-replication.md](06-ring-and-replication.md)). If all the replicas delivered, they would compete for the invisibility commit of the same message.
 
 - The topic **does not belong to any node**: messages are spread over the whole ring, and the complete topic is the **union of the ready lists** of the nodes.
-- **Partitioning by owner is not what guarantees correctness.** The invisibility register remains **exclusive**: a node refuses the request if another is already pending or if the message is already invisible, and the `GET` tries another ID. Even with member tables diverging for moments, **no message is delivered twice**.
+- **On FIFO, partitioning by owner is not what guarantees correctness.** The invisibility register remains **exclusive**: a node refuses the request if another is already pending or if the message is already invisible, and the `GET` tries another ID. Even with member tables diverging for moments, **no message is delivered twice**. On a plain queue the owner decides alone (D199): with member tables diverging for moments, two nodes that both think they are the owner can each deliver the message once, which at-least-once delivery allows.
 - **New primary still synchronizing:** the messages of its blocks are **not delivered by anyone** until it is ready (the old primary removes them from the list at the register commit). It lasts only the synchronization time.
 - **Owner down** and still in the table: its messages stay undelivered until the exclusion. The other nodes of the block are backup copies and do **not** take over delivery.
 - **Order:** **no guarantee** of order (neither per topic nor per `groupId` in ordinary queues); redelivery by invisibility also shuffles. Whoever needs order uses a **FIFO queue** or orders at consumption by `id` (GUID v7).
@@ -95,7 +93,7 @@ curl -s -X PUT "localhost:8080/topics/pedidos/messages/<id>/visibility?receiptTo
 # 200 {"id":"…","invisibleUntil":"2026-10-13T17:10:13.601Z"}
 ```
 
-- Uses the **same register + commit by quorum** as delivery, **without** incrementing `deliveryCount` and without touching the ready list.
+- Uses a **register + commit by quorum** (the primary included), **without** incrementing `deliveryCount` and without touching the ready list.
 - The value is the **new time from now** (`now + visibilityTimeout`), **not** an increment; it respects `delivery.visibility-timeout.max`.
 - **`0` releases the message immediately**: the owner puts it back in the ready list as on an expiry. If `deliveryCount ≥ maxDeliveries`, it goes to the dead-letter.
 - `409 message.stale-receipt` if the token is stale.
@@ -108,7 +106,9 @@ curl -s -i -X DELETE "localhost:8080/topics/pedidos/messages/<id>?receiptToken=<
 ```
 
 - Requires the `receiptToken` of the last delivery. A token that does not match → `409`, nothing changes.
-- Same register + commit protocol: the quorum (primary included) confirms and the commit **removes the message and its metadata**, **with no tombstone** (the absence of the ID is enough; the final check of synchronization covers the residual window). The replicas outside the quorum remove in the background.
+- Register + commit protocol: the quorum (primary included) confirms and the commit **removes the message and its metadata**, **with no tombstone** (the absence of the ID is enough; the final check of synchronization covers the residual window). The replicas outside the quorum remove in the background.
+- **Who checks the token.** On a plain queue only the **owner** checks the `receiptToken` (and, on a change, the same); the other nodes only check that the message exists, because the delivery reaches them after it (D199) and an ack sent right after the `GET` can arrive before it. The owner is always in the quorum, so its check decides. The owner can also deliver a message before the commit of its publication reached the other nodes; a node that is not the primary and answers the register of an ack or a change with "no such message" or "another operation pending" is asked again a few times, for about 1 s, before its answer counts. On FIFO every node of the quorum checks.
+- **Batch** (`POST /topics/{topic}/messages/ack`): the acks of the messages with the same responsible nodes go through the two phases as **one group** (D198), with the same result per message as the single call.
 - **FIFO queue:** the ack writes `deleteAt` and deletes only the body, for deduplication ([09-topics.md](09-topics.md)). It is the only exception to "no tombstone".
 - **Failure before the quorum:** the ack is **canceled** and the message remains available (the client repeats). There is never a partial ack visible.
 
@@ -136,7 +136,7 @@ A 3-node cluster (A, B, C), topic `pedidos` with 6 messages, each node primary o
 
 | Scenario | What happens |
 |---|---|
-| **1. Local list has a message** | The `GET` reaches A; A is the owner of m1: registers, commits on the quorum and returns. No other node is consulted. It is the common case with a full queue |
+| **1. Local list has a message** | The `GET` reaches A; A is the owner of m1: delivers it (alone on a plain queue, by quorum on FIFO) and returns. No other node is consulted. It is the common case with a full queue |
 | **2. Local list empty, another node has** | A emptied and announced "no ready in `pedidos`"; B and C have the table `{A: no, B: yes, C: yes}` in memory. A draws one (weighted by the reported quantity), calls `take` on B (`POST /cluster/topics/{topic}/messages/take`); B, the owner, does the register + commit and returns the message to A, which passes it on. If B already emptied, A tries C, up to `delivery.take.max-attempts` (default 3) |
 | **3. No node has** | A becomes a **local listener** and tells the others, **once**, "`pedidos` has listeners on A". When a ready message arrives on B, B sees the listener on A and sends "there are new messages here"; A calls `take` on B and delivers to the listener. With no message until `waitTime`, it answers empty |
 
