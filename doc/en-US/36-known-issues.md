@@ -17,6 +17,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [A replication test whose 14 publications missed the isolated node](#a-replication-test-whose-14-publications-missed-the-isolated-node) | Fixed | 2026-11-03 | 2026-11-03 |
 | [A sync test whose second store found the database locked on arm64](#a-sync-test-whose-second-store-found-the-database-locked-on-arm64) | Fixed | 2026-11-03 | 2026-11-03 |
 | [A consume with ack that fails once in docker/validate.sh after a drain](#a-consume-with-ack-that-fails-once-in-dockervalidatesh-after-a-drain) | Open | 2026-11-03 | — |
 | [An exclusion vote that fails once in the full suite](#an-exclusion-vote-that-fails-once-in-the-full-suite) | Open | 2026-10-29 | — |
@@ -32,6 +33,22 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## A replication test whose 14 publications missed the isolated node
+
+**Status:** Fixed · **Found on:** 2026-11-03 · **Fixed on:** 2026-11-03
+
+- **Test:** `tests/replication.rs::with_a_node_down_only_the_publications_it_owns_fail_and_the_replica_catches_up`.
+- **Symptom:** in the checks of the back-merge `main → release` after `v0.3.3` (#43), the amd64 server job failed at `replication.rs:393` with `ok 14 failed 0`: none of the 14 publications was refused.
+- **Cause:** the test isolates node 3 and expects some publications to fail, the ones whose primary is node 3; the primary comes from the hash of the random `id` of each message, so with 14 fixed publications none falls on node 3 with probability (2/3)^14, about once in 300 runs. Not related to a change of code.
+- **Fix:** the test publishes until it has seen both outcomes (at least one accepted and one refused), at least 14 and at most 60 times; the chance of missing node 3 in 60 is about 10^-11.
+- **Verification:** the test passed 5 of 5 and the file of 21 tests passed.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-03 | Failed once on amd64 in #43 (`ok 14 failed 0`); the test publishes until it sees both outcomes. |
 
 ## A sync test whose second store found the database locked on arm64
 

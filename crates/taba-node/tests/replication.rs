@@ -365,7 +365,12 @@ async fn with_a_node_down_only_the_publications_it_owns_fail_and_the_replica_cat
     cluster.network.isolate("10.0.0.3");
 
     let (mut ok_ids, mut failed) = (Vec::new(), 0);
-    for n in 0..14 {
+    // The primary of each message comes from the hash of its random `id`: 14 fixed publications missed node 3 about
+    // once in 300 runs ((2/3)^14). It publishes until it has seen both outcomes, at most 60 times.
+    for n in 0..60 {
+        if n >= 14 && !ok_ids.is_empty() && failed > 0 {
+            break;
+        }
         let response = cluster
             .node(1)
             .client
