@@ -117,3 +117,15 @@ test('com --nodes 1,3 o plano traz o cluster, e um sistema sem compose-cluster.y
   }
   assert.match(readFileSync(join(here, 'workloads', 'failover-1kb.faults'), 'utf8'), /^60 kill node-1$/m);
 });
+
+/// UC: UC-BNC-007
+test('um sistema com max-rate-sweep troca a taxa máxima por taxas fixas e os outros seguem com a taxa máxima', () => {
+  const r = run('--dry-run', '--profile', 'showcase', '--workloads', 'simple-1kb,max-rate-1kb');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /varredura:\s+nats troca max-rate-1kb pelas taxas fixas 500 1000 2000 5000/);
+  assert.doesNotMatch(r.stdout, /varredura:\s+(taba|rabbitmq)/);
+  const sweep = readFileSync(join(here, 'systems', 'nats', 'max-rate-sweep'), 'utf8');
+  assert.match(sweep, /^5000$/m);
+  const noSweep = run('--dry-run', '--profile', 'showcase', '--workloads', 'simple-1kb');
+  assert.doesNotMatch(noSweep.stdout, /varredura:/);
+});

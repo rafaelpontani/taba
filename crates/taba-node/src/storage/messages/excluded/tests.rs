@@ -456,3 +456,93 @@ fn the_writer_keeps_up_with_many_batches_and_a_dropped_topic_leaves_no_folder() 
             .exists()
     );
 }
+
+/// A trim of hundreds of thousands of rows (the log at its size limit under load, every 30 s, on every owner at
+/// once) does not hold the connection of the topic for the whole job: the publications of the topic wait at most
+/// for one chunk of the delete, not for the trim (PRB-090; before, the three nodes stopped publishing for seconds).
+/// UC: UC-ARM-026
+#[test]
+fn a_large_trim_lets_the_writes_of_the_topic_go_in_between() {
+    let tmp = tempfile::tempdir().unwrap();
+    let rows: Vec<ExcludedRow> = (0..300_000u64)
+        .map(|i| ExcludedRow {
+            id: format!("m{i:07}"),
+            position: i,
+            at_ms: 1_000 + i,
+        })
+        .collect();
+    let weight = (8 + ROW_OVERHEAD) as u64;
+    let store = std::sync::Arc::new(store(
+        tmp.path(),
+        ExcludedLimits {
+            // the newest 50 000 stay: the trim drops 250 000
+            max_bytes: weight * 50_000,
+            max_age_ms: u64::MAX / 2,
+        },
+    ));
+    store.import_excluded("orders", &rows).unwrap();
+
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let trim = {
+        let (store, done) = (store.clone(), done.clone());
+        std::thread::spawn(move || {
+            let started = std::time::Instant::now();
+            let removed = store.trim_excluded(400_000).unwrap();
+            done.store(true, std::sync::atomic::Ordering::SeqCst);
+            (removed, started.elapsed())
+        })
+    };
+    let mut longest = std::time::Duration::ZERO;
+    let mut i = 0u64;
+    while !done.load(std::sync::atomic::Ordering::SeqCst) {
+        let started = std::time::Instant::now();
+        store
+            .put("orders", &meta(&format!("p{i}"), i), b"x")
+            .unwrap();
+        longest = longest.max(started.elapsed());
+        i += 1;
+    }
+    let (removed, took) = trim.join().unwrap();
+
+    assert_eq!(removed, 250_000);
+    assert_eq!(store.excluded_all("orders").unwrap().len(), 50_000);
+    assert!(
+        longest * 4 < took,
+        "a publication waited {longest:?} during a trim of {took:?}: the trim held the topic"
+    );
+}
+
+/// The node trims with a pause after each chunk: the delete is spread over the interval instead of coming in one
+/// burst of writes (PRB-090), and still drops everything the limits do not allow.
+/// UC: UC-ARM-026
+#[test]
+fn a_paced_trim_spreads_the_chunks_and_drops_the_same_rows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let rows: Vec<ExcludedRow> = (0..(TRIM_CHUNK as u64 * 5))
+        .map(|i| ExcludedRow {
+            id: format!("m{i:07}"),
+            position: i,
+            at_ms: 1_000 + i,
+        })
+        .collect();
+    let store = store(
+        tmp.path(),
+        ExcludedLimits {
+            max_bytes: u64::MAX,
+            max_age_ms: 1_000,
+        },
+    );
+    store.import_excluded("orders", &rows).unwrap();
+
+    let pause = std::time::Duration::from_millis(40);
+    let started = std::time::Instant::now();
+    // at 1 000 000 ms with an age limit of 1 s, every row goes: five chunks
+    let removed = store.trim_excluded_paced(1_000_000, pause).unwrap();
+
+    assert_eq!(removed, TRIM_CHUNK as u64 * 5);
+    assert!(store.excluded_all("orders").unwrap().is_empty());
+    assert!(
+        started.elapsed() >= pause * 5,
+        "five chunks, a pause after each"
+    );
+}

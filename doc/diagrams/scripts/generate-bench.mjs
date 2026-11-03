@@ -23,11 +23,18 @@ if (from > 0) {
   console.log(`dados: ${DATA}`);
 }
 const data = JSON.parse(readFileSync(DATA, 'utf8'));
+// --without nats: tira dos gráficos um sistema que não completou uma medida válida na rodada. Fica gravado no JSON
+// (excluded), para a próxima geração sem --from repetir a escolha, e os gráficos dizem quem ficou de fora.
+const without = process.argv.indexOf('--without');
+if (without > 0) {
+  data.excluded = process.argv[without + 1].split(',').filter(Boolean);
+  writeFileSync(DATA, `${JSON.stringify(data, null, 2)}\n`);
+}
 const langArg = process.argv.find((a) => a.startsWith('--lang='));
 const langs = langArg ? [langArg.slice(7)] : ['en-US', ...readdirSync(resolve(root, 'doc/diagrams/i18n')).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5))];
 
 // Os sistemas da comparação, na ordem fixa (a cor segue o sistema).
-const SYSTEMS = ['taba', 'rabbitmq', 'nats'];
+const SYSTEMS = ['taba', 'rabbitmq', 'nats'].filter((s) => !(data.excluded ?? []).includes(s));
 const DUR = 'fsync';
 const STEP = data.sampleSeconds ?? 10;
 
@@ -50,15 +57,38 @@ for (const lang of langs) {
   const name = (s) => SYSTEM_NAMES[s];
   const local = T('local run, not representative');
   const machine = data.machine ?? {};
-  const note = `${T('Same limits for every system')}: ${T('1 node')} ${machine.server_cpus ?? '?'} ${T('cores')} / ${machine.server_memory_gb ?? '?'} GB · ${T('3 nodes')} ${machine.cluster_node_cpus ?? '?'} ${T('cores')} / ${machine.cluster_node_memory_mb ?? '?'} MB ${T('each')} · ${T('durability')}: fsync`;
+  const left = (data.excluded ?? []).map((s) => SYSTEM_NAMES[s]).join(', ');
+  const note = `${T('Same limits for every system')}: ${T('1 node')} ${machine.server_cpus ?? '?'} ${T('cores')} / ${machine.server_memory_gb ?? '?'} GB · ${T('3 nodes')} ${machine.cluster_node_cpus ?? '?'} ${T('cores')} / ${machine.cluster_node_memory_mb ?? '?'} MB ${T('each')} · ${T('durability')}: fsync${left ? ` · ${left}: ${T('no valid measurement')}` : ''}`;
+  // A varredura (bench/systems/<sistema>/max-rate-sweep): no lugar da taxa máxima, a célula rate-<n>-1kb de maior taxa
+  // que o sistema sustentou (consumiu pelo menos 95 % do que devia).
+  const sweptCell = (system, nodes) => {
+    let best;
+    for (const w of Object.keys(data.cells)) {
+      const m = /^rate-(\d+)-1kb$/.exec(w);
+      const c = m && cell(w, system, nodes);
+      if (c && c.stats?.consume >= 0.95 * Number(m[1]) && !(best?.stats?.consume >= c.stats.consume)) best = c;
+    }
+    return best;
+  };
+  const maxCell = (system, nodes) => cell('max-rate-1kb', system, nodes) ?? sweptCell(system, nodes);
+  const swept = SYSTEMS.filter((s) => !cell('max-rate-1kb', s, 1) && !cell('max-rate-1kb', s, 3) && NODES.some(([n]) => sweptCell(s, n)));
+  // Quem foi varrido e não sustentou nenhuma taxa fica fora das barras, e a nota diz até onde chegou: o maior consumo de
+  // 10 s que ele teve em qualquer passo da varredura (NATS com um fsync por mensagem, sync_interval: always).
+  const sweepCells = (s) => Object.keys(data.cells).filter((w) => /^rate-\d+-1kb$/.test(w)).flatMap((w) => NODES.map(([n]) => cell(w, s, n)).filter(Boolean));
+  const failed = SYSTEMS.filter((s) => !NODES.some(([n]) => maxCell(s, n)) && sweepCells(s).length);
+  const peak = (s) => Math.max(0, ...sweepCells(s).flatMap((c) => c.series?.consume ?? []));
+  const failedNote = failed.map((s) => `${name(s)}: ${T('fails above')} ~${Math.round(peak(s) / 10) * 10} msg/s, ${T('one fsync per message (sync_interval: always) stalls the server and the client gives up after 2 s')}`).join(' · ');
+  const sweptNote = swept.length ? ` · ${swept.map(name).join(', ')}: ${T('highest fixed rate sustained')}` : '';
   const bars = (workload, key) => SYSTEMS.filter((s) => NODES.some(([n]) => cell(workload, s, n)))
     .map((s) => ({ key: s, label: name(s), values: NODES.map(([n]) => stat(workload, s, n, key)) }));
+  const maxBars = (key) => SYSTEMS.filter((s) => NODES.some(([n]) => maxCell(s, n)))
+    .map((s) => ({ key: s, label: name(s), values: NODES.map(([n]) => maxCell(s, n)?.stats?.[key] ?? NaN) }));
 
   // 1. Vazão máxima, um nó e três.
   if (data.cells['max-rate-1kb']) {
     write('bench-throughput.svg', barChart({
       title: T('Maximum throughput, 1 KB messages'), subtitle: `${T('messages consumed and acknowledged per second')} · ${local}`,
-      unit: 'msg/s', categories: NODES.map(([, l]) => l), series: bars('max-rate-1kb', 'consume'), note,
+      unit: 'msg/s', categories: NODES.map(([, l]) => l), series: maxBars('consume'), note: [note + sweptNote, failedNote],
     }));
     // 2. Linha do tempo: publicado e consumido, e o acumulado.
     for (const [n, where] of NODES) {
@@ -66,7 +96,7 @@ for (const lang of langs) {
       if (!systems.length) continue;
       write(`bench-timeline-${n}.svg`, lineChart({
         title: `${T('Messages per second over time')}, ${where}`, subtitle: `${T('maximum rate; consumed (solid) and published (dashed)')} · ${local}`,
-        unit: 'msg/s', xLabel: T('seconds of the measured phase'), note,
+        unit: 'msg/s', xLabel: T('seconds of the measured phase'), note: [note, failedNote],
         series: systems.flatMap((s) => [
           { key: s, label: `${name(s)} ${T('published')}`, values: cell('max-rate-1kb', s, n).series.publish, step: STEP, dash: true },
           { key: s, label: `${name(s)} ${T('consumed')}`, endLabel: name(s), values: cell('max-rate-1kb', s, n).series.consume, step: STEP },
@@ -78,14 +108,14 @@ for (const lang of langs) {
       }));
       write(`bench-processed-${n}.svg`, lineChart({
         title: `${T('Messages processed over time')}, ${where}`, subtitle: `${T('total consumed and acknowledged since the start, maximum rate')} · ${local}`,
-        unit: T('messages'), xLabel: T('seconds of the measured phase'), note,
+        unit: T('messages'), xLabel: T('seconds of the measured phase'), note: [note, failedNote],
         series: systems.map((s) => ({ key: s, label: name(s), values: cumulative(cell('max-rate-1kb', s, 1 * n).series.consume, STEP), step: STEP })),
       }));
     }
     // 3. Eficiência: mensagens por núcleo de CPU.
     write('bench-efficiency.svg', barChart({
       title: T('Messages per CPU core'), subtitle: `${T('maximum rate; consumed per second divided by the average cores the server used')} · ${local}`,
-      unit: T('msg/s per core'), categories: NODES.map(([, l]) => l), series: bars('max-rate-1kb', 'perCore'), note,
+      unit: T('msg/s per core'), categories: NODES.map(([, l]) => l), series: maxBars('perCore'), note: [note + sweptNote, failedNote],
     }));
   }
   // 4. Latência a taxa fixa.
@@ -93,8 +123,8 @@ for (const lang of langs) {
     const cats = NODES.flatMap(([n, l]) => [[n, 'p50', `p50 · ${l}`], [n, 'p99', `p99 · ${l}`]]);
     write('bench-latency.svg', barChart({
       title: T('End-to-end latency at 10,000 msg/s'), subtitle: `${T('from publish to delivery, lower is better')} · ${local}`,
-      unit: 'ms', categories: cats.map(([, , l]) => l), note,
-      series: SYSTEMS.map((s) => ({ key: s, label: name(s), values: cats.map(([n, k]) => stat('simple-1kb', s, n, k)) })),
+      unit: 'ms', categories: cats.map(([, , l]) => l), note: [note, failedNote],
+      series: SYSTEMS.filter((s) => !failed.includes(s)).map((s) => ({ key: s, label: name(s), values: cats.map(([n, k]) => stat('simple-1kb', s, n, k)) })),
     }));
   }
   // 5. Leitura de um backlog de 1 GB.
