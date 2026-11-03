@@ -1,0 +1,71 @@
+# Taba: três nós, fator de replicação 3, com o TLS mútuo entre os nós e o token raiz, como em produção (o init é o mesmo do
+# Compose; o token raiz é fixo, o mesmo dos driver-*-cluster.yaml). Cada nó tem os mesmos limites de CPU
+# e memória (BENCH_CPUS e BENCH_MEMORY são por nó). Na frente dos nós fica um HAProxy chamado `server`, como no Compose
+# de produção (docker/haproxy.cfg): o driver fala com ele e ele reparte as requisições; a descoberta do cluster também
+# passa por ele. O HAProxy tem o seu núcleo, fora dos limites dos nós.
+x-node: &node
+  image: ${BENCH_TABA_IMAGE}
+  cpus: ${BENCH_CPUS}
+  mem_limit: ${BENCH_MEMORY}
+  env_file: env-${BENCH_DURABILITY}
+  environment: &node-env
+    TABA_REPLICATION_FACTOR: "3"
+    TABA_CLUSTER_ENTRY_ADDRESS: server:8081
+    TABA_OPERATIONS_PORT: "9090"
+  volumes:
+    - secrets:/etc/taba/secrets:ro
+    - /var/lib/taba
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/health/ready"]
+    interval: 2s
+    timeout: 3s
+    retries: 90
+  depends_on: &node-deps
+    server:
+      condition: service_started
+    init:
+      condition: service_completed_successfully
+
+services:
+  # Cria a pasta de segredos (certificado do cluster) e grava o token raiz fixo do benchmark.
+  init:
+    image: ${BENCH_TABA_IMAGE}
+    user: "0"
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        test -f /secrets/tls/ca.crt || taba init --out /secrets >/dev/null
+        echo bench-root-secret-0123456789abcdef0123456789 > /secrets/root-token
+        chown -R 10001:10001 /secrets
+    volumes:
+      - secrets:/secrets
+    restart: "no"
+  server:
+    image: haproxy:2.9.11-alpine
+    cpus: 1
+    mem_limit: 256m
+    volumes:
+      - ./haproxy-cluster.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+  node-0:
+    <<: *node
+    hostname: node-0
+    environment:
+      <<: *node-env
+      TABA_CLUSTER_FIRST_NODE: "true"
+  node-1:
+    <<: *node
+    hostname: node-1
+    depends_on:
+      <<: *node-deps
+      node-0:
+        condition: service_healthy
+  node-2:
+    <<: *node
+    hostname: node-2
+    depends_on:
+      <<: *node-deps
+      node-0:
+        condition: service_healthy
+
+volumes:
+  secrets:

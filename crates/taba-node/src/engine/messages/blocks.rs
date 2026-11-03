@@ -8,6 +8,7 @@
 
 use super::{ErrorCode, Messages, Place, Stored, TabaError, TopicState, lock, message_not_found};
 use crate::storage::messages::MessageMeta;
+use bytes::Bytes;
 
 /// A row of a block's ID listing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +33,7 @@ pub struct ExcludedEntry {
 pub struct BlockMessage {
     pub topic: String,
     pub meta: MessageMeta,
-    pub body: Vec<u8>,
+    pub body: Bytes,
     /// FIFO only: it is the short row of an acknowledged message (no body).
     pub delete_at_ms: Option<u64>,
 }
@@ -160,11 +161,7 @@ impl Messages {
 
     /// Reads the message the node keeps (memory or disk), without checking whether it is in the index or
     /// among the replicas: it is the read of whoever serves the synchronization.
-    fn read_held(
-        &self,
-        topic: &str,
-        id: &str,
-    ) -> Result<Option<(MessageMeta, Vec<u8>)>, TabaError> {
+    fn read_held(&self, topic: &str, id: &str) -> Result<Option<(MessageMeta, Bytes)>, TabaError> {
         {
             let state = self.state_of(topic);
             let state = lock(&state);
@@ -184,7 +181,7 @@ impl Messages {
             return Ok(None);
         }
         match self.store.body(topic, id) {
-            Ok(body) => Ok(Some((meta, body))),
+            Ok(body) => Ok(Some((meta, body.into()))),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(self.disk_error("failed to read the body on disk", &e)),
         }
@@ -213,7 +210,7 @@ impl Messages {
             Ok(body) => Ok(Some(BlockMessage {
                 topic: topic.to_owned(),
                 meta,
-                body,
+                body: body.into(),
                 delete_at_ms: None,
             })),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -264,7 +261,7 @@ impl Messages {
                         out.push(BlockMessage {
                             topic: entry.topic,
                             meta,
-                            body: Vec::new(),
+                            body: Bytes::new(),
                             delete_at_ms: Some(delete_at_ms),
                         });
                     }
@@ -331,7 +328,7 @@ impl Messages {
         &self,
         topic: &str,
         meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
     ) -> Result<Loaded, TabaError> {
         self.apply_load_with(topic, meta, body, false)
     }
@@ -341,7 +338,7 @@ impl Messages {
         &self,
         topic: &str,
         meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
         durable: bool,
     ) -> Result<Loaded, TabaError> {
         let Ok(view) = self.topics.get(topic) else {

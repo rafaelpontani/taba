@@ -50,6 +50,7 @@
 - [24 Conventions](24-conventions.md): language, folders, code rules, commands, when you finish an implementation, diagrams, commits
 - [25 Testing](25-testing.md): levels U/I/C/K, TestNode, TestCluster, in-memory network, manual clock, how to write and run
 - [37 Guarantees](37-guarantees.md): the guarantees as rules a machine can check (I1 to I6, R1), the chaos run with a recorded history that checks them, the faults it applies and what it does not cover yet
+- [38 Benchmarks](38-benchmarks.md): the local comparative benchmark (OMB in Docker against Kafka, Redpanda, RabbitMQ and NATS JetStream), the fairness rules, the durability levels, the workloads and the report
 - [36 Known issues](36-known-issues.md): cluster tests turned off with #[ignore] because they fail intermittently in CI, cause and planned fix
 - [26 Use cases](26-use-cases.md): the UC-AREA-NNN code and the coverage rule
 - [26a Implemented cases](26a-implemented-use-cases.md): the catalogue with a test (generated)

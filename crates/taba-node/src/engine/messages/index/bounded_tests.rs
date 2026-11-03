@@ -135,6 +135,88 @@ fn a_returning_message_enters_by_its_position_and_the_middle_id_leaves_when_full
     assert!(delivered.contains(&id(3)));
 }
 
+/// Com a janela cheia, a mensagem publicada agora (a mais nova) entra pela ponta nova e tira a borda desse lado: a
+/// ponta velha, a próxima a ser entregue, fica inteira e não pede reabastecimento (D194). Tirar a borda dos dois
+/// lados alternando esvaziava a ponta velha a cada publicação.
+///
+/// UC: UC-ENT-014
+#[test]
+fn a_new_message_in_a_full_window_takes_the_place_of_the_new_side_and_keeps_the_old_one() {
+    let mut index = ready_index(6, 50);
+    assert_eq!(
+        index.ready_ids(),
+        [id(1), id(2), id(3), id(48), id(49), id(50)]
+    );
+    for n in 51..=55 {
+        index.insert(&id(n), None, u64::from(n), 0, 0, 100);
+    }
+    assert_eq!(
+        index.ready_ids(),
+        [id(1), id(2), id(3), id(53), id(54), id(55)],
+        "a ponta velha ficou inteira; da nova saíram as bordas"
+    );
+    assert!(!index.refill_due(), "nada abriu vaga na janela");
+    assert_eq!(index.counts(), (55, 0));
+
+    // As que saíram da ponta nova são achadas de novo: nenhuma mensagem se perde, e a velha sai primeiro.
+    let first = index.pick();
+    assert_eq!(first, Some(id(1)));
+    index.deliver(&id(1), 1_000_000, 100, 1);
+    let mut delivered = BTreeSet::from([id(1)]);
+    while let Some(next) = index.pick() {
+        index.deliver(&next, 1_000_000, 100, 1);
+        delivered.insert(next);
+    }
+    assert_eq!(delivered.len(), 55);
+}
+
+/// As publicações ocupam cada vaga que uma entrega abre, e o lado velho esvazia: o reabastecimento seguinte cede a
+/// borda do lado novo até a janela ter um quarto livre e traz esse lote todo da ponta velha, em vez de um ID por
+/// entrega (D194). O ID cedido é achado de novo, e nenhuma mensagem se perde.
+///
+/// UC: UC-ENT-009
+#[test]
+fn when_publications_empty_the_old_side_the_refill_brings_a_batch_from_the_old_end() {
+    let mut index = ready_index(8, 100);
+    assert_eq!(
+        index.ready_ids(),
+        [id(1), id(2), id(3), id(4), id(97), id(98), id(99), id(100)]
+    );
+    for n in 1..=4 {
+        index.deliver(&id(n), 1_000_000, 100, 1);
+        index.insert(&id(100 + n), None, u64::from(100 + n), 0, 0, 100);
+    }
+    assert!(
+        index.old_side_empty(),
+        "as publicações tomaram as vagas do lado velho"
+    );
+    index.deliver(&id(104), 1_000_000, 100, 1);
+    assert!(index.refill_due());
+    assert_eq!(index.refill(), 2, "um quarto da janela, só da ponta velha");
+    assert_eq!(
+        index.ready_ids(),
+        [
+            id(5),
+            id(6),
+            id(98),
+            id(99),
+            id(100),
+            id(101),
+            id(102),
+            id(103)
+        ],
+        "a borda nova (m097) cedeu o lugar"
+    );
+
+    let mut delivered = BTreeSet::new();
+    while let Some(next) = index.pick() {
+        index.deliver(&next, 1_000_000, 100, 1);
+        delivered.insert(next);
+    }
+    assert_eq!(delivered.len(), 104 - 5);
+    assert!(delivered.contains(&id(97)));
+}
+
 /// UC: UC-ENT-015
 #[test]
 fn choosing_the_next_message_only_reads_the_list_and_scans_nothing() {

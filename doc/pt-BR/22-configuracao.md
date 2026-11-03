@@ -3,7 +3,7 @@ título: Configuração
 resumo: Como configurar o nó (arquivo YAML e variáveis TABA_*), a precedência, e a tabela completa de parâmetros com o padrão efetivo e o que cada um faz.
 tipo: referência
 status: estável
-verificado-em: 2026-10-14 @ efeb47a
+verificado-em: 2026-10-29 @ 6e8cdf6
 fontes: [crates/taba-node/src/config/params/mod.rs, crates/taba-node/src/config/mod.rs, crates/taba-node/src/config/source/mod.rs]
 ---
 
@@ -56,10 +56,10 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 
 - `storage.dir` não termina numa pasta chamada **`taba`**;
 - as três portas se repetem ("usam a mesma porta; as três portas precisam ser diferentes"), ou uma está ocupada;
-- `api.pagination.default-limit` está fora de 1 até `api.pagination.max-limit`;
+- `api.pagination.default-limit` está fora de 1 até `api.pagination.max-limit`; `api.batch.max-messages` ou `api.batch.max-bytes` é zero;
 - `message.max-bytes` é zero; `replication.factor` é menor que 1; `write.quorum` está fora de 1 até `replication.factor`;
 - em produção, falta `cluster.entry-address` (exceto no primeiro nó, `cluster.first-node=true`), ou ele não é `host:porta`;
-- `cluster.vote.quorum-percent` está fora de 1 a 100; `cluster.vote.min-voters`, `ring.virtual-nodes` ou `write.retry.attempts` são menores que 1;
+- `cluster.vote.quorum-percent` está fora de 1 a 100; `cluster.vote.min-voters`, `cluster.batch.max-items`, `ring.virtual-nodes` ou `write.retry.attempts` são menores que 1;
 - `delivery.visibility-timeout.default` ou `delivery.max-messages.default` passam do respectivo `.max`; `delivery.fair.ready-weight` está fora de 0 a 1;
 - `retention.ttl.default`, `retention.max-deliveries.default` ou `topics.volatile.idle-timeout.default` estão fora das faixas de [19-erros-e-limites.md](19-erros-e-limites.md);
 - `cluster.tls.dir` definido não existe, ou a pasta existe sem nenhum par válido;
@@ -134,6 +134,8 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 |---|---|---|---|
 | `api.pagination.default-limit` | `TABA_API_PAGINATION_DEFAULT_LIMIT` | **100** | Itens por página quando a rota paginada não recebe `limit`. |
 | `api.pagination.max-limit` | `TABA_API_PAGINATION_MAX_LIMIT` | **1000** | Maior `limit` aceito; acima disso, `400` `validation.out-of-range`. O padrão não pode passar dele. |
+| `api.batch.max-messages` | `TABA_API_BATCH_MAX_MESSAGES` | **1000** | Máximo de itens de uma requisição das rotas em lote (`POST /topics/{topic}/messages/batch`, `/ack`, `/visibility`); acima disso (ou sem nenhum), `400` `validation.out-of-range` ([16](16-api-cliente.md#mensagens-em-lote-post-messagesbatch-ack-e-visibility)). |
+| `api.batch.max-bytes` | `TABA_API_BATCH_MAX_BYTES` | **16MB** | Maior corpo de uma requisição das rotas em lote; acima disso, `413` `message.too-large`, sem ler o resto. Cada publicação de um lote continua com o `maxMessageBytes` do tópico dela. |
 
 ## Mensagens
 
@@ -165,6 +167,8 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 | `cluster.channel.queue.max-size`<br>`cluster.channel.queue.max-age` | `TABA_CLUSTER_CHANNEL_QUEUE_MAX_SIZE`<br>`TABA_CLUSTER_CHANNEL_QUEUE_MAX_AGE` | **10000** (do código)<br>**60s** (do código) | Tamanho e idade máximos da fila de saída para um nó com canal fora; ao passar, o nó com canal fora é tratado como falho e a votação de exclusão é aberta. |
 | `cluster.vote.quorum-percent` | `TABA_CLUSTER_VOTE_QUORUM_PERCENT` | **51** | Percentual dos nós **saudáveis** (os que o votante enxerga e que respondem; os fora do ar não votam nem entram na base) que precisa concordar para efetivar a exclusão do nó: `ceil(S × percentual)`. |
 | `cluster.vote.min-voters` | `TABA_CLUSTER_VOTE_MIN_VOTERS` | **2** | Número mínimo de nós saudáveis para uma votação valer; abaixo disso, nenhuma exclusão se efetiva. Impede que um nó isolado exclua todos os demais. |
+| `cluster.batch.max-items` | `TABA_CLUSTER_BATCH_MAX_ITEMS` | **1000** | O máximo de operações de mensagem (`register`, `commit`, `rollback` de uma escrita, de uma invisibilidade ou de um ack) que uma chamada entre dois nós leva, e o máximo que um nó aceita numa só. O lote fecha quando uma vaga de envio abre, com o que estiver esperando, então com pouca carga ele tem um item; este é só o teto. `1` desliga o lote (cada operação vai sozinha). |
+| `cluster.batch.max-bytes` | `TABA_CLUSTER_BATCH_MAX_BYTES` | **8MB** | O limite brando do tamanho dos corpos de um lote: quem envia para de acrescentar itens ao alcançá-lo, e um item maior que ele vai sozinho. Quem recebe aceita isto mais uma mensagem (`message.max-bytes`) e recusa mais que isso com `413 message.too-large`. |
 | `cluster.freezing.duration` | `TABA_CLUSTER_FREEZING_DURATION` | **5m** (do código) | Tempo em que um nó desregistrado por falha fica impedido de se registrar novamente (anti-flapping). Durante o freezing o pedido de ingresso é rejeitado com `Retry-After`. |
 | `cluster.entry-address` | `TABA_CLUSTER_ENTRY_ADDRESS` | obrigatório com `replication.factor` acima de 1 (exceto o primeiro nó) | Endereço (`host:porta`, a porta de 1 a 65535; uma forma inválida impede o nó de subir) do balanceador à frente do cluster, **na porta do cluster** (`cluster.port`, não a da API de cliente), usado pelo nó ao iniciar para listar os membros (`GET /cluster/nodes`) e entrar no cluster. Sem ele o nó não sobe, **exceto o primeiro nó e o perfil de um nó** (`replication.factor=1`), em que não é usado. |
 | `cluster.advertise-addresses` | `TABA_CLUSTER_ADVERTISE_ADDRESSES` | **detectado (interface que sai para o entry-address)** (do código) | Lista de IPs (separados por vírgula) que o nó põe no `join` e que a tabela de membros guarda; os outros nós o reconhecem pelo IP de origem das conexões. Sem valor, o nó usa o endereço local de um soquete UDP "conectado" ao `cluster.entry-address` (nada é enviado), isto é, a interface que sai para o cluster. Quem tem NAT, várias interfaces ou um nome que não resolve para a interface certa define o parâmetro. |
@@ -197,12 +201,13 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 | `delivery.ready-list.size` | `TABA_DELIVERY_READY_LIST_SIZE` | **1000** | Número de IDs prontos que a lista (janela) mantém, por tópico, em cada nó; as contagens continuam exatas e a lista é reposta pelos cursores quando abre lugar. Mínimo efetivo 1. Na fila FIFO não se aplica (a lista tem uma entrada por grupo livre). |
 | `delivery.invisible-list.size` | `TABA_DELIVERY_INVISIBLE_LIST_SIZE` | — | Número máximo de mensagens invisíveis (ID e prazo) que o dono guarda em memória, por tópico; o excedente vai para a tabela `expiry` do banco do tópico. Sem valor, a lista não tem teto. |
 | `delivery.invisible.reload-threshold` | `TABA_DELIVERY_INVISIBLE_RELOAD_THRESHOLD` | — | Quando a lista de invisíveis em memória cai abaixo deste tamanho, a thread a recarrega com os próximos a vencer da tabela `expiry`. Sem valor, vale a metade de `delivery.invisible-list.size` (e `0`, só com a lista vazia, se esta também não tem valor). |
+| `storage.body.inline-max` | `TABA_STORAGE_BODY_INLINE_MAX` | **256B** | O maior corpo guardado na própria linha da tabela `messages`; um maior vai para a tabela `bodies`, para as atualizações de estado da linha não o regravarem (`0`: todos os corpos em `bodies`). ([08-armazenamento.md](08-armazenamento.md)) |
 | `storage.db.synchronous` | `TABA_STORAGE_DB_SYNCHRONOUS` | **NORMAL** | Modo de sincronização do SQLite. A durabilidade vem da replicação entre nós, então `NORMAL` basta. |
 | `storage.excluded.max-size` | `TABA_STORAGE_EXCLUDED_MAX_SIZE` | **100MB** | Tamanho máximo do log de mensagens excluídas (soma de todos os tópicos). Passando dele, os registros mais antigos saem primeiro e a data de início da gravação avança. Maior que zero. |
 | `storage.excluded.max-age` | `TABA_STORAGE_EXCLUDED_MAX_AGE` | **24h** | Idade máxima de um registro do log de mensagens excluídas. Maior que zero. |
 | `delivery.max-messages.default` | `TABA_DELIVERY_MAX_MESSAGES_DEFAULT` | **10** | Quantidade de mensagens do `GET` quando o cliente não informa `maxMessages`. |
 | `delivery.max-messages.max` | `TABA_DELIVERY_MAX_MESSAGES_MAX` | sem teto | Maior `maxMessages` aceito. Não vale para os streams de sincronização entre nós (`cluster.sync.stream.*`). |
-| `delivery.get.max-attempts` | `TABA_DELIVERY_GET_MAX_ATTEMPTS` | **3** (do código) | Quantos IDs da lista o `GET` tenta quando o registro de invisibilidade falha; esgotado, responde `503`. |
+| `delivery.get.max-attempts` | `TABA_DELIVERY_GET_MAX_ATTEMPTS` | **3** (do código) | Quantos IDs da lista o `GET` tenta quando o registro de invisibilidade falha; esgotado, responde `503`. Só na fila FIFO: na fila comum o dono entrega sozinho (D199). |
 | `delivery.fair.ready-weight` | `TABA_DELIVERY_FAIR_READY_WEIGHT` | **0.1** | Quanto cada mensagem pronta pesa no tamanho do grupo, frente a uma em processamento (`tamanho = em processamento + peso × prontas`). De `0` a `1`: `0` equivale ao SQS (só o que está em processamento), `1` conta o backlog inteiro. |
 | `delivery.fair.max-groups` | `TABA_DELIVERY_FAIR_MAX_GROUPS` | sem teto | Máximo de grupos de mensagens que cada dono acompanha, por tópico. Os grupos novos acima disso compartilham um contador único (seção 12.11). |
 | `delivery.fair.normal-every` | `TABA_DELIVERY_FAIR_NORMAL_EVERY` | **10** | A cada tantas entregas, uma pega a mensagem mais antiga da lista, de qualquer grupo, para os grupos grandes não esperarem sem limite. `0` desliga a garantia. |
@@ -260,8 +265,8 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 
 | Chave | Variável | Padrão | O que faz |
 |---|---|---|---|
-| `ratelimit.publish.rps` | `TABA_RATELIMIT_PUBLISH_RPS` | sem limite | Requisições por segundo, **por token** (ou por IP do cliente, sem token válido), para `POST /topics/{topic}/messages`. |
-| `ratelimit.consume.rps` | `TABA_RATELIMIT_CONSUME_RPS` | sem limite | Requisições por segundo, por token (ou por IP, sem token válido), para `GET /topics/{topic}/messages`, `PUT /topics/{topic}/messages/{id}/visibility` (invisibilidade) e `DELETE /topics/{topic}/messages/{id}` (ack). |
+| `ratelimit.publish.rps` | `TABA_RATELIMIT_PUBLISH_RPS` | sem limite | Requisições por segundo, **por token** (ou por IP do cliente, sem token válido), para `POST /topics/{topic}/messages` e `POST /topics/{topic}/messages/batch` (um lote conta como uma requisição). |
+| `ratelimit.consume.rps` | `TABA_RATELIMIT_CONSUME_RPS` | sem limite | Requisições por segundo, por token (ou por IP, sem token válido), para `GET /topics/{topic}/messages`, `PUT /topics/{topic}/messages/{id}/visibility` (invisibilidade) e `DELETE /topics/{topic}/messages/{id}` (ack), e os lotes `POST /topics/{topic}/messages/ack` e `/visibility` (uma requisição cada). |
 | `ratelimit.admin.rps` | `TABA_RATELIMIT_ADMIN_RPS` | sem limite | Requisições por segundo, por token (ou por IP, sem token válido), para `POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`, e `/tokens`; e, por IP, para `/node/drain`, `/node/backup/flush`, `/cluster/backup/flush` e `/cluster/stop`. |
 | `ratelimit.ops.rps` | `TABA_RATELIMIT_OPS_RPS` | sem limite | Requisições por segundo, por IP, para `/health/cluster?scope=cluster` e `/metrics/topics`. `/health/live`, `/health/ready`, `/metrics` e `/health/cluster?scope=node` são isentos. |
 | `ratelimit.burst` | `TABA_RATELIMIT_BURST` | `ceil(rps)` de cada categoria | Tamanho do estouro permitido acima da taxa (ex.: token bucket), para absorver picos curtos sem rejeitar requisições. Vale para cada contador, de token ou de IP. |

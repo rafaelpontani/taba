@@ -212,7 +212,7 @@ async fn a_publication_reaches_every_responsible_node_and_only_the_primary_owns_
             .read_message("orders", id)
             .unwrap()
             .unwrap();
-        assert_eq!(body, br#"{"n":0}"#);
+        assert_eq!(body.as_ref(), br#"{"n":0}"#);
     }
     cluster.shutdown().await;
 }
@@ -960,60 +960,39 @@ async fn an_ack_decided_by_the_quorum_is_not_undone_by_a_replica_that_is_down() 
     cluster.shutdown().await;
 }
 
-/// UC: UC-CNS-019, UC-CNS-021, UC-INV-012
+/// UC: UC-ENT-032
 #[tokio::test]
-async fn a_get_whose_registrations_fail_answers_503_and_leaves_the_messages_ready() {
+async fn on_a_plain_queue_a_get_delivers_even_when_no_other_node_learns_of_the_delivery() {
     let cluster = TestCluster::start(3).await;
     create_queue(cluster.node(1), "orders").await;
-    let mut ids = Vec::new();
-    for n in 0..9 {
-        ids.push(publish(cluster.node(1), "orders", json!({"n": n})).await);
-    }
-    let owner = owners_of(&cluster, &ids[0])[0];
+    let id = publish(cluster.node(1), "orders", json!({"n": 1})).await;
+    let owner = owners_of(&cluster, &id)[0];
 
-    // No invisibility register reaches another node: the quorum closes for no one.
+    // D199: the owner delivers alone; the other nodes learn of it after, and here nothing reaches them. (On FIFO the
+    // delivery still needs the quorum: `fifo_cluster.rs::a_get_whose_registrations_fail_answers_503_...`.)
     for number in 1..=3 {
         cluster
             .network
             .lose_kind(&host(number), "visibility-register", 1_000_000);
     }
-    let response = cluster
-        .node(owner)
-        .client
-        .get(
-            cluster
-                .node(owner)
-                .client_url("/topics/orders/messages?maxMessages=10&visibilityTimeout=60"),
-        )
-        .send()
-        .await
-        .unwrap();
-    assert!(response.headers().contains_key("retry-after"));
-    assert_eq!(error_code(response, 503).await, "delivery.unavailable");
-
-    // The messages that failed never entered the response and stay ready, as they were.
-    for number in 1..=3 {
-        cluster
-            .network
-            .lose_kind(&host(number), "visibility-register", 0);
-    }
-    let mut got = Vec::new();
-    for _ in 0..80 {
-        got.extend(
-            consume(
-                cluster.node(owner),
-                "orders",
-                "maxMessages=10&visibilityTimeout=60",
-            )
-            .await,
+    let token = deliver_at(cluster.node(owner)).await;
+    assert!(!token.is_empty());
+    let copies = owners_of(&cluster, &id)[1..]
+        .iter()
+        .map(|n| {
+            common::cluster::replication_of(cluster.node(*n))
+                .messages
+                .messages()
+                .clone()
+        })
+        .collect::<Vec<_>>();
+    for messages in copies {
+        let info = messages.message_info("orders", &id).unwrap().unwrap();
+        assert_eq!(
+            info.meta.delivery_count, 0,
+            "the copy keeps the delivery before"
         );
-        if !got.is_empty() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
     }
-    assert!(!got.is_empty());
-    assert!(got.iter().all(|m| m["deliveryCount"] == 1));
     cluster.shutdown().await;
 }
 
@@ -1227,5 +1206,68 @@ async fn an_ack_the_replicas_applied_reaches_the_owner_even_if_another_operation
             .is_none()
     })
     .await;
+    cluster.shutdown().await;
+}
+
+/// UC: UC-ENT-032
+#[tokio::test(flavor = "multi_thread")]
+async fn an_ack_that_reaches_the_copies_before_the_publication_waits_for_them_instead_of_failing() {
+    // D199: the owner delivers a message as soon as the publication is committed on it, and a consumer can ack it before
+    // the commit reaches the other nodes; their register of the ack must wait for the publication, not refuse the ack.
+    // A backoff long enough for a `GET` to fall in the window (the tests use 10 ms).
+    let cluster = TestCluster::start_with(3, &[("TABA_WRITE_RETRY_BACKOFF", "300ms")]).await;
+    create_queue(cluster.node(1), "orders").await;
+    let node = cluster.node(1);
+    let mut in_the_window = 0;
+    for _ in 0..20 {
+        // The commit of the publication does not reach the other nodes at the first attempt: it comes back after
+        // `write.retry.backoff`, and in between only the owner has the message.
+        for number in 2..=3 {
+            cluster.network.lose_kind(&host(number), "write-commit", 1);
+        }
+        let publishing = {
+            let (client, url) = (
+                node.client.clone(),
+                node.client_url("/topics/orders/messages"),
+            );
+            tokio::spawn(async move {
+                client
+                    .post(url)
+                    .json(&json!({"n": 1}))
+                    .send()
+                    .await
+                    .unwrap()
+                    .status()
+            })
+        };
+        let mut got = Vec::new();
+        for _ in 0..400 {
+            got = consume(node, "orders", "maxMessages=1&visibilityTimeout=60").await;
+            if !got.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+        assert_eq!(got.len(), 1);
+        if !publishing.is_finished() {
+            in_the_window += 1;
+        }
+        let response = node
+            .client
+            .delete(node.client_url(&format!(
+                "/topics/orders/messages/{}?receiptToken={}",
+                got[0]["id"].as_str().unwrap(),
+                got[0]["receiptToken"].as_str().unwrap()
+            )))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 204, "{:?}", response.text().await);
+        assert_eq!(publishing.await.unwrap(), 201);
+    }
+    assert!(
+        in_the_window > 0,
+        "no ack reached the copies before the publication"
+    );
     cluster.shutdown().await;
 }

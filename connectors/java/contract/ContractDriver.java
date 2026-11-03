@@ -98,6 +98,17 @@ public final class ContractDriver {
 
     // ---- helpers of the operations ----------------------------------------------------------------------
 
+    private static Map<String, String> batchFields(List<io.github.rafaelpontani.taba.BatchResult> results) {
+        StringBuilder statuses = new StringBuilder();
+        for (io.github.rafaelpontani.taba.BatchResult result : results) {
+            if (statuses.length() > 0) {
+                statuses.append(',');
+            }
+            statuses.append(result.getStatus());
+        }
+        return fields("count", String.valueOf(results.size()), "statuses", statuses.toString());
+    }
+
     private static Integer num(Map<String, String> p, String key) {
         return p.containsKey(key) ? Integer.valueOf(p.get(key)) : null;
     }
@@ -249,6 +260,31 @@ public final class ContractDriver {
                 publishOptions(p).contentType("application/json"))));
         ops.put("publishBytes", (c, p) -> publishFields(c.publish(p.get("topic"), Base64.getDecoder().decode(p.get("base64")),
                 publishOptions(p).contentType(p.getOrDefault("contentType", "application/octet-stream")))));
+
+        // A batch of texts (one item per text); bad=true adds an item with an invalid content type.
+        ops.put("publishBatch", (c, p) -> {
+            List<io.github.rafaelpontani.taba.BatchMessage> batch = new ArrayList<>();
+            for (String text : p.get("texts").split(",")) {
+                batch.add(io.github.rafaelpontani.taba.BatchMessage.text(text).groupId(p.get("groupId")));
+            }
+            if (Boolean.TRUE.equals(flag(p, "bad"))) {
+                batch.add(io.github.rafaelpontani.taba.BatchMessage.text("x").contentType("not a type"));
+            }
+            return batchFields(c.publishBatch(p.get("topic"), batch));
+        });
+        // Consumes and settles what came in one batch: action ack or visibility (seconds). stale=true makes the receipt
+        // of the first one old before the batch: it is given back and taken again.
+        ops.put("settleBatch", (c, p) -> {
+            List<io.github.rafaelpontani.taba.Message> messages = c.consume(p.get("topic"), consumeOptions(p));
+            if (Boolean.TRUE.equals(flag(p, "stale")) && !messages.isEmpty()) {
+                c.changeVisibility(p.get("topic"), messages.get(0), 0);
+                c.consume(p.get("topic"), new io.github.rafaelpontani.taba.ConsumeOptions()
+                        .maxMessages(1).waitTime(2).visibilityTimeout(num(p, "visibility")));
+            }
+            return batchFields("visibility".equals(p.get("action"))
+                    ? c.changeVisibilityBatch(p.get("topic"), messages, Integer.parseInt(p.get("seconds")))
+                    : c.ackBatch(p.get("topic"), messages));
+        });
 
         ops.put("consume", (c, p) -> messageFields(c.consume(p.get("topic"), consumeOptions(p))));
         ops.put("ack", (c, p) -> {

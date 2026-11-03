@@ -57,7 +57,7 @@ fn leave_on_disk(node: &TestNode, n: u64, clock: &dyn Clock) -> String {
     let record = MessageRecord {
         id: id.clone(),
         topic: PLAIN.into(),
-        body: json!({ "n": n }).to_string().into_bytes(),
+        body: json!({ "n": n }).to_string().into_bytes().into(),
         content_type: "application/json".into(),
         group_id: None,
         deduplication_id: None,

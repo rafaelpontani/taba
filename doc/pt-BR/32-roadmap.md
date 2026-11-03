@@ -71,7 +71,7 @@ Decisões que precisam estar fechadas: **D68** (versões-base das linguagens ain
 | **Escrita em disco no commit** ⬜ | Gravar em disco ao confirmar, para preservar também o que estava só em memória numa queda total (D176) | Retomada do cluster |
 | **Backup e restauração** 🟡 | ✅ Feito: backup opcional em S3 (segmentos, diário, definições, batimento, restauração, evicção, flush, parada do cluster; [33-backup-s3.md](33-backup-s3.md)). ⬜ Falta: compactar o diário (PRB-053), recuperar mais cedo os segmentos de um primário que deixou de sê-lo (PRB-054), restaurar sem ler os segmentos inteiros (PRB-055), apagar do bucket definições removidas com o gestor fora do ar (PRB-056), validar contra um MinIO/AWS reais (o teste de hoje usa um S3 de mentira em HTTP) e medir a latência de publicação com e sem S3 | Descoberta J |
 | **Agregação entre nós das métricas de tópico** ⬜ | A rota interna e o `fan-out` (com `stats.topics.cache-ttl`) | Descoberta A |
-| **Benchmarks** ⬜ | As metas de velocidade e custo não têm medição publicada | RNF-02 |
+| **Benchmarks** 🟡 | ✅ Feito: o script comparativo local `bench/run.sh` (OMB em Docker contra Kafka, Redpanda, RabbitMQ e NATS JetStream; [38-benchmarks.md](38-benchmarks.md)). ⬜ Falta: uma rodada `standard` publicada, a medição do cluster de três nós e o benchmark de regressão no CI | RNF-02 |
 
 ### Marco 5 — Fechar as pendências de calibragem
 

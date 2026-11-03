@@ -1,0 +1,12 @@
+# RabbitMQ (um nó). Filas de quórum, que gravam e fazem fsync por confirmação.
+services:
+  server:
+    image: rabbitmq:3.13.7
+    cpus: ${BENCH_CPUS}
+    mem_limit: ${BENCH_MEMORY}
+    env_file: env-${BENCH_DURABILITY}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 3s
+      timeout: 10s
+      retries: 60

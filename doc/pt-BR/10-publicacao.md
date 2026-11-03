@@ -3,7 +3,7 @@ título: Publicação de mensagens
 resumo: O caminho de uma mensagem publicada — do nó que recebe a chamada até a resposta ao cliente — com registro, quórum, commit, rollback e as falhas possíveis em cada ponto.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-28 @ 2447d5e
 fontes: [crates/taba-node/src/cluster/replication/coordinator.rs, crates/taba-node/src/cluster/replication/replica.rs, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/http/messages/mod.rs, crates/taba-node/src/engine/messages/mod.rs]
 ---
 
@@ -64,9 +64,21 @@ Só o primário decide o que é entregável. Um quórum formado por secundário 
 - **Distribuidor:** o coordenador casa os prefixos e executa **este mesmo procedimento uma vez por fila destino**, com cópias de `id` próprio. As cópias são independentes.
 - **FIFO:** o nó que recebeu **repassa ao primário do grupo**, que gera o `id` monotônico, deduplica e coordena; o quórum inclui **primário e secundário**.
 
+## Entre nós: lotes
+
+Com fator maior que 1, cada publicação faz chamadas aos outros nós responsáveis: o `register` e, depois da decisão, o `commit`. Essas chamadas não vão uma a uma: **as operações que esperam o mesmo nó vão juntas** em `POST /cluster/batch`, em protobuf ([18-api-cluster.md](18-api-cluster.md)). O coordenador não sabe: continua chamando uma vez por operação, com as mesmas tentativas e os mesmos erros, e o lote fica por baixo dessa chamada.
+
+Um lote fecha quando uma vaga de envio abre (cada nó tem 4), com o que estiver esperando, até `cluster.batch.max-items` e o `cluster.batch.max-bytes` brando ([22-configuracao.md](22-configuracao.md)). Não há temporizador nem espera para encher: com pouca carga cada operação vai sozinha, na hora; com muita, a fila cresce enquanto as vagas estão ocupadas e o lote seguinte sai cheio. O `commit` de uma publicação e o `register` da seguinte caem no mesmo lote quando coincidem. Cada item tem o seu resultado: a falha de uma operação não toca as outras do lote, e a falha da chamada inteira (rede, prazo) faz cada operação se repetir por conta própria, num lote seguinte.
+
+Um **lote de publicações** do cliente (`POST /topics/{topic}/messages/batch`) numa fila comum vai além ([D198](30-decisoes.md)): as publicações dele com os mesmos nós responsáveis (o mesmo primário; a ordem dos outros não importa) passam pelas duas fases como **um grupo**, com uma tarefa por nó em vez de uma por nó e publicação. Os registros do grupo chegam a cada nó de uma vez e são respondidos uma vez só, o coordenador decide cada publicação como a decidiria sozinha (uma cujo registro falhou não segura as outras), e os commits das decididas vão juntos do mesmo jeito. O que é raro (um nó que perdeu um registro, um commit que não passou na primeira tentativa) volta para a insistência de uma publicação. Um grupo tem no máximo `cluster.batch.max-items` operações. Vale igual para um lote de acks. Uma publicação avulsa continua com as suas duas fases (e as suas chamadas continuam dividindo os lotes entre nós).
+
 ## Num nó só
 
 No perfil de um nó (fator 1) o nó é o primário de tudo e o quórum vale 1: registro e commit acontecem só nele, sem réplicas, sem repetição entre nós e sem rollback por falta de quórum.
+
+Quando o nó que recebe a chamada é o **único nó responsável** pela mensagem e `write.quorum` vale 1 (fator 1, em qualquer tamanho de cluster, com o nó ativo), não há com quem combinar, então a operação não passa pelas duas fases ([D191](30-decisoes.md)): o nó a aplica direto no motor, com a mesma conferência e a mesma aplicação que o registro e o commit da sua réplica fariam, e toma a mensagem pela réplica enquanto isso (`Replica::hold`), para que nenhum registro de outra operação sobre a mesma mensagem (uma ida para a dead-letter, por exemplo) corra ao mesmo tempo. Vale igual para a publicação, a entrega de um `GET`, o ack e a troca de invisibilidade. As rotas em lote ([16-api-de-clientes.md](16-api-cliente.md)) vão ao motor numa **só tomada do tópico** para o lote inteiro quando todos os itens têm o nó sozinho (numa fila, ou num distribuidor com uma só fila); senão o lote passa pelas duas fases em grupos (D198, acima), e na FIFO ou num distribuidor com várias filas cada item passa pela sua chamada avulsa. Uma publicação que só mexe em memória (nenhuma mensagem viva do tópico no disco, o limite de memória tem espaço, o nó não está em drenagem e o backup em S3 está desligado) é aplicada na thread da requisição; senão numa thread bloqueante, porque lê ou escreve o disco. A fila FIFO mantém as duas fases. Uma operação aplicada assim conta em `taba.write.coordinated` e não em `taba.write.received` (não há registro nem commit para si mesmo).
+
+Com um único nó responsável que é **outro** nó (fator 1 num cluster de vários), o coordenador o chama: o registro dele já é a decisão, então o coordenador registra e faz o commit em sequência na própria tarefa da requisição, sem uma tarefa por nó e sem esperar o quórum; só um commit que falha na primeira tentativa vai para a insistência que o coordenador mantém em segundo plano depois da decisão (veja Falhas).
 
 ## Exemplo
 

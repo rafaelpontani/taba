@@ -1,0 +1,12 @@
+name: RabbitMQ
+driverClass: io.openmessaging.benchmark.driver.rabbitmq.RabbitMqBenchmarkDriver
+producerCreationDelay: 100
+producerCreationBatchSize: 5
+consumerCreationDelay: 100
+consumerCreationBatchSize: 5
+amqpUris:
+  - amqp://node-0
+  - amqp://node-1
+  - amqp://node-2
+messagePersistence: true
+queueType: QUORUM

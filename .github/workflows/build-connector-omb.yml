@@ -1,0 +1,22 @@
+# Build and tests of the OpenMessaging Benchmark driver (connectors/omb) on Java 11, the base version of the Java
+# connector it is built on: checks out the OMB commit of connectors/omb/OMB_VERSION, builds its driver-api and the
+# connector, runs the driver's unit tests and packages the JAR. The integration tests (against a node) run in
+# contract-connectors.yml. Called by ci.yml. Publishes nothing.
+name: OMB driver build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  connector-omb:
+    name: OMB driver (build and unit tests, JDK 11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and unit tests
+        run: connectors/omb/build.sh

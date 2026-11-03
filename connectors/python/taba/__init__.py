@@ -11,6 +11,8 @@ from .client import Client
 from .errors import TabaError
 from .models import (
     UNSET,
+    BatchMessage,
+    BatchResult,
     Config,
     ConsumeOptions,
     DistributorDelivery,
@@ -30,6 +32,8 @@ __all__ = [
     "CONTRACT_VERSION",
     "UNSET",
     "VERSION",
+    "BatchMessage",
+    "BatchResult",
     "Cancelled",
     "CancelToken",
     "Client",

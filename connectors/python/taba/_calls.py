@@ -1,11 +1,12 @@
 """Builds the `ApiCall` of each operation. Shared by the synchronous and the asynchronous client."""
 
+import base64
 import json
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ._transport import ApiCall, segment
 from .errors import TabaError
-from .models import UNSET, ConsumeOptions, Message, TopicRequest, TopicUpdate
+from .models import UNSET, BatchMessage, ConsumeOptions, Message, TopicRequest, TopicUpdate
 
 #: `consume` waits `wait_time` plus this slack (seconds), not the `request_timeout`.
 LONG_POLL_SLACK = 10.0
@@ -108,6 +109,35 @@ def publish_call(
     if deduplication_id is not None:
         call.with_query("deduplicationId", deduplication_id)
     return call
+
+
+def publish_batch_call(topic: str, messages: List[BatchMessage]) -> ApiCall:
+    items = []
+    for m in messages:
+        data = m.body.encode("utf-8") if isinstance(m.body, str) else bytes(m.body)
+        item: Dict[str, Any] = {"body": base64.b64encode(data).decode("ascii"), "bodyEncoding": "base64"}
+        for value, key in (
+            (m.content_type, "contentType"),
+            (m.group_id, "groupId"),
+            (m.deduplication_id, "deduplicationId"),
+        ):
+            if value is not None:
+                item[key] = value
+        items.append(item)
+    body = json.dumps({"messages": items}, separators=(",", ":"), ensure_ascii=False)
+    return ApiCall("POST", "/topics/%s/messages/batch" % segment(topic)).with_json(body)
+
+
+def receipts_call(topic: str, route: str, messages: List[Message], seconds: Optional[int] = None) -> ApiCall:
+    """The ack (`route` `ack`) or the change of invisibility (`visibility`) of many messages in one request."""
+    items = []
+    for m in messages:
+        item: Dict[str, Any] = {"id": m.id, "receiptToken": m.receipt_token}
+        if seconds is not None:
+            item["visibilityTimeout"] = seconds
+        items.append(item)
+    body = json.dumps({"messages": items}, separators=(",", ":"), ensure_ascii=False)
+    return ApiCall("POST", "/topics/%s/messages/%s" % (segment(topic), route)).with_json(body)
 
 
 def consume_call(topic: str, options: Optional[ConsumeOptions]) -> ApiCall:

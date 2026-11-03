@@ -1,0 +1,6 @@
+# Perfil consume: só o consumo. Acumula 1 GB com o consumidor parado e o libera; 1 KB com 1 consumidor, 100 bytes com 1 consumidor e
+# 1 KB com 4 consumidores. Três rodadas de 3 min.
+ROUNDS=3
+DURATION=3
+WARMUP=0
+PROFILE_WORKLOADS="backlog-1kb backlog-100b backlog-1kb-4c"

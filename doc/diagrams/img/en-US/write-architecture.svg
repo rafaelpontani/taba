@@ -524,8 +524,8 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="595" y="384" class="t-muted" font-size="9" text-anchor="middle">memory with overflow</text>
         </g>
 
-        <g id="node-disk" data-node-id="disk" data-node-label="Disk" tabindex="0" role="button" aria-label="Focus Disk, SQLite + .body bodies, Cluster node (identical, no master)" aria-pressed="false" data-node-kind="database" data-node-sublabel="SQLite + .body bodies" data-node-context="Cluster node (identical, no master)">
-          <title>Disk · SQLite + .body bodies · Cluster node (identical, no master)</title>
+        <g id="node-disk" data-node-id="disk" data-node-label="Disk" tabindex="0" role="button" aria-label="Focus Disk, SQLite with the bodies, Cluster node (identical, no master)" aria-pressed="false" data-node-kind="database" data-node-sublabel="SQLite with the bodies" data-node-context="Cluster node (identical, no master)">
+          <title>Disk · SQLite with the bodies · Cluster node (identical, no master)</title>
           <rect x="520" y="480" width="150" height="60" rx="6" class="c-mask"/>
           <rect x="520" y="480" width="150" height="60" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(526 486) scale(0.6875)">
@@ -533,7 +533,7 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="595" y="508" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Disk</text>
-        <text x="595" y="524" class="t-muted" font-size="9" text-anchor="middle">SQLite + .body bodies</text>
+        <text x="595" y="524" class="t-muted" font-size="9" text-anchor="middle">SQLite with the bodies</text>
         </g>
 
         <g id="node-peers" data-node-id="peers" data-node-label="Responsible nodes" tabindex="0" role="button" aria-label="Focus Responsible nodes, primary + replicas, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="primary + replicas" data-node-tag="same architecture" data-node-context="Architecture component">

@@ -110,7 +110,7 @@
       "id": "disk",
       "type": "database",
       "label": "7. Storage",
-      "sublabel": "SQLite per topic + .body body",
+      "sublabel": "SQLite per topic, with the body",
       "pos": [
         790,
         285

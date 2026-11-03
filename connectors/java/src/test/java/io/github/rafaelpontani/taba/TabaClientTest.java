@@ -239,6 +239,59 @@ class TabaClientTest {
         assertEquals("application/json", server.requests.get(3).header("Content-Type"));
     }
 
+    /// UC: UC-CNT-041
+    @Test
+    void publishBatchSendsEachBodyInBase64AndReadsOneResultPerItem() {
+        server.fallback(reply(200, "{\"results\":[{\"status\":201,\"id\":\"m1\"},"
+                + "{\"status\":200,\"id\":\"m0\",\"duplicate\":true},"
+                + "{\"status\":400,\"error\":{\"code\":\"validation.invalid-content-type\",\"message\":\"bad\"}}]}"));
+        byte[] data = {0, 1, (byte) 255};
+        List<BatchResult> results = client.publishBatch("q", Arrays.asList(
+                new BatchMessage(data).contentType("application/octet-stream").groupId("g1").deduplicationId("d1"),
+                BatchMessage.text("olá"),
+                BatchMessage.json("{}").contentType("nope")));
+        Recorded request = server.requests.get(0);
+        assertEquals("POST", request.method);
+        assertTrue(request.url.startsWith("/topics/q/messages/batch"), request.url);
+        assertEquals("application/json", request.header("Content-Type"));
+        assertEquals("{\"messages\":[{\"body\":\"AAH/\",\"bodyEncoding\":\"base64\",\"contentType\":\"application/octet-stream\","
+                + "\"groupId\":\"g1\",\"deduplicationId\":\"d1\"},"
+                + "{\"body\":\"b2zDoQ==\",\"bodyEncoding\":\"base64\",\"contentType\":\"text/plain; charset=utf-8\"},"
+                + "{\"body\":\"e30=\",\"bodyEncoding\":\"base64\",\"contentType\":\"nope\"}]}", request.text());
+        assertEquals(3, results.size());
+        assertTrue(results.get(0).isOk());
+        assertEquals(201, results.get(0).getStatus());
+        assertEquals("m1", results.get(0).getId());
+        assertEquals(Boolean.TRUE, results.get(1).getDuplicate());
+        assertFalse(results.get(2).isOk());
+        assertEquals(400, results.get(2).getStatus());
+        assertEquals("validation.invalid-content-type", results.get(2).getErrorCode());
+        assertEquals("bad", results.get(2).getErrorMessage());
+    }
+
+    /// UC: UC-CNT-041
+    @Test
+    void ackBatchAndChangeVisibilityBatchSendTheReceiptsOfTheMessages() {
+        server.fallback(reply(200, "{\"results\":[{\"status\":204,\"id\":\"m1\"},"
+                + "{\"status\":409,\"error\":{\"code\":\"message.stale-receipt\",\"message\":\"old\"}}]}"));
+        List<Message> messages = Arrays.asList(
+                ModelParser.parseMessage(messageJson("m1", "1")), ModelParser.parseMessage(messageJson("m2", "2")));
+        List<BatchResult> acked = client.ackBatch("q", messages);
+        Recorded request = server.requests.get(0);
+        assertTrue(request.url.startsWith("/topics/q/messages/ack"), request.url);
+        assertEquals("{\"messages\":[{\"id\":\"m1\",\"receiptToken\":\"rt-m1\"},{\"id\":\"m2\",\"receiptToken\":\"rt-m2\"}]}",
+                request.text());
+        assertTrue(acked.get(0).isOk());
+        assertEquals("message.stale-receipt", acked.get(1).getErrorCode());
+
+        server.fallback(reply(200, "{\"results\":[{\"status\":200,\"id\":\"m1\",\"invisibleUntil\":\"2026-10-29T10:00:00Z\"}]}"));
+        List<BatchResult> changed = client.changeVisibilityBatch("q", messages.subList(0, 1), 30);
+        request = server.requests.get(1);
+        assertTrue(request.url.startsWith("/topics/q/messages/visibility"), request.url);
+        assertEquals("{\"messages\":[{\"id\":\"m1\",\"receiptToken\":\"rt-m1\",\"visibilityTimeout\":30}]}", request.text());
+        assertEquals("2026-10-29T10:00:00Z", changed.get(0).getInvisibleUntil());
+    }
+
     /// UC: UC-CNT-004
     @Test
     void aDistributorAnswerListsEachCopyAndThePartialFailures() {

@@ -71,6 +71,9 @@ pub fn annotate_messaging<'a>(
     tags: impl IntoIterator<Item = (&'a String, &'a String)>,
 ) {
     let span = Span::current();
+    if span.is_disabled() {
+        return;
+    }
     span.record("messaging.system", MESSAGING_SYSTEM);
     span.record("messaging.destination.name", topic);
     span.record("messaging.operation.type", operation);
@@ -99,6 +102,11 @@ pub fn durability_event() {
 /// (`taba.attempt`) is recorded by whoever repeats the call. `durability` marks the span as a durability
 /// event (rollback), which the Collector keeps in tail sampling.
 pub fn peer_span(name: &'static str, peer: &str, durability: bool) -> Span {
+    // Without an OTLP pipeline nobody reads this span, but the registry of the subscriber would still keep it: there
+    // is one per call to a node, several per message, and they cost about a tenth of the CPU of a cluster under load.
+    if !super::otlp::hub().is_attached() {
+        return Span::none();
+    }
     let span = tracing::info_span!(
         "peer.call",
         otel.name = name,
@@ -162,6 +170,17 @@ pub fn inject(headers: &mut Vec<(String, String)>) {
     if context.span().span_context().is_valid() {
         TraceContextPropagator::new().inject_context(&context, &mut Out(headers));
     }
+}
+
+/// The `traceparent` of the current span, if it belongs to a trace (only while an OTLP pipeline is attached): what an
+/// operation in a batch carries so the node that serves it continues the trace.
+pub fn current_traceparent() -> Option<String> {
+    let mut headers = Vec::new();
+    inject(&mut headers);
+    headers
+        .into_iter()
+        .find(|(name, _)| name == "traceparent")
+        .map(|(_, value)| value)
 }
 
 /// The span of a call that arrived from another node. It is only born if the call carried a `traceparent`

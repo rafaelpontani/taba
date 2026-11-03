@@ -35,7 +35,7 @@ use crate::http::auth::Auth;
 use crate::http::client_ip::ClientIpRules;
 use crate::http::observe::{self, Observer};
 use crate::http::ratelimit::RateLimiter;
-use crate::http::{self, AppState};
+use crate::http::{self, AppShared, AppState};
 use crate::storage;
 use crate::storage::backup::{BackupDb, ObjectStore, Prefixed, S3Settings, S3Store};
 use crate::storage::db::NodeDb;
@@ -389,14 +389,18 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let auth = Arc::new(Auth::new(&config.auth, Arc::new(tokens)));
     let telemetry = Arc::new(Telemetry::from_config(&config, &shared.node_id()));
     let message_store = Arc::new(
-        MessageStore::new(&config.storage.dir, config.storage.db_synchronous).with_excluded(
-            ExcludedLimits {
-                max_bytes: config.storage.excluded_max_bytes,
-                max_age_ms: u64::try_from(config.storage.excluded_max_age.as_millis())
-                    .unwrap_or(u64::MAX),
-            },
-            Some(saves.clone()),
-        ),
+        MessageStore::new(&config.storage.dir, config.storage.db_synchronous)
+            .with_body_inline_max(
+                usize::try_from(config.storage.body_inline_max).unwrap_or(usize::MAX),
+            )
+            .with_excluded(
+                ExcludedLimits {
+                    max_bytes: config.storage.excluded_max_bytes,
+                    max_age_ms: u64::try_from(config.storage.excluded_max_age.as_millis())
+                        .unwrap_or(u64::MAX),
+                },
+                Some(saves.clone()),
+            ),
     );
     let disk_store = message_store.clone();
     let messages = if deps.cluster.is_some() {
@@ -532,7 +536,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         (None, _) => None,
     };
     let backup = backup_parts.as_ref().map(|(backup, _)| backup.clone());
-    let state = AppState {
+    let state = AppState::from(AppShared {
         clock: deps.clock.clone(),
         node: shared.clone(),
         backup: backup.clone(),
@@ -551,7 +555,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         telemetry: telemetry.clone(),
         stats_rules: Arc::new(StatsRules::from_config(&config)),
         tls: tls.clone(),
-    };
+    });
 
     let otlp = match &config.telemetry.otlp {
         Some(settings) => {
@@ -602,10 +606,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
                      port: u16,
                      tls: Option<Arc<rustls::ServerConfig>>| {
         let cancel = cancel.clone();
-        let observer = Observer {
-            telemetry: telemetry.clone(),
-            port,
-        };
+        let observer = Observer::new(telemetry.clone(), port);
         match tls {
             Some(config) => tasks.spawn(observe::serve_tls(
                 listener, router, observer, cancel, config,

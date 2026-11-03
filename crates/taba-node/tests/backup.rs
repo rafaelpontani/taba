@@ -855,13 +855,11 @@ async fn a_full_disk_evicts_the_bodies_already_in_s3_and_reading_one_goes_back_t
     // Everything to disk (step 1 of the flush) and to S3.
     flush_all(&cluster).await;
     let bodies = |number: usize| -> usize {
-        let dir = cluster
-            .node(number)
-            .storage_dir()
-            .join(taba_node::storage::messages::dir_name("orders"));
-        ids.iter()
-            .filter(|id| dir.join(format!("{id}.body")).is_file())
-            .count()
+        let disk = taba_node::storage::messages::MessageStore::new(
+            &cluster.node(number).storage_dir(),
+            taba_node::config::DbSynchronous::Normal,
+        );
+        ids.iter().filter(|id| disk.has_body("orders", id)).count()
     };
     // The flush only moved node 1's memory; the others also take it to disk.
     for number in 2..=3 {

@@ -1,0 +1,32 @@
+# NATS JetStream: três nós no mesmo cluster, fluxos com três réplicas (replicationFactor 3 no driver). Cada nó tem os
+# mesmos limites de CPU e memória (BENCH_CPUS e BENCH_MEMORY são por nó). O cliente conecta direto nos nós.
+x-node: &node
+  image: nats:2.10.22-alpine
+  cpus: ${BENCH_CPUS}
+  mem_limit: ${BENCH_MEMORY}
+  env_file: env-${BENCH_DURABILITY}
+  command: ["--config", "/etc/nats/nats.conf", "-m", "8222"]
+  volumes:
+    - ./nats-${BENCH_DURABILITY}-cluster.conf:/etc/nats/nats.conf:ro
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz?js-enabled-only=true"]
+    interval: 3s
+    timeout: 5s
+    retries: 60
+
+services:
+  node-0:
+    <<: *node
+    hostname: node-0
+    environment:
+      NODE_NAME: node-0
+  node-1:
+    <<: *node
+    hostname: node-1
+    environment:
+      NODE_NAME: node-1
+  node-2:
+    <<: *node
+    hostname: node-2
+    environment:
+      NODE_NAME: node-2

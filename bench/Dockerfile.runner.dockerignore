@@ -1,0 +1,6 @@
+**/target
+**/.work
+**/node_modules
+.git
+doc
+bench

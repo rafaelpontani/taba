@@ -134,6 +134,198 @@ async fn the_dev_token_is_an_admin_work_token_created_at_the_start_and_turns_aut
     node.shutdown().await;
 }
 
+/// Starts the profile and creates the queue, waiting for the node to be active.
+async fn active_with_queue(name: &str) -> TestNode {
+    let node = profile().start().await;
+    wait_joined(&node).await;
+    let state = node.node.shared().clone();
+    eventually("the node to be active", move || {
+        state.state() == taba_node::cluster::state::NodeState::Active
+    })
+    .await;
+    let created = node
+        .client
+        .post(node.client_url("/topics"))
+        .json(&json!({ "name": name, "type": "queue" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 201);
+    node
+}
+
+async fn post_json(node: &TestNode, path: &str, body: Value) -> Value {
+    let response = node
+        .client
+        .post(node.client_url(path))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200, "{path}");
+    response.json().await.unwrap()
+}
+
+/// The register, commit and rollback calls the node served to itself (the two phases).
+fn phases(metrics: &str) -> f64 {
+    common::cluster::total(metrics, "taba_write_received_total", "")
+}
+
+/// UC: UC-MSG-024
+#[tokio::test]
+async fn alone_the_batches_publish_deliver_and_ack_without_the_two_phases() {
+    let node = active_with_queue("orders").await;
+    let messages: Vec<Value> = (0..300).map(|n| json!({ "body": { "n": n } })).collect();
+    let published = post_json(
+        &node,
+        "/topics/orders/messages/batch",
+        json!({ "messages": messages }),
+    )
+    .await;
+    let results = published["results"].as_array().unwrap();
+    assert_eq!(results.len(), 300);
+    assert!(
+        results
+            .iter()
+            .all(|r| r["status"] == 201 && r["id"].is_string()),
+        "{published}"
+    );
+
+    let delivered: Value = node
+        .client
+        .get(node.client_url("/topics/orders/messages?maxMessages=500"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let delivered = delivered["messages"].as_array().unwrap().clone();
+    assert_eq!(delivered.len(), 300, "every message, each once");
+    assert!(delivered.iter().all(|m| m["deliveryCount"] == 1));
+    // Each body comes as it was published (a plain queue does not promise the order).
+    let mut bodies: Vec<i64> = delivered
+        .iter()
+        .map(|m| m["body"]["n"].as_i64().unwrap())
+        .collect();
+    bodies.sort_unstable();
+    assert_eq!(bodies, (0..300).collect::<Vec<_>>());
+
+    // One stale receipt and the others right: the stale one alone fails.
+    let mut acks: Vec<Value> = delivered
+        .iter()
+        .map(|m| json!({ "id": m["id"], "receiptToken": m["receiptToken"] }))
+        .collect();
+    acks[7]["receiptToken"] = json!("0000000000000000000000000");
+    let acked = post_json(
+        &node,
+        "/topics/orders/messages/ack",
+        json!({ "messages": acks }),
+    )
+    .await;
+    let acked = acked["results"].as_array().unwrap();
+    assert_eq!(acked[7]["status"], 409, "{:?}", acked[7]);
+    assert_eq!(acked[7]["error"]["code"], "message.stale-receipt");
+    assert_eq!(acked.iter().filter(|r| r["status"] == 204).count(), 299);
+
+    // The one left goes back after its deadline, as on any queue: here it is still invisible.
+    let again: Value = node
+        .client
+        .get(node.client_url("/topics/orders/messages?maxMessages=500"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(again["messages"].as_array().unwrap().is_empty());
+
+    let metrics = node.metrics().await;
+    assert_eq!(phases(&metrics), 0.0, "no register or commit to itself");
+    let coordinated = common::series(
+        &metrics,
+        "taba_write_coordinated_total{taba_outcome=\"committed\"}",
+    );
+    assert_eq!(
+        coordinated,
+        Some(899.0),
+        "300 publications, 300 deliveries and 299 acks"
+    );
+    node.shutdown().await;
+}
+
+/// UC: UC-MSG-024
+#[tokio::test]
+async fn alone_the_single_calls_and_the_visibility_take_the_same_path() {
+    let node = active_with_queue("orders").await;
+    let published = node
+        .client
+        .post(node.client_url("/topics/orders/messages"))
+        .header("content-type", "application/json")
+        .body("{\"n\":1}")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(published.status(), 201);
+    let delivered: Value = node
+        .client
+        .get(node.client_url("/topics/orders/messages?visibilityTimeout=600"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let message = delivered["messages"][0].clone();
+    let (id, receipt) = (
+        message["id"].as_str().unwrap().to_owned(),
+        message["receiptToken"].as_str().unwrap().to_owned(),
+    );
+    // Visibility zero: the message is ready again right away, with a new delivery.
+    let released = node
+        .client
+        .put(node.client_url(&format!(
+            "/topics/orders/messages/{id}/visibility?receiptToken={receipt}"
+        )))
+        .json(&json!({ "visibilityTimeout": 0 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(released.status(), 200);
+    let again: Value = node
+        .client
+        .get(node.client_url("/topics/orders/messages"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(again["messages"][0]["id"], json!(id));
+    assert_eq!(again["messages"][0]["deliveryCount"], 2);
+    let receipt = again["messages"][0]["receiptToken"].as_str().unwrap();
+    let stale = node
+        .client
+        .delete(node.client_url(&format!(
+            "/topics/orders/messages/{id}?receiptToken=0000000000000000000000000"
+        )))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(error_code(stale, 409).await, "message.stale-receipt");
+    let acked = node
+        .client
+        .delete(node.client_url(&format!(
+            "/topics/orders/messages/{id}?receiptToken={receipt}"
+        )))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(acked.status(), 204);
+    assert_eq!(phases(&node.metrics().await), 0.0);
+    node.shutdown().await;
+}
+
 async fn eventually_status<F, Fut>(call: &F, expected: u16)
 where
     F: Fn() -> Fut,

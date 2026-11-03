@@ -75,6 +75,16 @@ Uma perda **não** compromete a saúde do nó nem para a sincronização.
 
 Se o primário cair **exatamente** entre o commit local e a replicação às réplicas fora do quórum, e for excluído antes de terminar, o novo primário herda o `invisibleUntil` de quem sobreviveu, que pode estar desatualizado: a mensagem pode voltar a ser entregável **antes** do prazo prometido ao primeiro consumidor. Não quebra o *at-least-once*; só encurta, nesse caso raro, o tempo mínimo de processamento.
 
+Na **fila comum** a janela é maior, por decisão ([D199](30-decisoes.md)): o dono entrega sozinho e conta aos outros nós responsáveis depois, em segundo plano, então as cópias ficam alguns milissegundos atrás de cada entrega (e mais atrás enquanto uma estiver inalcançável). Se o dono cair nessa janela, o novo dono pode entregar de novo antes do prazo, e essa entrega não foi contada para o `maxDeliveries` na cópia (a mensagem pode ser entregue uma vez além do limite antes da dead-letter). O ack com o primeiro `receiptToken` é recusado como velho pelo novo dono. Na fila FIFO a entrega continua esperando o quórum.
+
+### Trade-off aceito na entrega do nó sozinho
+
+Com `replication.factor` 1 (o nó sozinho, D191), a entrega de uma mensagem em disco responde antes de a sua escrita chegar ao banco (D193): uma thread de fundo faz o commit alguns milissegundos depois. Se o **processo** morrer nessa janela, a mensagem volta com o contador e o prazo de antes da entrega: é entregue de novo sem esperar a invisibilidade prometida ao primeiro consumidor, o ack com o primeiro `receiptToken` é recusado como velho, e essa entrega não conta para o `maxDeliveries` (a mensagem pode ser entregue uma vez além do limite antes da dead-letter). Não quebra o *at-least-once*. Uma mensagem só em memória se perde com o processo de qualquer forma; com mais de um nó responsável as cópias guardam a entrega (D199, acima).
+
+### Uma réplica não espera o seu disco
+
+Com mais de um nó responsável, o commit de uma operação numa réplica (uma publicação, uma entrega, um ack) põe o que vai para o disco na fila de escrita do tópico e responde sem esperar o banco (D196): a escrita já é visível para as leituras, e uma thread de fundo faz o commit. É a garantia da tabela acima (a durabilidade vem das cópias, não do disco); uma réplica que morre nessa janela perde o que estava na sua fila como perde o que estava só na sua memória, e as outras cópias guardam a mensagem. Quando a fila de um tópico passa de 8 192 escritas, o commit espera por ela, então um disco mais lento que a carga segura as réplicas em vez de encher a memória.
+
 ## Retenção
 
 | Regra | Padrão | Efeito |

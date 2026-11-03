@@ -46,6 +46,7 @@ mod window;
 
 pub use backup::BackupSink;
 pub use blocks::{BlockEntry, BlockMessage, Loaded};
+use bytes::Bytes;
 pub use lives::TopicCheck;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io;
@@ -125,6 +126,9 @@ pub struct MessageRules {
     pub invisible_reload_threshold: Option<usize>,
     /// `fifo.dedup.window`, in milliseconds.
     pub fifo_dedup_window_ms: u64,
+    /// `api.batch.max-messages` and `api.batch.max-bytes`: the items and the bytes of a request in batch.
+    pub batch_max_messages: usize,
+    pub batch_max_bytes: u64,
 }
 
 impl MessageRules {
@@ -151,6 +155,8 @@ impl MessageRules {
                 .map(|n| n as usize),
             fifo_dedup_window_ms: u64::try_from(config.fifo.dedup_window.as_millis())
                 .unwrap_or(u64::MAX),
+            batch_max_messages: config.batch.max_messages as usize,
+            batch_max_bytes: config.batch.max_bytes,
         }
     }
 
@@ -175,7 +181,7 @@ impl MessageRules {
 /// `Content-Type` and the query.
 #[derive(Debug, Clone, Default)]
 pub struct PublishRequest {
-    pub body: Vec<u8>,
+    pub body: Bytes,
     pub content_type: Option<String>,
     pub group_id: Option<String>,
     pub deduplication_id: Option<String>,
@@ -272,7 +278,7 @@ const OPEN_PAGE: usize = 1000;
 /// A message in memory: the metadata is the same as the database row's.
 struct Stored {
     meta: MessageMeta,
-    body: Vec<u8>,
+    body: Bytes,
 }
 
 /// Where a message is.
@@ -419,7 +425,7 @@ pub struct ConsumeParams {
 #[derive(Debug, Clone)]
 pub enum Draft {
     /// A new message, with `id` and position already defined.
-    New { meta: MessageMeta, body: Vec<u8> },
+    New { meta: MessageMeta, body: Bytes },
     /// The key already exists in the group within the window: the original's `id` applies.
     Duplicate { id: String },
 }
@@ -478,7 +484,7 @@ pub enum VisibilityCheck {
 pub struct Candidate {
     /// The message as it will be after the delivery.
     pub meta: MessageMeta,
-    pub body: Vec<u8>,
+    pub body: Bytes,
     previous_deliveries: u32,
     band: u32,
 }
@@ -670,6 +676,40 @@ impl Messages {
         Ok(some)
     }
 
+    /// A publication of `size` bytes on the topic only touches memory: the topic has no database
+    /// yet (so asking whether the `id` exists reads nothing from disk), the memory limit has room, the
+    /// node is not draining and there is no backup to note it in. The replica then applies it without a
+    /// blocking thread. It is a forecast, not a reservation: a publication that still ends up on disk
+    /// (another one took the room in the meantime) only writes it on the calling thread, once.
+    pub fn publish_is_light(&self, topic: &str, size: u64) -> bool {
+        !self.draining.load(Ordering::Relaxed)
+            && self.backup.get().is_none()
+            && self.store.known_without_disk(topic)
+            && self.rules.memory_limit.is_none_or(|limit| {
+                self.memory_bytes
+                    .load(Ordering::Relaxed)
+                    .saturating_add(size)
+                    <= limit
+            })
+    }
+
+    /// The message is in the topic's memory: reading it, acking it or moving its deadline touches no disk (the
+    /// ack only queues its line in the log of excluded messages, written in batches), so the replica does it
+    /// without a blocking thread. It is a forecast: a message demoted in the meantime is just read on the calling
+    /// thread, once.
+    pub fn is_in_memory(&self, topic: &str, id: &str) -> bool {
+        // The state is taken out first: the map of topics is never held while waiting for a topic. A publication
+        // holds its topic and then reads the map (`demote`), and a writer waiting for the map blocks new readers,
+        // so holding both the other way round stops every thread (PRB-088).
+        let state = self
+            .states
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(topic)
+            .cloned();
+        state.is_some_and(|state| lock(&state).memory.contains_key(id))
+    }
+
     /// The publication that the cluster coordinated took `secs`: it enters the topic's latency histogram.
     pub fn record_publish_latency(&self, topic: &str, secs: f64) {
         let state = self.state_of(topic);
@@ -678,6 +718,7 @@ impl Messages {
 
     /// The node stopped: closes the topic databases (the files can be moved or deleted).
     pub fn release_files(&self) {
+        self.flush_excluded();
         self.store.release_files();
     }
 
@@ -723,7 +764,10 @@ impl Messages {
         // topic that was recreated with another one (doc 07, section 10.6).
         let for_ids = topics.clone();
         store.set_topic_id_resolver(Box::new(move |name| {
-            for_ids.get(name).ok().map(|view| view.definition.id)
+            for_ids
+                .get(name)
+                .ok()
+                .map(|view| view.definition.id.clone())
         }));
         let started_ms = clock.now_millis();
         let messages = Arc::new(Self {
@@ -820,7 +864,7 @@ impl Messages {
         let state = self.state_of(topic);
         let mut state = lock(&state);
         if let Some(stored) = state.memory.get(id) {
-            return Some((stored.meta.clone(), stored.body.clone()));
+            return Some((stored.meta.clone(), stored.body.to_vec()));
         }
         let owned = self.know(topic, &mut state, id);
         state.index.forget_adopted();
@@ -837,7 +881,7 @@ impl Messages {
         &self,
         topic: &str,
         meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
     ) -> Result<(), TabaError> {
         self.apply_publish(topic, meta, body)
     }
@@ -1129,6 +1173,11 @@ impl Messages {
     pub fn publish_limit(&self, topic: &str) -> Result<u64, TabaError> {
         let view = self.topics.get(topic)?;
         Ok(view.max_message_bytes().unwrap_or(self.rules.max_bytes))
+    }
+
+    /// The most items and bytes of a request in batch (`api.batch.*`).
+    pub fn batch_limits(&self) -> (usize, u64) {
+        (self.rules.batch_max_messages, self.rules.batch_max_bytes)
     }
 
     pub fn publish(&self, topic: &str, request: PublishRequest) -> Result<Published, TabaError> {
@@ -2176,6 +2225,13 @@ impl Messages {
         }
     }
 
+    /// Writes the exclusions of the acks that wait in memory (see `MessageStore::record_excluded`).
+    pub fn flush_excluded(&self) {
+        if let Err(e) = self.store.flush_excluded() {
+            self.disk_error("failed to write the log of excluded messages", &e);
+        }
+    }
+
     /// Applies the limits of the log of excluded messages (doc 07, section 10.3). The log is trimmed on its own
     /// schedule, not at each pass of the sweep.
     pub fn trim_excluded(&self) {
@@ -2231,7 +2287,11 @@ impl Messages {
                 () = cancel.cancelled() => return,
                 _ = ticker.tick() => {
                     let this = self.clone();
-                    let _ = tokio::task::spawn_blocking(move || this.sweep()).await;
+                    let _ = tokio::task::spawn_blocking(move || {
+                        this.sweep();
+                        this.flush_excluded();
+                    })
+                    .await;
                     if last_trim.elapsed() >= EXCLUDED_TRIM_EVERY {
                         let this = self.clone();
                         let _ = tokio::task::spawn_blocking(move || this.trim_excluded()).await;
@@ -2613,11 +2673,11 @@ impl Messages {
                         continue;
                     };
                     match self.store.body(name, &id) {
-                        Ok(body) => (meta, body),
+                        Ok(body) => (meta, body.into()),
                         // The body the eviction took off disk comes back from S3 (doc 23).
                         Err(e) if e.kind() == io::ErrorKind::NotFound => {
                             match self.backup_body(name, &id) {
-                                Some(body) => (meta, body),
+                                Some(body) => (meta, body.into()),
                                 None => {
                                     // Row without a file (a crash in the middle of writing): lost.
                                     tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");
@@ -2744,11 +2804,14 @@ impl Messages {
 
     /// Is the node the message's delivery owner? Without a cluster, always.
     fn owns(&self, topic: &str, id: &str, group: Option<&str>) -> bool {
-        self.cluster.get().is_none_or(|hooks| {
-            hooks
-                .placement
-                .is_owner(topic, id, group, self.position_for(topic, id, group))
-        })
+        self.owns_at(topic, id, group, self.position_for(topic, id, group))
+    }
+
+    /// [`owns`](Self::owns) with the ring position already known.
+    fn owns_at(&self, topic: &str, id: &str, group: Option<&str>, position: u64) -> bool {
+        self.cluster
+            .get()
+            .is_none_or(|hooks| hooks.placement.is_owner(topic, id, group, position))
     }
 
     /// Applies on the `expiry` table the operations the invisible list queued.
@@ -2858,7 +2921,17 @@ impl Messages {
     pub fn message_info(&self, topic: &str, id: &str) -> Result<Option<MessageInfo>, TabaError> {
         let state = self.state_of(topic);
         let mut state = lock(&state);
-        let owned = self.know(topic, &mut state, id);
+        self.info_held(topic, &mut state, id)
+    }
+
+    /// [`message_info`](Self::message_info) with the topic's state already held.
+    fn info_held(
+        &self,
+        topic: &str,
+        state: &mut TopicState,
+        id: &str,
+    ) -> Result<Option<MessageInfo>, TabaError> {
+        let owned = self.know(topic, state, id);
         state.index.forget_adopted();
         if !owned && !state.replicas.contains(id) {
             return Ok(None);
@@ -2882,7 +2955,7 @@ impl Messages {
         &self,
         topic: &str,
         id: &str,
-    ) -> Result<Option<(MessageMeta, Vec<u8>)>, TabaError> {
+    ) -> Result<Option<(MessageMeta, Bytes)>, TabaError> {
         let state = self.state_of(topic);
         let mut state = lock(&state);
         if let Some(stored) = state.memory.get(id) {
@@ -2908,7 +2981,7 @@ impl Messages {
             },
             Err(e) => return Err(self.disk_error("failed to read the body on disk", &e)),
         };
-        Ok(Some((meta, body)))
+        Ok(Some((meta, body.into())))
     }
 
     /// Prepares a publication for the cluster: checks everything a queue's node would check and
@@ -2918,7 +2991,7 @@ impl Messages {
         &self,
         view: &TopicView,
         request: &PublishRequest,
-    ) -> Result<(MessageMeta, Vec<u8>), TabaError> {
+    ) -> Result<(MessageMeta, Bytes), TabaError> {
         let prepared = Prepared::new(request)?;
         let limit = view.max_message_bytes().unwrap_or(self.rules.max_bytes);
         if request.body.len() as u64 > limit {
@@ -3058,7 +3131,7 @@ impl Messages {
         &self,
         topic: &str,
         meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
     ) -> Result<(), TabaError> {
         self.apply_publish_with(topic, meta, body, false)
     }
@@ -3069,19 +3142,139 @@ impl Messages {
         &self,
         topic: &str,
         mut meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
         durable: bool,
     ) -> Result<(), TabaError> {
         let now = self.clock.now_millis();
         meta.position = self.position_for(topic, &meta.id, meta.group_id.as_deref());
         let owned = self.owns(topic, &meta.id, meta.group_id.as_deref());
-        {
+        let stored = {
             let state = self.state_of(topic);
             let mut state = lock(&state);
-            let known = self.know(topic, &mut state, &meta.id);
+            let stored = self.publish_held(topic, &mut state, meta, body, durable, owned, now);
+            if matches!(stored, Ok(true)) {
+                self.ready_changed(topic, &mut state);
+            }
+            stored?
+        };
+        if stored && owned {
+            self.wake(topic, 1);
+        }
+        Ok(())
+    }
+
+    /// The publications of a node that is the only responsible one (factor 1, D191), `(metadata, body, start)`
+    /// each, under **one** hold of the topic: what the commit of each one applies, the latency since `start` in
+    /// the histogram (when there is one), then one notice of ready messages and one wake for the batch. The `id`s
+    /// were just generated by this node, so the register has nothing to check, and the ring position is the one
+    /// the draft computed ([`draft_publish`](Self::draft_publish)).
+    pub fn publish_alone_batch(
+        &self,
+        topic: &str,
+        items: Vec<(MessageMeta, Bytes, Option<Instant>)>,
+    ) -> Vec<Result<(), TabaError>> {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let mut woken = 0;
+        let mut starts = Vec::with_capacity(items.len());
+        let (results, written) = self.store.deferred(|| {
+            let results = items
+                .into_iter()
+                .map(|(meta, body, started)| {
+                    let owned =
+                        self.owns_at(topic, &meta.id, meta.group_id.as_deref(), meta.position);
+                    let stored =
+                        self.publish_held(topic, &mut state, meta, body, false, owned, now)?;
+                    if stored && owned {
+                        woken += 1;
+                    }
+                    starts.extend(started);
+                    Ok(())
+                })
+                .collect::<Vec<Result<(), TabaError>>>();
+            self.ready_changed(topic, &mut state);
+            results
+        });
+        drop(state);
+        // O commit é esperado sem o lock do tópico: as outras chamadas do tópico entram no mesmo commit (D192).
+        let results = self.after_commit(written, results);
+        if !starts.is_empty() {
+            let state = self.state_of(topic);
+            let mut state = lock(&state);
+            for started in starts {
+                state
+                    .stats
+                    .publish_latency
+                    .record(started.elapsed().as_secs_f64());
+            }
+        }
+        if woken > 0 {
+            self.wake(topic, woken);
+        }
+        results
+    }
+
+    /// Aplica operações decididas pelo quórum (o commit numa réplica) num escopo adiado (D192): o que elas gravam entra
+    /// na fila com o tópico preso, e ninguém espera o commit no banco (D196). Com mais de um responsável a durabilidade
+    /// vem das cópias, não do disco (doc 11): a escrita na fila já é visível para as leituras e vale o que vale uma
+    /// cópia em memória; uma thread de fundo a grava. Quando a fila de um banco está cheia, espera o commit dele (a
+    /// contrapressão). Antes, cada commit de réplica que não cabia na memória esperava o seu fsync segurando o tópico, e
+    /// as réplicas de um tópico gravavam uma mensagem por vez (PRB-088).
+    pub fn apply_replicated(
+        &self,
+        work: impl FnOnce() -> Vec<Result<(), TabaError>>,
+    ) -> Vec<Result<(), TabaError>> {
+        let (results, written) = self.store.deferred(work);
+        match written.detach_unless_full() {
+            Ok(()) => results,
+            Err(e) => {
+                let error = self.disk_error("failed to write the batch to disk", &e);
+                results
+                    .into_iter()
+                    .map(|result| result.and_then(|()| Err(error.clone())))
+                    .collect()
+            }
+        }
+    }
+
+    /// Espera o commit das escritas de um lote adiado; se ele falhar, o que tinha dado certo no lote vira erro de
+    /// disco (a mensagem pode não estar no disco).
+    fn after_commit<T>(
+        &self,
+        written: storage::messages::Written,
+        results: Vec<Result<T, TabaError>>,
+    ) -> Vec<Result<T, TabaError>> {
+        match written.wait() {
+            Ok(()) => results,
+            Err(e) => {
+                let error = self.disk_error("failed to write the batch to disk", &e);
+                results
+                    .into_iter()
+                    .map(|result| result.and_then(|_| Err(error.clone())))
+                    .collect()
+            }
+        }
+    }
+
+    /// What [`apply_publish_with`](Self::apply_publish_with) does with the topic's state already held, without
+    /// the notice of ready messages. Returns whether it stored the message (`false`: it already had it).
+    #[allow(clippy::too_many_arguments)]
+    fn publish_held(
+        &self,
+        topic: &str,
+        state: &mut TopicState,
+        meta: MessageMeta,
+        body: Bytes,
+        durable: bool,
+        owned: bool,
+        now: u64,
+    ) -> Result<bool, TabaError> {
+        {
+            let known = self.know(topic, state, &meta.id);
             state.index.forget_adopted();
             if known || state.replicas.contains(&meta.id) {
-                return Ok(());
+                return Ok(false);
             }
             // On FIFO every copy remembers the deduplication key and the instant of the group's last `id`:
             // whoever takes over the group inherits both without loss (doc 17, sections 16.5 and 16.7).
@@ -3116,7 +3309,7 @@ impl Messages {
             let group = meta.group_id.clone();
             let age = meta.age_base_ms();
             let (until, deliveries) = (meta.invisible_until_ms, meta.delivery_count);
-            if !durable && self.reserve_memory(&state, topic, size, now) {
+            if !durable && self.reserve_memory(state, topic, size, now) {
                 state.memory.insert(id.clone(), Stored { meta, body });
             } else {
                 self.store
@@ -3141,12 +3334,8 @@ impl Messages {
             } else {
                 state.replicas.insert(&id, age);
             }
-            self.ready_changed(topic, &mut state);
         }
-        if owned {
-            self.wake(topic, 1);
-        }
-        Ok(())
+        Ok(true)
     }
 
     /// Checks the register of an invisibility (or of an ack): the message exists, and delivery
@@ -3159,9 +3348,35 @@ impl Messages {
         receipt_token: &str,
     ) -> Result<(), TabaError> {
         let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        self.check_held(topic, &mut state, id, check, receipt_token, now)
+    }
+
+    /// [`check_visibility`](Self::check_visibility) with the topic's state already held.
+    fn check_held(
+        &self,
+        topic: &str,
+        state: &mut TopicState,
+        id: &str,
+        check: VisibilityCheck,
+        receipt_token: &str,
+        now: u64,
+    ) -> Result<(), TabaError> {
         let info = self
-            .message_info(topic, id)?
+            .info_held(topic, state, id)?
             .ok_or_else(message_not_found)?;
+        // On a plain queue the owner delivers alone and the copies learn of the delivery after it (D199): a copy that is
+        // not the owner only checks that the message exists. The owner's check is the one that decides, because the
+        // quorum always includes it.
+        if !self.owns(topic, id, info.meta.group_id.as_deref())
+            && !self
+                .topics
+                .get(topic)
+                .is_ok_and(|view| view.definition.queue().is_some_and(|q| q.fifo))
+        {
+            return Ok(());
+        }
         match check {
             VisibilityCheck::Delivery if info.meta.invisible_until_ms > now => Err(TabaError::new(
                 ErrorCode::ClusterConflict,
@@ -3189,7 +3404,27 @@ impl Messages {
         let now = self.clock.now_millis();
         let state = self.state_of(topic);
         let mut state = lock(&state);
-        let owned = self.know(topic, &mut state, id);
+        let result = self.visibility_held(topic, &mut state, id, until_ms, delivery, now);
+        self.ready_changed(topic, &mut state);
+        drop(state);
+        if result? {
+            self.wake(topic, 1);
+        }
+        Ok(())
+    }
+
+    /// [`apply_visibility`](Self::apply_visibility) with the topic's state already held, without the notice of
+    /// ready messages. Returns whether the message was released (the caller wakes the waiting `GET`s).
+    fn visibility_held(
+        &self,
+        topic: &str,
+        state: &mut TopicState,
+        id: &str,
+        until_ms: u64,
+        delivery: Option<(u32, &str)>,
+        now: u64,
+    ) -> Result<bool, TabaError> {
+        let owned = self.know(topic, state, id);
         if !owned && !state.replicas.contains(id) {
             return Err(message_not_found());
         }
@@ -3211,13 +3446,13 @@ impl Messages {
             meta.delivery_count = count;
             meta.receipt_token = Some(token.to_owned());
         }
-        self.save_meta(&mut state, topic, &meta, place)?;
+        self.save_meta(state, topic, &meta, place)?;
         if owned {
             match delivery {
                 Some((count, _)) => state.index.deliver(id, until_ms, now, count),
                 None => state.index.set_until(id, until_ms, now),
             }
-            self.expiry_changed(topic, &mut state);
+            self.expiry_changed(topic, state);
         }
         let released = owned && delivery.is_none() && until_ms <= now;
         // Releasing a message that already used up its deliveries sends it to the dead-letter (doc 13, 12.10).
@@ -3225,11 +3460,128 @@ impl Messages {
             && let Ok(view) = self.topics.get(topic)
             && self.exhausted(&view, meta.delivery_count)
         {
-            self.dead_letter(&mut state, &view, vec![id.to_owned()], now);
+            self.dead_letter(state, &view, vec![id.to_owned()], now);
         }
+        Ok(released)
+    }
+
+    /// The deliveries of a node that is the only responsible one (factor 1, D191): for each `(id, deadline,
+    /// deliveryCount, receiptToken)`, what the register of the invisibility checks and what its commit applies,
+    /// all under one hold of the topic instead of two per message. Returns which ones closed.
+    pub fn deliver_alone(&self, topic: &str, items: &[(String, u64, u32, String)]) -> Vec<bool> {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let (closed, written) = self.store.deferred(|| {
+            let closed = items
+                .iter()
+                .map(|(id, until, count, token)| {
+                    self.check_held(topic, &mut state, id, VisibilityCheck::Delivery, token, now)
+                        .and_then(|()| {
+                            self.visibility_held(
+                                topic,
+                                &mut state,
+                                id,
+                                *until,
+                                Some((*count, token)),
+                                now,
+                            )
+                        })
+                        .is_ok()
+                })
+                .collect::<Vec<_>>();
+            self.ready_changed(topic, &mut state);
+            closed
+        });
+        drop(state);
+        // A entrega não espera o commit (D193): o índice já a tem, as leituras veem a fila, e uma thread de fundo
+        // espera a gravação. Numa queda do processo antes dela, a mensagem volta com o contador e o prazo de antes.
+        written.detach();
+        closed
+    }
+
+    /// The deliveries the owner already made, on a copy of another responsible node (D199): for each `(id, deadline,
+    /// deliveryCount, receiptToken)`, what the commit of the delivery applies, without a register and without the
+    /// check, under one hold of the topic. A message the copy no longer has (an ack got there first) or whose counter
+    /// is already greater (a later delivery got there first) stays as it is.
+    pub fn apply_deliveries(
+        &self,
+        topic: &str,
+        items: &[(String, u64, u32, String)],
+    ) -> Vec<Result<(), TabaError>> {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let results = items
+            .iter()
+            .map(
+                |(id, until, count, token)| match self.info_held(topic, &mut state, id)? {
+                    Some(info) if info.meta.delivery_count <= *count => self
+                        .visibility_held(topic, &mut state, id, *until, Some((*count, token)), now)
+                        .map(|_| ()),
+                    _ => Ok(()),
+                },
+            )
+            .collect();
+        self.ready_changed(topic, &mut state);
+        results
+    }
+
+    /// The acks of a node that is the only responsible one (factor 1, D191), `(id, receiptToken)` each, under one
+    /// hold of the topic: for each, the `receiptToken` the register checks and what the commit applies.
+    pub fn ack_alone_batch(
+        &self,
+        topic: &str,
+        items: &[(String, String)],
+    ) -> Vec<Result<(), TabaError>> {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let (results, written) = self.store.deferred(|| {
+            let results = items
+                .iter()
+                .map(|(id, token)| {
+                    self.check_held(topic, &mut state, id, VisibilityCheck::Receipt, token, now)?;
+                    self.ack_held(topic, &mut state, id, now)
+                })
+                .collect();
+            // As escritas da `expiry` daqui também esperam sem o lock (D193).
+            self.ready_changed(topic, &mut state);
+            results
+        });
+        drop(state);
+        self.after_commit(written, results)
+    }
+
+    /// The ack (`change` empty) or the change of invisibility of a node that is the only responsible one
+    /// (factor 1, D191): the `receiptToken` the register checks and what the commit applies, under one hold of
+    /// the topic.
+    pub fn settle_alone(
+        &self,
+        topic: &str,
+        id: &str,
+        receipt_token: &str,
+        change: Option<u64>,
+    ) -> Result<(), TabaError> {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let result = self
+            .check_held(
+                topic,
+                &mut state,
+                id,
+                VisibilityCheck::Receipt,
+                receipt_token,
+                now,
+            )
+            .and_then(|()| match change {
+                Some(until_ms) => self.visibility_held(topic, &mut state, id, until_ms, None, now),
+                None => self.ack_held(topic, &mut state, id, now).map(|()| false),
+            });
         self.ready_changed(topic, &mut state);
         drop(state);
-        if released {
+        if result? {
             self.wake(topic, 1);
         }
         Ok(())
@@ -3285,7 +3637,20 @@ impl Messages {
         let now = self.clock.now_millis();
         let state = self.state_of(topic);
         let mut state = lock(&state);
-        let owned = self.know(topic, &mut state, id);
+        let result = self.ack_held(topic, &mut state, id, now);
+        self.ready_changed(topic, &mut state);
+        result
+    }
+
+    /// [`apply_ack`](Self::apply_ack) with the topic's state already held, without the notice of ready messages.
+    fn ack_held(
+        &self,
+        topic: &str,
+        state: &mut TopicState,
+        id: &str,
+        now: u64,
+    ) -> Result<(), TabaError> {
+        let owned = self.know(topic, state, id);
         if !owned && !state.replicas.contains(id) {
             return Ok(());
         }
@@ -3304,11 +3669,11 @@ impl Messages {
                     .map_err(|e| self.disk_error("failed to read the message on disk", &e))?,
             };
             match meta {
-                Some(meta) => self.fifo_ack(&mut state, topic, meta, place, now)?,
-                None => self.remove_message(&mut state, topic, id, place)?,
+                Some(meta) => self.fifo_ack(state, topic, meta, place, now)?,
+                None => self.remove_message(state, topic, id, place)?,
             }
         } else {
-            self.remove_message(&mut state, topic, id, place)?;
+            self.remove_message(state, topic, id, place)?;
         }
         state.replicas.remove(id);
         if owned {
@@ -3319,7 +3684,6 @@ impl Messages {
                 .acked
                 .record(now, 1, self.rules.rate_window_secs);
         }
-        self.ready_changed(topic, &mut state);
         Ok(())
     }
 
@@ -3407,10 +3771,46 @@ impl Messages {
         if state.index.is_fifo() && self.fifo_held() {
             return Ok(Vec::new());
         }
+        // Os pares da `expiry` que a reserva escreve entram na fila sem esperar, e o commit é esperado sem o lock do
+        // tópico (D193): os outros consumidores do tópico não esperam a fila de escrita atrás dele.
+        let (taken, written) = self
+            .store
+            .deferred(|| self.take_held(view, &mut state, max, visibility_secs, now));
+        drop(state);
+        let Err(e) = written.wait() else {
+            return taken;
+        };
+        // The table write is part of the delivery: if it fails, the reservations are undone before the answer. Ninguém
+        // mais as tomou nesse meio-tempo (estão em processamento).
+        let state = self.state_of(name);
+        let mut state = lock(&state);
+        for candidate in taken.iter().flatten() {
+            let until = candidate.meta.invisible_until_ms;
+            state
+                .index
+                .adopt(window::fact_of(&candidate.meta), Some(until.max(now + 1)));
+            state
+                .index
+                .deliver(&candidate.meta.id, 0, now, candidate.previous_deliveries);
+        }
+        self.ready_changed(name, &mut state);
+        Err(self.disk_error("failed to write the expiry table", &e))
+    }
+
+    /// [`take_candidates`](Self::take_candidates) with the topic's state already held.
+    fn take_held(
+        &self,
+        view: &TopicView,
+        state: &mut TopicState,
+        max: usize,
+        visibility_secs: u64,
+        now: u64,
+    ) -> Result<Vec<Candidate>, TabaError> {
+        let name = &view.definition.name;
         let until = now + visibility_secs * 1000;
         let mut out = Vec::new();
         while out.len() < max {
-            let Some(id) = self.pick_next(name, &mut state) else {
+            let Some(id) = self.pick_next(name, state) else {
                 break;
             };
             let (mut meta, body) = if let Some(stored) = state.memory.get(&id) {
@@ -3428,13 +3828,13 @@ impl Messages {
                 match self.store.body(name, &id) {
                     Ok(body) => {
                         NodeCounters::add(&self.counters.reads_disk, 1);
-                        (meta, body)
+                        (meta, body.into())
                     }
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
                         match self.backup_body(name, &id) {
                             Some(body) => {
                                 NodeCounters::add(&self.counters.reads_disk, 1);
-                                (meta, body)
+                                (meta, body.into())
                             }
                             None => {
                                 tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");
@@ -3480,7 +3880,7 @@ impl Messages {
         }
         // The table write is part of the delivery: if it fails, the delivery is undone before the
         // answer.
-        if let Err(e) = self.flush_expiry(name, &mut state) {
+        if let Err(e) = self.flush_expiry(name, state) {
             for candidate in &out {
                 // The pair may be waiting in the table write that failed (see `take`).
                 state
@@ -3490,10 +3890,10 @@ impl Messages {
                     .index
                     .deliver(&candidate.meta.id, 0, now, candidate.previous_deliveries);
             }
-            self.ready_changed(name, &mut state);
+            self.ready_changed(name, state);
             return Err(self.disk_error("failed to write the expiry table", &e));
         }
-        self.ready_changed(name, &mut state);
+        self.ready_changed(name, state);
         Ok(out)
     }
 

@@ -50,6 +50,7 @@
 - [24 Convenções](24-convencoes.md): idioma, pastas, regras de código, comandos, ao terminar uma implementação, diagramas, commits
 - [25 Testes](25-testes.md): níveis U/I/C/K, TestNode, TestCluster, rede em memória, relógio manual, como escrever e rodar
 - [37 Garantias](37-garantias.md): as garantias como regras que uma máquina checa (I1 a I6, R1), a rodada de caos com histórico gravado que as verifica, as falhas que aplica e o que ainda não cobre
+- [38 Benchmarks](38-benchmarks.md): o benchmark comparativo local (OMB em Docker contra Kafka, Redpanda, RabbitMQ e NATS JetStream), as regras de justiça, os níveis de durabilidade, os workloads e o relatório
 - [36 Problemas conhecidos](36-problemas-conhecidos.md): testes de cluster desligados com #[ignore] por falharem de forma intermitente no CI, causa e correção prevista
 - [26 Casos de uso](26-casos-de-uso.md): o código UC-ÁREA-NNN e a regra de cobertura
 - [26a Casos implementados](26a-casos-de-uso-implementados.md): o catálogo com teste (gerado)

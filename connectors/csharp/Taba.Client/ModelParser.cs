@@ -121,6 +121,40 @@ namespace Taba
             };
         }
 
+        /// <summary>The <c>results</c> of a batch, one per item in the order of the request.</summary>
+        public static IList<BatchResult> ParseBatchResults(string raw)
+        {
+            JsonFields f = Fields(raw, "lote");
+            var results = new List<BatchResult>();
+            try
+            {
+                foreach (string item in Json.ArrayItems(f.Raw("results") ?? "[]"))
+                {
+                    JsonFields r = JsonFields.Parse(item);
+                    string error = r.Raw("error");
+                    JsonFields e = error != null && error.StartsWith("{", StringComparison.Ordinal)
+                        ? JsonFields.Parse(error)
+                        : null;
+                    results.Add(new BatchResult
+                    {
+                        Status = (int)(r.Integer("status") ?? 0),
+                        Id = r.String("id"),
+                        Duplicate = r.Boolean("duplicate"),
+                        Matched = r.Integer("matched"),
+                        InvisibleUntil = r.String("invisibleUntil"),
+                        ErrorCode = e == null ? null : e.String("code") ?? string.Empty,
+                        ErrorMessage = e == null ? null : e.String("message"),
+                        Raw = item,
+                    });
+                }
+            }
+            catch (JsonException e)
+            {
+                throw TabaException.Client("client.invalid-response", "resultados do lote: " + e.Message);
+            }
+            return results;
+        }
+
         public static VisibilityResponse ParseVisibilityResponse(string raw)
         {
             JsonFields f = Fields(raw, "invisibilidade");

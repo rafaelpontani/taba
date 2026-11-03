@@ -1,0 +1,1 @@
+nats default simple-1kb 1

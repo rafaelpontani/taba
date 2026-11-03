@@ -154,6 +154,17 @@ fn routes_are_classified_by_category_and_the_probes_are_exempt() {
         ),
         Some(Category::Consume)
     );
+    // A batch counts as one call of its category.
+    assert_eq!(
+        classify(&post, "/topics/{topic}/messages/batch", None),
+        Some(Category::Publish)
+    );
+    for route in [
+        "/topics/{topic}/messages/ack",
+        "/topics/{topic}/messages/visibility",
+    ] {
+        assert_eq!(classify(&post, route, None), Some(Category::Consume));
+    }
     assert_eq!(classify(&post, "/topics", None), Some(Category::Admin));
     assert_eq!(
         classify(&Method::PATCH, "/topics/{topic}", None),

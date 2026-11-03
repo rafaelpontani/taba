@@ -142,7 +142,7 @@ fn record(content_type: &str, body: &[u8]) -> MessageRecord {
     MessageRecord {
         id: guid(10),
         topic: "pedidos".into(),
-        body: body.to_vec(),
+        body: body.to_vec().into(),
         content_type: content_type.into(),
         group_id: Some("g1".into()),
         deduplication_id: None,

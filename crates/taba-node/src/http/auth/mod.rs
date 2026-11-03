@@ -209,6 +209,13 @@ pub async fn authenticate(
     mut request: Request,
     next: Next,
 ) -> Response {
+    identify(&state, &mut request);
+    next.run(request).await
+}
+
+/// Who is calling: the [`Authn`] of the request (`None` without a valid token). The first step of the client
+/// API's [`client_gate`](super::client_gate) and of [`authenticate`].
+pub fn identify(state: &AppState, request: &mut Request) {
     let principal = if !state.auth.enabled {
         Some(Principal::Open)
     } else if state.node.drain_state() != DrainState::Active {
@@ -219,7 +226,6 @@ pub async fn authenticate(
         state.auth.principal(request.headers())
     };
     request.extensions_mut().insert(Authn(principal));
-    next.run(request).await
 }
 
 /// What the route requires.
@@ -243,9 +249,12 @@ fn need(method: &Method, route: &str) -> Option<Need> {
         "/topics/{topic}/messages" if method == Method::POST => {
             Some(Need::Permission(Permission::Publish))
         }
+        "/topics/{topic}/messages/batch" => Some(Need::Permission(Permission::Publish)),
         "/topics/{topic}/messages"
         | "/topics/{topic}/messages/{id}"
-        | "/topics/{topic}/messages/{id}/visibility" => Some(Need::Permission(Permission::Consume)),
+        | "/topics/{topic}/messages/{id}/visibility"
+        | "/topics/{topic}/messages/ack"
+        | "/topics/{topic}/messages/visibility" => Some(Need::Permission(Permission::Consume)),
         // The tokens (an `admin` token itself is only created, changed and revoked by the root: see `http::tokens`).
         "/tokens" | "/tokens/{id}" => Some(Need::Permission(Permission::Admin)),
         // What any valid token sees within its scope: who it is, the nodes, the topic statistics.
@@ -295,11 +304,17 @@ pub fn out_of_scope() -> TabaError {
 
 /// The inner layer: `401`, `403 auth.forbidden` and `403 auth.out-of-scope`; passes the
 /// [`Principal`] to the handlers.
-pub async fn authorize(
-    State(state): State<AppState>,
-    mut request: Request,
-    next: Next,
-) -> Response {
+pub async fn authorize(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    match permit(&state, request).await {
+        Ok(request) => next.run(request).await,
+        Err(refused) => *refused,
+    }
+}
+
+/// Whether the caller [`identify`] found may make this call: the route's permission and the token's prefixes.
+/// Gives the request back with the [`Principal`] in it, or the refusal (`401`, `403`). The last step of the
+/// client API's [`client_gate`](super::client_gate) and of [`authorize`].
+pub async fn permit(state: &AppState, mut request: Request) -> Result<Request, Box<Response>> {
     // `taba.auth.requests` only exists with authentication on; the token's `id` is never an attribute.
     let count = |outcome: &str| {
         if state.auth.enabled {
@@ -316,14 +331,12 @@ pub async fn authorize(
     let Some(principal) = principal else {
         count("unauthorized");
         tracing::warn!("call refused: no valid token");
-        return unauthorized().into_response();
+        return Err(Box::new(unauthorized().into_response()));
     };
-    let route = request
-        .extensions()
-        .get::<MatchedPath>()
-        .map(|m| m.as_str().to_owned())
-        .unwrap_or_default();
-    let refused = match need(request.method(), &route) {
+    // `MatchedPath` is an `Arc<str>`: cloning it does not copy the route.
+    let matched = request.extensions().get::<MatchedPath>().cloned();
+    let route = matched.as_ref().map_or("", MatchedPath::as_str);
+    let refused = match need(request.method(), route) {
         Some(Need::Root) if !principal.is_root() => Some("root"),
         Some(Need::Permission(permission)) if !principal.allows(permission) => {
             Some(permission.as_str())
@@ -333,7 +346,7 @@ pub async fn authorize(
     if let Some(required) = refused {
         count("forbidden");
         tracing::warn!(token.id = %principal.log_id(), route = %route, "call refused: no permission");
-        return forbidden(required).into_response();
+        return Err(Box::new(forbidden(required).into_response()));
     }
     if route.contains("{topic}") {
         let (mut parts, body) = request.into_parts();
@@ -355,12 +368,12 @@ pub async fn authorize(
         {
             count("forbidden");
             tracing::warn!(token.id = %principal.log_id(), "call refused: outside the prefixes");
-            return ApiError(out_of_scope()).into_response();
+            return Err(Box::new(ApiError(out_of_scope()).into_response()));
         }
     }
     count("ok");
     request.extensions_mut().insert(principal);
-    next.run(request).await
+    Ok(request)
 }
 
 pub fn routes() -> OpenApiRouter<AppState> {

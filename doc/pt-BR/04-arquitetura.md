@@ -86,7 +86,7 @@ Por isso os testes de cluster (nível `C`, [25-testes.md](25-testes.md)) rodam v
 ## Concorrência
 
 - **Runtime:** `tokio`, vários threads.
-- **Escritor único por banco:** toda escrita num banco SQLite (o de cada tópico e o `_node.db`) passa por **um único escritor**; leituras longas, como os streams de sincronização, usam conexões de leitura próprias (modo WAL).
+- **Escritor único por banco:** toda escrita num banco SQLite (o de cada tópico e o `_node.db`) passa por **um único escritor**; no banco de um tópico as escritas frequentes esperam numa fila e entram numa transação só (commit em grupo, D192), e as leituras usam conexões de leitura próprias (modo WAL).
 - **Estado compartilhado:** tabela de membros, tabela de tópicos e tokens ficam em memória atrás de travas; mudanças de membros são **uma por vez** por nó.
 - **Tarefas de fundo:** vencimento da invisibilidade, varredura de `ttl`, gestão das filas voláteis, reunião após partição, relatório de overflow.
 
@@ -102,12 +102,13 @@ crates/taba-node/src/
     params/ source/ otlp.rs error.rs
   core/              clock content error id pagination ring time token topic validation
   secrets/           pasta de segredos (certificado do cluster, token raiz)
-  storage/           db (o `_node.db`) messages topics tokens state losses versions synclog
+  storage/           db (o `_node.db`) messages (excluded, writer) topics tokens state losses versions synclog
                      backup (store, keys, segment, journal, db: o `_backup.db`)
   engine/            topics tokens messages (blocks, index, rates, replicas, stats)
   cluster/           backup (upload, evict, definitions, heartbeat, restore, stop, topology)
-                     channel drain health members protocol recovery replication restore
-                     service state sync tls transport (http, memory) upgrade vote volatile
+                     channel drain health members protocol (wire: o protobuf das chamadas) recovery
+                     replication restore service (batch) state sync tls transport (http, memory)
+                     upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
                      nodes openapi operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace
@@ -127,6 +128,6 @@ O detalhe de entrada e sincronização está em [07-cluster.md](07-cluster.md).
 
 ## Fontes e provas
 
-- `crates/taba-node/src/lib.rs` (a regra de dependência), `node.rs`, `http/mod.rs` (`client_router`, `operations_router`, `cluster_router`, `drain_guard`), `cluster/transport/mod.rs` (`Transport`), `core/clock/mod.rs`.
+- `crates/taba-node/src/lib.rs` (a regra de dependência), `node.rs`, `http/mod.rs` (`client_router`, `operations_router`, `cluster_router`, `client_gate`, `drain_route`), `cluster/transport/mod.rs` (`Transport`), `core/clock/mod.rs`.
 - Casos de uso: UC-SEG (portas e TLS mútuo), UC-DEV (perfil de um nó), UC-FWD (repasse), UC-CFG (configuração); veja [26a](26a-casos-de-uso-implementados.md).
 - Histórico: `02-arquitetura.md`, `18-estrutura-codigo.md`.

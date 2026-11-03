@@ -98,6 +98,10 @@ while !stop.load(std::sync::atomic::Ordering::Relaxed) {
 
 **Still missing:** the `async` form (`async` *feature*, `tokio`) and a `Transport` the application can swap.
 
+## Batches
+
+Many messages in one request, next to the single calls (optional): `publish_batch(topic, &[BatchMessage])`, `ack_batch(topic, &messages)` and `change_visibility_batch(topic, &messages, seconds)` return one `BatchResult` per item (`is_ok()`, `status`, `id`, `error_code`). Each item is answered as its single call, in order, and an item that failed comes back with its `status` and error code instead of throwing. The bodies go in base64, so any type fits. Details: [Messages in batch](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#messages-in-batch-post-messagesbatch-ack-and-visibility).
+
 ## License
 
 [Apache-2.0](https://github.com/rafaelpontani/taba/blob/main/connectors/LICENSE). The Taba server is AGPL-3.0-only; the connectors are Apache-2.0 so any application, open or closed, can embed them.

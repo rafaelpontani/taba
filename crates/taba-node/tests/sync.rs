@@ -313,10 +313,13 @@ async fn a_message_that_is_listed_but_has_no_content_anywhere_is_a_loss_and_the_
     let (mut cluster, ids) = two_nodes_with_messages(8, &[("TABA_MEMORY_LIMIT", "1B")]).await;
     let target = ids[3].clone();
     for number in 1..=2 {
-        let folder = cluster.node(number).storage_dir().join("orders");
-        let body = folder.join(format!("{target}.body"));
-        assert!(body.is_file(), "the message is on disk on node {number}");
-        std::fs::remove_file(body).unwrap();
+        let disk = taba_node::storage::messages::MessageStore::new(
+            &cluster.node(number).storage_dir(),
+            taba_node::config::DbSynchronous::Normal,
+        );
+        // A replica answers the commit before its write reaches the database (D196): it gets there a moment later.
+        eventually("the message on disk", || disk.has_body("orders", &target)).await;
+        disk.evict_body("orders", &target).unwrap();
     }
     let number = start_isolated(&mut cluster, &[("TABA_MEMORY_LIMIT", "1B")]).await;
     cluster.network.restore(&host_of(number));
@@ -624,7 +627,7 @@ async fn the_load_is_the_union_of_the_lists_of_the_sources_not_their_intersectio
         let messages = messages_of(node);
         let view = messages.queue_view("orders").unwrap();
         let request = taba_node::engine::messages::PublishRequest {
-            body: br#"{"so":"no-1"}"#.to_vec(),
+            body: br#"{"so":"no-1"}"#.to_vec().into(),
             ..Default::default()
         };
         let (meta, body) = messages.draft_publish(&view, &request).unwrap();

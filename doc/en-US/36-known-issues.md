@@ -3,7 +3,7 @@ title: Known issues
 summary: Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts.
 type: reference
 status: partial
-verified-on: 2026-10-26 @ 75012bc
+verified-on: 2026-10-29 @ 1f43daf
 sources: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -17,6 +17,10 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [An exclusion vote that fails once in the full suite](#an-exclusion-vote-that-fails-once-in-the-full-suite) | Open | 2026-10-29 | — |
+| [A register that checked the message before taking it](#a-register-that-checked-the-message-before-taking-it) | Fixed | 2026-10-27 | 2026-10-29 |
+| [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Open | 2026-10-29 | — |
+| [A lost ready signal that the hunt does not correct in time](#a-lost-ready-signal-that-the-hunt-does-not-correct-in-time) | Open | 2026-10-29 | — |
 | [The chaos run: a delivery past the limit and an ack the owner never applied](#the-chaos-run-a-delivery-past-the-limit-and-an-ack-the-owner-never-applied) | Fixed | 2026-10-27 | 2026-10-27 |
 | [A restarted test node that loses its port to another test](#a-restarted-test-node-that-loses-its-port-to-another-test) | Open | 2026-10-26 | — |
 | [A definition offered to a node that was still joining](#a-definition-offered-to-a-node-that-was-still-joining) | Fixed | 2026-10-26 | 2026-10-26 |
@@ -27,6 +31,73 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
 
+## An exclusion vote that fails once in the full suite
+
+**Status:** Open · **Found on:** 2026-10-29 · **Fixed on:** —
+
+- **Test:** `tests/failures.rs::only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion` (UC-FAL on the exclusion), the assertion on the coordinators of the `unregister` calls (line 1087).
+- **Symptom:** it failed once in a full `cargo test` in a Linux container (22 tests of the file in parallel with the other binaries' load); alone it passed 3 of 3, and a second full run passed.
+- **Cause:** not identified. It does not touch the register of a message (found while validating [a register that checked the message before taking it](#a-register-that-checked-the-message-before-taking-it)). The reading to check is a second healthy node that also registers the unregistration before it sees the first one finished.
+- **Next step:** `docker/hang-hunt.sh failures only_the_lowest_node_id` and read which node was the extra coordinator.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-10-29 | One failure in the full suite, 3 passes alone, 1 full pass after. |
+
+## A register that checked the message before taking it
+
+**Status:** Fixed · **Found on:** 2026-10-27 · **Fixed on:** 2026-10-29
+
+- **Where:** `src/cluster/replication/replica.rs` (`Replica::register`, `reserve`). Found by `tests/chaos.rs` ([37-guarantees.md](37-guarantees.md)), seeds 2, 3 and 4, [PRB-077](30-decisions.md#resolved-problems-prb).
+- **Symptom:** in about 8 % of the processes of the hunt (`docker/hang-hunt.sh chaos`, 8 at once; 13 in 160), "I5: seq N was acked on its queue and also reached the dead-letter" and, in some, "I3: seq N was acked (204) and delivered again".
+- **How it was found:** the failure report of the chaos run now has a dump of the message that broke I3 or I5 (where it is, on each node and in each queue: `diagnosis`), and the hunt was run with a line at each register, commit, rollback and expiry of the replica and at the start and end of each ack and move to the dead-letter (taken out afterwards). The first reading (an expired register) was wrong: **no register expired** in any of the failing runs. In the log of one, the move to the dead-letter registered and committed on the three nodes (+80 ms), and only after that the register of the ack arrived on them, 120 ms after it had been sent, and was accepted.
+- **Cause:** `ack_step`, `register_write` and `visibility_step` checked the message (`check_visibility`, `check_publish`...) in a blocking thread and then called `register`. The check and the reservation of the message were two steps with no lock between them, and under load (8 processes at once) a whole operation fitted in the gap: the ack checked a message that was in the queue, the move to the dead-letter registered and committed, and the ack registered, committed (it applies to a message that is gone, with no error) and was confirmed to the client with `204`.
+- **Fix:** `register` reserves the message first (`by_message`, `409 cluster.conflict` for whoever arrives in the meantime) and runs the check with the reservation held; a failed check, or a call dropped in the middle of it, releases the reservation (`Reservation`, on `Drop`). The register repeated after the decision and the replay of events check nothing and are not affected.
+- **Test:** `replica::tests::a_register_holds_the_message_while_its_check_runs` (a slow check; the second operation must get the conflict) and `a_register_whose_check_fails_releases_the_message`. Verification: the same hunt, 20 rounds of 8 processes: **0 failures in 160** (before the fix, 13 in 160); full suite, clippy and fmt.
+- **Do not:** raise `write.pending.ttl` or the waits of the run: nothing expired.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-10-27 | Seen with clock jumps of 35 s (3 runs in 400): thought to be an expired register (the first form of PRB-077). |
+| 2026-10-29 | Seen without clock jumps in the hunt (3/96, 5/96, 3/96 on the code before the batches and with them): the batches did not change the rate. |
+| 2026-10-29 | The dump and the lines at each register showed that no register expired: the check ran before the reservation. Fixed by reserving first. 0 failures in 160 processes. |
+
+## A channel burst that does not reach the other node in the hunt
+
+**Status:** Open · **Found on:** 2026-10-29 · **Fixed on:** —
+
+- **Where:** `tests/channel.rs::each_peer_has_an_out_queue_and_an_in_queue_that_drain` (and, once each, `every_node_has_one_channel_to_each_other_node_and_measures_it` and `two_connections_at_once_end_with_a_single_channel_per_pair`).
+- **Symptom:** in `docker/hang-hunt.sh channel` (8 processes at once) it ends with `waited 30 s for: the burst to reach node 2`, in about 1 process in 14.
+- **Cause:** not identified. It is **not a consequence of the batches**: the same hunt (15 rounds of 8 processes) failed 8 times on the code before them (`ab14fa5`) and 9 times on the code with `take` and the FIFO forward in the batch.
+- **Next step:** read the log of a failing run (`target/hang-hunt-channel/`) and put in order the frames of the burst, as the method of AGENTS.md says for lost deliveries.
+- **Do not:** raise the 30 s of `eventually`.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-10-29 | Found in the hunt that validated the `take` and the FIFO forward in the batch; the same rate on the earlier commit. |
+
+## A lost ready signal that the hunt does not correct in time
+
+**Status:** Open · **Found on:** 2026-10-29 · **Fixed on:** —
+
+- **Where:** `tests/replication.rs::a_lost_ready_signal_is_corrected_by_the_periodic_repeat`.
+- **Symptom:** in `docker/hang-hunt.sh replication` (8 processes at once, 15 threads each) it fails in about 3 of 5 processes of each round, in three ways: the node 2 consumes only part of the messages in the 10 s of the wait (`left: 4, right: 9`), or a publication is answered `503 cluster.commit-timeout` or `403 cluster.not-member` (`replication.rs:40`). It passes alone and in the normal run of the suite.
+- **Cause:** not identified. It is **not a consequence of the batches**: the same hunt on the code before them (`ab14fa5`) failed in 19 of 32 processes, on the first batch (`078c11f`) in 13 of 16 and on the code with `take` and the FIFO forward in the batch in 15 of 16; the other 19 tests of the file almost never failed (a few single failures, one test each, in the same rounds). The test loses every `channel` frame, publishes and then waits 10 s (200 × 50 ms of real time) for the repeat of the state; the manual `Clock` does not move, and the heartbeat that repeats the state runs in real time, so the reading that fits (not proven) is that under that load the margin is what is short.
+- **Next step:** read the log of a failing run (`target/hang-hunt-replication/run_*.log`) to see whether the repeat comes late or does not come, and compare the `503` with the quorum of the publication; until then the test is not a signal of a regression under the hunt.
+- **Do not:** raise the 10 s of the wait without knowing which of the two it is.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-10-29 | Found in the hunt that validated the `take` and the FIFO forward in the batch. The same hunt on the two earlier commits gave the same rate, so it was already there. |
+
 ## The chaos run: a delivery past the limit and an ack the owner never applied
 
 **Status:** Fixed · **Found on:** 2026-10-27 · **Fixed on:** 2026-10-27
@@ -35,7 +106,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 - **Symptom 1 (I5):** with `maxDeliveries: 2` a message was delivered with `deliveryCount: 3`, in most runs of seed 3. Cause: a delivery commit that reached the owner after its own invisibility had ended put the message in the ready list without the release that checks the limit. Fix: `take_candidates` does not deliver a message that used up its deliveries: it hides it for an instant and the next release sends it to the dead-letter (the first form of the fix, an immediate move, broke `a_shorter_ttl_expires_what_is_already_stored_even_in_flight`, which expects the `ttl` to win, and was changed). Test: `a_commit_that_arrives_after_its_invisibility_does_not_deliver_past_the_limit` (fails without the fix).
 - **Symptom 2 (I1):** in about 1 run in 100 a confirmed message was never delivered: it was left only on its owner (the replicas had applied its ack), its delivery needs the replicas, and so its FIFO group stayed blocked for good. Cause: the commit of the ack to the owner arrived after the owner's register had expired; the coordinator registered it again and gave up on the first refusal, either because the receipt had expired or because another operation held the message (`cluster.conflict`). Fix: the register sent again after the decision checks no receipt (`Request::decided`) and, on a conflict, keeps trying until the other operation ends. Tests: `the_register_repeated_after_the_decision_checks_no_receipt` and `an_ack_the_replicas_applied_reaches_the_owner_even_if_another_operation_took_the_message` (fails without the fix).
 - **How it was found:** the first suspect was the checker itself: the trail of a message (`History::trail`) showed that the `maxDeliveries: 2` of one queue had been applied to the others (a false positive, fixed in the checker). Then the failure report was extended with where the message is on each node, and it showed the owner holding a message the replicas no longer had. The baseline without the delivery fix also failed (1 run in 120), so the second cause was independent.
-- **Not fixed:** an ack and a move to the dead-letter both decided when a register expires ([PRB-077](31-pending-items.md)); it needs a stall past `write.pending.ttl` and is outside the run (its clock jumps are 8 s).
+- **Not fixed:** an ack and a move to the dead-letter both decided when a register expires ([PRB-085](31-pending-items.md), not seen); the failures once attributed to it were [a register that checked the message before taking it](#a-register-that-checked-the-message-before-taking-it).
 - **Do not:** raise the 30 s of `eventually` or let the run stop at the first delivery: the group blocked for good is exactly what the wait is there to show.
 
 **History**
@@ -205,6 +276,7 @@ What the issues above taught, so the next one is found faster (the checklist for
 - **A `waited 30 s` for a state that never arrives is a lost delivery, not a slow one.** Ask who was supposed to send it, to whom, and who was in the list of recipients at that instant. A `broadcast` (or a frame of the channel) reaches only the peers that exist **now**: a node that registers a few milliseconds later, and is still synchronizing, never gets it unless some other path (a `definition-apply` with `spread`, the heartbeat, the synchronization itself) covers it. A new way of delivering state to the cluster needs that second path, or a reason why it is not needed.
 - **When the log has no line about the suspect path, add it, run again and take it out.** The failing run of the offer had no line about the offer. Temporary lines at each step (what was offered, to whom it was sent, what each node learned), marked with a word you can search (`HUNT`), and the same hunt, gave the order of the events in milliseconds; the lines were removed with `git checkout` before the fix. Keep the captured log (`target/`).
 - **A fix is not done without a test that fails without it** (here, one that fails by timeout and not by hanging) and without repeating the run that used to hang.
+- **Look at what happened before theorizing about what could.** The pending item blamed an expired register for two years of reasoning; the dump of the failing message and a log line at each register showed that nothing had expired and that a check and a reservation were two steps. A report of a failure should say where the thing is now, on each node (`diagnosis` in `tests/chaos.rs`).
 
 ## Sources and evidence
 

@@ -182,8 +182,16 @@ impl Sim {
     pub fn refill(&mut self) -> usize {
         self.apply();
         let mut total = 0;
+        if self.index.refill_ask().is_some() {
+            self.index.make_room_for_old();
+        }
         while let Some(ask) = self.index.refill_ask() {
-            let (old, new) = (self.ready(&ask, false), self.ready(&ask, true));
+            let old = self.ready(&ask, false);
+            let new = if self.index.refill_old_only() && !old.is_empty() {
+                Vec::new()
+            } else {
+                self.ready(&ask, true)
+            };
             let added = self.index.refill_with(old, new);
             total += added;
             if added == 0 {

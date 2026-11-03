@@ -236,6 +236,104 @@ fn list_all_topics_follows_next_cursor_until_the_last_page() {
     assert_eq!(rig.request(1).target, "/topics?cursor=p2");
 }
 
+/// UC: UC-CNT-041
+#[test]
+fn the_batches_send_one_json_and_read_one_result_per_item() {
+    let rig = simple(vec![
+        response(
+            200,
+            &[],
+            "{\"results\":[{\"status\":201,\"id\":\"m1\"},{\"status\":200,\"id\":\"m0\",\"duplicate\":true},\
+             {\"status\":400,\"error\":{\"code\":\"validation.invalid-content-type\",\"message\":\"bad\"}}]}",
+        ),
+        response(
+            200,
+            &[],
+            "{\"results\":[{\"status\":204,\"id\":\"m1\"},\
+             {\"status\":409,\"error\":{\"code\":\"message.stale-receipt\",\"message\":\"old\"}}]}",
+        ),
+        response(
+            200,
+            &[],
+            "{\"results\":[{\"status\":200,\"id\":\"m1\",\"invisibleUntil\":\"2026-10-29T10:00:00Z\"}]}",
+        ),
+    ]);
+    let results = rig
+        .client
+        .publish_batch(
+            "q",
+            &[
+                BatchMessage::new([0u8, 1, 255])
+                    .content_type("application/octet-stream")
+                    .group_id("g1")
+                    .deduplication_id("d1"),
+                BatchMessage::text("olá"),
+                BatchMessage::new(*b"{}").content_type("nope"),
+            ],
+        )
+        .unwrap();
+    let req = rig.request(0);
+    assert_eq!(
+        (req.method.as_str(), req.target.as_str()),
+        ("POST", "/topics/q/messages/batch")
+    );
+    assert_eq!(
+        String::from_utf8(req.body.clone()).unwrap(),
+        "{\"messages\":[{\"body\":\"AAH/\",\"bodyEncoding\":\"base64\",\"contentType\":\"application/octet-stream\",\
+         \"groupId\":\"g1\",\"deduplicationId\":\"d1\"},\
+         {\"body\":\"b2zDoQ==\",\"bodyEncoding\":\"base64\",\"contentType\":\"text/plain; charset=utf-8\"},\
+         {\"body\":\"e30=\",\"bodyEncoding\":\"base64\",\"contentType\":\"nope\"}]}"
+    );
+    assert!(results[0].is_ok());
+    assert_eq!(
+        (results[0].status, results[0].id.as_deref()),
+        (201, Some("m1"))
+    );
+    assert_eq!(results[1].duplicate, Some(true));
+    assert!(!results[2].is_ok());
+    assert_eq!(
+        results[2].error_code.as_deref(),
+        Some("validation.invalid-content-type")
+    );
+
+    let messages: Vec<Message> = ["m1", "m2"]
+        .iter()
+        .map(|id| {
+            Message::parse(&format!(
+                "{{\"id\":\"{id}\",\"body\":1,\"contentType\":\"application/json\",\"receiptToken\":\"rt-{id}\"}}"
+            ))
+            .unwrap()
+        })
+        .collect();
+    let acked = rig.client.ack_batch("q", &messages).unwrap();
+    let req = rig.request(1);
+    assert_eq!(req.target, "/topics/q/messages/ack");
+    assert_eq!(
+        String::from_utf8(req.body.clone()).unwrap(),
+        "{\"messages\":[{\"id\":\"m1\",\"receiptToken\":\"rt-m1\"},{\"id\":\"m2\",\"receiptToken\":\"rt-m2\"}]}"
+    );
+    assert!(acked[0].is_ok());
+    assert_eq!(
+        acked[1].error_code.as_deref(),
+        Some("message.stale-receipt")
+    );
+
+    let changed = rig
+        .client
+        .change_visibility_batch("q", &messages[..1], 30)
+        .unwrap();
+    let req = rig.request(2);
+    assert_eq!(req.target, "/topics/q/messages/visibility");
+    assert_eq!(
+        String::from_utf8(req.body.clone()).unwrap(),
+        "{\"messages\":[{\"id\":\"m1\",\"receiptToken\":\"rt-m1\",\"visibilityTimeout\":30}]}"
+    );
+    assert_eq!(
+        changed[0].invisible_until.as_deref(),
+        Some("2026-10-29T10:00:00Z")
+    );
+}
+
 /// UC: UC-CNT-004
 #[test]
 fn publish_sends_raw_bytes_with_content_type_and_query() {

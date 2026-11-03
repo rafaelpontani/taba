@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -119,6 +120,10 @@ namespace Taba.Contract
         private static Dictionary<string, string> PublishFields(PublishResponse r) =>
             Fields("id", Text(r.Id), "duplicate", Text(r.Duplicate), "matched", Text(r.Matched));
 
+        private static Dictionary<string, string> BatchFields(IList<BatchResult> results) =>
+            Fields("count", results.Count.ToString(CultureInfo.InvariantCulture),
+                "statuses", string.Join(",", results.Select(r => r.Status.ToString(CultureInfo.InvariantCulture))));
+
         private static ConsumeOptions ConsumeOpts(Dictionary<string, string> p) =>
             new ConsumeOptions { MaxMessages = Int(p, "max"), WaitTime = Int(p, "wait"), VisibilityTimeout = Int(p, "visibility") };
 
@@ -190,6 +195,37 @@ namespace Taba.Contract
             ops["publishJson"] = async (c, p) => PublishFields(await c.PublishAsync(p["topic"], Encoding.UTF8.GetBytes(p["body"]), PublishOpts(p, "application/json")));
             ops["publishBytes"] = async (c, p) => PublishFields(await c.PublishAsync(p["topic"], Convert.FromBase64String(p["base64"]),
                 PublishOpts(p, p.TryGetValue("contentType", out var type) ? type : "application/octet-stream")));
+
+            // A batch of texts (one item per text); bad=true adds an item with an invalid content type.
+            ops["publishBatch"] = async (c, p) =>
+            {
+                var batch = new List<BatchMessage>();
+                foreach (string text in p["texts"].Split(','))
+                {
+                    BatchMessage message = BatchMessage.Text(text);
+                    message.GroupId = p.TryGetValue("groupId", out var group) ? group : null;
+                    batch.Add(message);
+                }
+                if (Flag(p, "bad") == true)
+                {
+                    batch.Add(new BatchMessage(Encoding.UTF8.GetBytes("x")) { ContentType = "not a type" });
+                }
+                return BatchFields(await c.PublishBatchAsync(p["topic"], batch));
+            };
+            // Consumes and settles what came in one batch: action ack or visibility (seconds). stale=true makes the
+            // receipt of the first one old before the batch: it is given back and taken again.
+            ops["settleBatch"] = async (c, p) =>
+            {
+                IList<Message> messages = await c.ConsumeAsync(p["topic"], ConsumeOpts(p));
+                if (Flag(p, "stale") == true && messages.Count > 0)
+                {
+                    await c.ChangeVisibilityAsync(p["topic"], messages[0], 0);
+                    await c.ConsumeAsync(p["topic"], new ConsumeOptions { MaxMessages = 1, WaitTime = 2, VisibilityTimeout = Int(p, "visibility") });
+                }
+                return BatchFields(p["action"] == "visibility"
+                    ? await c.ChangeVisibilityBatchAsync(p["topic"], messages, int.Parse(p["seconds"], CultureInfo.InvariantCulture))
+                    : await c.AckBatchAsync(p["topic"], messages));
+            };
 
             ops["consume"] = async (c, p) => MessageFields(await c.ConsumeAsync(p["topic"], ConsumeOpts(p)));
             ops["ack"] = async (c, p) =>
