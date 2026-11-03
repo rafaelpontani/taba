@@ -17,6 +17,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Aberto | 2026-11-03 | — |
 | [Uma votação de exclusão que falha uma vez na suíte completa](#uma-votação-de-exclusão-que-falha-uma-vez-na-suíte-completa) | Aberto | 2026-10-29 | — |
 | [Um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la) | Corrigido | 2026-10-27 | 2026-10-29 |
 | [Uma rajada do canal que não chega ao outro nó na caça](#uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça) | Aberto | 2026-10-29 | — |
@@ -30,6 +31,21 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## Um consume com ack que falha uma vez no docker/validate.sh depois de um drain
+
+**Status:** Aberto · **Achado em:** 2026-11-03 · **Corrigido em:** —
+
+- **Teste:** `docker/validate.sh`, etapa "No acknowledged message was lost": `drain_topic validation-crash` chama `taba-cli consume --max 10 --wait 3 --ack` em laço logo depois de o `taba-1` sair por drain e voltar.
+- **Sintoma:** um `taba-cli consume` saiu com código 1 e o script parou (`Failed (code 1)`) sem dizer por quê: o `taba_cli` jogava fora o stderr do `docker compose run`, e o erro do `taba-cli` junto. Foi a primeira rodada depois de a máquina reiniciar, com o Docker Desktop recém-iniciado: o cluster levou 402 s para ficar saudável (24 s na rodada seguinte). A rodada seguinte, no mesmo código, passou em todas as etapas (50 mensagens publicadas, todas recebidas e confirmadas).
+- **Causa:** não identificada. Não é uma mensagem perdida: a etapa parou antes de comparar o que foi publicado com o que foi recebido.
+- **Próximo passo:** o `taba_cli` (`docker/cluster.sh`) agora mostra as últimas linhas do erro do `taba-cli` quando um comando falha; a próxima ocorrência diz qual erro o nó devolveu (um `503` enquanto um nó ainda volta do drain, por exemplo). Se for um erro de tentar de novo, o `drain_topic` deveria tentar de novo em vez de parar.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-03 | Uma falha na primeira rodada depois de reiniciar a máquina (cluster saudável em 402 s); a rodada seguinte passou. O `taba_cli` agora mostra o erro. |
 
 ## Uma votação de exclusão que falha uma vez na suíte completa
 

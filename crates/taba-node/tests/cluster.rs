@@ -65,6 +65,44 @@ async fn the_first_node_starts_the_cluster_alone() {
     cluster.shutdown().await;
 }
 
+/// The load balancer already sends to the first node before it has the table (HAProxy resolved its name early): the
+/// listing reaches the node itself, which answers `cluster.node-syncing`. That is a listing that found no cluster,
+/// so the first node starts it; before, only a network error counted, and the node asked itself for minutes
+/// (PRB-092).
+/// UC: UC-ING-005
+#[tokio::test]
+async fn the_first_node_starts_the_cluster_even_when_the_balancer_sends_the_listing_to_itself() {
+    let mut cluster = TestCluster::empty();
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .expect("a free port")
+        .port();
+    cluster
+        .network
+        .add_balancer(balancer(), vec![PeerAddr::new(host_of(1), port)]);
+    let builder = cluster
+        .builder(1, true)
+        .env("TABA_CLUSTER_PORT", &port.to_string());
+    cluster.spawn_node(builder).await.unwrap();
+
+    let node = cluster.node(1);
+    eventually("the first node starts the cluster", || {
+        node.node
+            .cluster()
+            .and_then(|c| c.membership().table())
+            .is_some()
+    })
+    .await;
+    assert_eq!(cluster.member_ids(1), [cluster.node_id(1)]);
+    // One answer without the table is not enough (a running cluster may have a node joining): three in a row.
+    assert!(
+        cluster.network.count("list-nodes") >= 3,
+        "{} listings",
+        cluster.network.count("list-nodes")
+    );
+    cluster.shutdown().await;
+}
+
 /// UC: UC-ING-004, UC-ING-005
 #[tokio::test]
 async fn without_the_first_node_flag_the_node_keeps_trying_and_stays_out_of_rotation() {

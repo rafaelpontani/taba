@@ -17,6 +17,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [A consume with ack that fails once in docker/validate.sh after a drain](#a-consume-with-ack-that-fails-once-in-dockervalidatesh-after-a-drain) | Open | 2026-11-03 | — |
 | [An exclusion vote that fails once in the full suite](#an-exclusion-vote-that-fails-once-in-the-full-suite) | Open | 2026-10-29 | — |
 | [A register that checked the message before taking it](#a-register-that-checked-the-message-before-taking-it) | Fixed | 2026-10-27 | 2026-10-29 |
 | [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Open | 2026-10-29 | — |
@@ -30,6 +31,21 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## A consume with ack that fails once in docker/validate.sh after a drain
+
+**Status:** Open · **Found on:** 2026-11-03 · **Fixed on:** —
+
+- **Test:** `docker/validate.sh`, step "No acknowledged message was lost": `drain_topic validation-crash` calls `taba-cli consume --max 10 --wait 3 --ack` in a loop right after `taba-1` left by drain and came back.
+- **Symptom:** one `taba-cli consume` exited with code 1 and the script stopped (`Failed (code 1)`) without saying why: `taba_cli` threw away the stderr of `docker compose run`, and the error of `taba-cli` with it. It was the first run after the machine restarted, with Docker Desktop just started: the cluster took 402 s to become healthy (24 s in the next run). The next run, on the same code, passed every step (50 messages published, all received and acknowledged).
+- **Cause:** not identified. It is not a lost message: the step stopped before comparing what was published with what was received.
+- **Next step:** `taba_cli` (`docker/cluster.sh`) now prints the last lines of the error of `taba-cli` when a command fails; the next occurrence says which error the node returned (a `503` while a node is still coming back from the drain, for example). If it is a retryable error, `drain_topic` should try again instead of stopping.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-03 | One failure in the first run after a restart of the machine (cluster healthy in 402 s); the next run passed. `taba_cli` now shows the error. |
 
 ## An exclusion vote that fails once in the full suite
 

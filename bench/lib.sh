@@ -102,7 +102,11 @@ bench_split_cluster() {
 # Cópia de um workload com a duração e o aquecimento do perfil.
 bench_render_workload() {
   local workload="$1" duration="$2" warmup="$3" out="$4"
-  sed -e "s/@DURATION@/$duration/" -e "s/@WARMUP@/$warmup/" "$BENCH_DIR/workloads/$workload.yaml" > "$out"
+  if [ "$out" = - ]; then
+    sed -e "s/@DURATION@/$duration/" -e "s/@WARMUP@/$warmup/" "$BENCH_DIR/workloads/$workload.yaml"
+  else
+    sed -e "s/@DURATION@/$duration/" -e "s/@WARMUP@/$warmup/" "$BENCH_DIR/workloads/$workload.yaml" > "$out"
+  fi
 }
 
 # Estimativa do tempo total em minutos: cada célula leva duração + aquecimento + 1 min de montagem; cada subida, 1 min.

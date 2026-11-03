@@ -1,9 +1,9 @@
 ---
 título: Benchmarks
-resumo: O benchmark comparativo local (bench/run.sh): o OpenMessaging Benchmark contra o Taba, Kafka, Redpanda, RabbitMQ e NATS JetStream em Docker numa máquina só, quem é meta (brokers da mesma classe) e quem é referência (logs de streaming), como a comparação é mantida justa, os níveis de durabilidade, os workloads, o relatório e como incluir um sistema. Nenhum número está publicado ainda.
+resumo: O benchmark comparativo local (bench/run.sh): o OpenMessaging Benchmark contra o Taba, Kafka, Redpanda, RabbitMQ e NATS JetStream em Docker numa máquina só, quem é meta (brokers da mesma classe) e quem é referência (logs de streaming), como a comparação é mantida justa, os níveis de durabilidade, os workloads, o relatório e como incluir um sistema. Os resultados da última rodada, com os gráficos.
 tipo: guia
 status: parcial
-verificado-em: 2026-11-02 @ 738868f
+verificado-em: 2026-11-03 @ 3735b5f
 fontes: [bench/cluster-trend.sh, bench/profile.sh, bench/profile.awk, bench/run.sh, bench/lib.sh, bench/report.mjs, bench/charts.mjs, doc/diagrams/scripts/generate-bench.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
 ---
 
@@ -92,7 +92,39 @@ Num workload `backlog-*` o relatório mostra a **vazão de drenagem do backlog**
 
 ## O relatório
 
-`bench/results/<data>-<commit>/` (ignorada pelo git) guarda `raw/*.json` (o resultado do OMB de cada rodada, com o `.log`, a CPU e a memória dos contêineres do servidor amostradas a cada poucos segundos em `.stats` e o início da fase medida em `.t0`), `machine.json`, `startup.csv` (segundos até ficar saudável e memória parada), `results.md`, `summary.json`, `charts/*.svg` e, se uma célula falhou, `failed.txt`. Os gráficos (`bench/charts.mjs`) seguem a cor de cada sistema, com tema claro e escuro: barras de vazão e latência e, no tempo, as mensagens publicadas e consumidas por segundo, as mensagens processadas até ali, a CPU e a memória, com a queda e a volta de um nó marcadas. `node doc/diagrams/scripts/generate-bench.mjs --from <pasta>` copia o `summary.json` de uma rodada para `doc/diagrams/data/bench-results.json` e desenha os gráficos da documentação em todos os idiomas. O `results.md` mostra, por workload e durabilidade, uma tabela com a **mediana das rodadas e, entre parênteses, o mínimo e o máximo** da vazão publicada e consumida e da latência ponta a ponta p50, p99 e p99.9. Não aponta vencedor; termina com as diferenças conhecidas de cada sistema.
+`bench/results/<data>-<commit>/` (ignorada pelo git) guarda `raw/*.json` (o resultado do OMB de cada rodada, com o `.log`, a CPU e a memória dos contêineres do servidor amostradas a cada poucos segundos em `.stats` o início da fase medida em `.t0` e os logs dos contêineres do servidor durante a célula em `.server.log`), `machine.json`, `startup.csv` (segundos até ficar saudável e memória parada), `results.md`, `summary.json`, `charts/*.svg` e, se uma célula falhou, `failed.txt`. Os gráficos (`bench/charts.mjs`) seguem a cor de cada sistema, com tema claro e escuro: barras de vazão e latência e, no tempo, as mensagens publicadas e consumidas por segundo, as mensagens processadas até ali, a CPU e a memória, com a queda e a volta de um nó marcadas. `node doc/diagrams/scripts/generate-bench.mjs --from <pasta>` copia o `summary.json` de uma rodada para `doc/diagrams/data/bench-results.json` e desenha os gráficos da documentação em todos os idiomas. O `results.md` mostra, por workload e durabilidade, uma tabela com a **mediana das rodadas e, entre parênteses, o mínimo e o máximo** da vazão publicada e consumida e da latência ponta a ponta p50, p99 e p99.9. Não aponta vencedor; termina com as diferenças conhecidas de cada sistema.
+
+## Resultados
+
+Rodada de 2026-11-03, perfil `showcase` com os workloads `simple-1kb` e `max-rate-1kb` (rodadas de 3 minutos depois de 1 minuto de aquecimento), durabilidade fsync, num notebook (Intel i7-10750H, 6 núcleos físicos e 12 threads, Docker Desktop com 12 núcleos e 7 GB): um nó com 4 núcleos e 3 GB, três nós com 2 núcleos e 1,5 GB cada. Todas as células são do mesmo código; vieram de quatro rodadas do mesmo dia na mesma máquina, juntadas numa pasta só (o `MERGED.txt` dela diz quais): as células de três nós da primeira rodada não subiram (a rede do Docker falhou no mesmo minuto para o RabbitMQ, e o Taba caiu no [PRB-092](30-decisoes.md)). O Taba em três nós na taxa máxima tem três rodadas (a mediana, com o mínimo e o máximo); as outras células, uma. Os dados são `doc/diagrams/data/bench-results.json` (o `summary.json` da pasta) e os gráficos saem deles com `node doc/diagrams/scripts/generate-bench.mjs`. Uma rodada local compara os sistemas entre si; não é número absoluto.
+
+| Célula | Taba | RabbitMQ (fila de quórum) |
+|---|---|---|
+| Taxa máxima, um nó | 29.173 msg/s, p50 68 ms, 12.619 msg/s por núcleo | 14.796 msg/s, p50 1,4 s, 7.176 msg/s por núcleo |
+| Taxa máxima, três nós | 9.955 msg/s (9.627 a 10.966), p50 246 ms | 5.617 msg/s, p50 2,4 s |
+| 10.000 msg/s, um nó | sustentada, p50 2 ms, p99 17 ms | sustentada, p50 517 ms, p99 1 s |
+| 10.000 msg/s, três nós | 9.754 msg/s, p50 232 ms, p99 1,5 s | 5.892 msg/s (não acompanha), p50 1,2 s, p99 2 s |
+| Memória parada, um nó / três nós | 21 MB / 87 MB | 227 MB / 534 MB |
+
+O Taba consome 2 vezes o que o RabbitMQ consome em um nó e 1,8 vez em três; a meta da [D195](30-decisoes.md), o dobro dos brokers da mesma classe, é cumprida em um nó e ainda não em três ([PRB-087](31-pendencias.md)). Em três nós na taxa máxima o Taba usa os 6 núcleos que os nós têm (5,8 em média) e o notebook roda a cerca de 90 % da CPU; mais ou menos uma rodada em cinco, a máquina virtual inteira para por um segundo e a taxa da rodada cai por 10 a 20 s ([PRB-091](31-pendencias.md)): uma das três rodadas acima tem isso nos últimos 10 s, o que a mediana não mostra e o mínimo mostra.
+
+**O NATS JetStream não sustenta a carga com a mesma garantia.** Com `sync_interval: always` ele faz um fsync por mensagem, cerca de 7 ms no disco do Docker Desktop; o servidor avisa `Readloop processing time: 2s` e `JetStream stream ... has high message lag`, e o cliente Java cancela toda publicação que espera mais de 2 s (`response not registered in time`), centenas por segundo. Na taxa máxima o controlador de taxa do OMB derruba a taxa a zero, por isso o `bench/systems/nats/max-rate-sweep` troca o `max-rate-1kb` por taxas fixas de 500, 1 000, 2 000 e 5 000 por segundo: ele não sustentou nenhuma, e a maior taxa de 10 s dele foi de cerca de 380 por segundo. Os gráficos o deixam fora das barras e dizem isso numa segunda linha da nota (o `generate-bench.mjs` descobre isso nos dados); num disco de servidor, com um fsync mais barato, o número dele seria maior, e ele depende muito mais do disco que os do Taba e do RabbitMQ, que agrupam os fsyncs.
+
+![Vazão máxima](../diagrams/img/pt-BR/bench-throughput.svg)
+
+![Latência ponta a ponta a 10.000 msg/s](../diagrams/img/pt-BR/bench-latency.svg)
+
+![Mensagens por núcleo de CPU](../diagrams/img/pt-BR/bench-efficiency.svg)
+
+![Memória do servidor](../diagrams/img/pt-BR/bench-memory.svg)
+
+![Mensagens por segundo ao longo do tempo, um nó](../diagrams/img/pt-BR/bench-timeline-1.svg)
+
+![Mensagens por segundo ao longo do tempo, três nós](../diagrams/img/pt-BR/bench-timeline-3.svg)
+
+![Mensagens processadas ao longo do tempo, um nó](../diagrams/img/pt-BR/bench-processed-1.svg)
+
+![Mensagens processadas ao longo do tempo, três nós](../diagrams/img/pt-BR/bench-processed-3.svg)
 
 ## O que a comparação não esconde
 

@@ -9,10 +9,12 @@
 //! the log is created and only moves forward when a row is discarded by a limit (a cluster without exclusions
 //! for three days covers the three days).
 
+use std::collections::BTreeMap;
 use std::io;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::time::Duration;
 
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -43,6 +45,10 @@ pub(super) type PendingExclusion = (String, i64, i64);
 
 /// What a row weighs besides the `id`, for the size limit (position, instant and the table's own cost).
 const ROW_OVERHEAD: i64 = 24;
+
+/// Rows a trim deletes per operation of the write queue (`Op::TrimExcluded`): the chunks take their turn among the
+/// publications, so a publication waits at most for one of them.
+pub(super) const TRIM_CHUNK: i64 = 4096;
 
 /// Records, from the message's own row, the exclusion (`?1` is the `id`, `?2` the instant).
 pub(super) const RECORD_FROM_ROW: &str = "INSERT OR IGNORE INTO excluded (id, position, at_ms) \
@@ -436,49 +442,118 @@ impl MessageStore {
         Ok(bytes.max(0) as u64)
     }
 
-    /// Drops what the limits do not allow: first the rows older than the age limit, then the oldest ones
-    /// until the log fits the size limit. When a row is discarded, the start of the recording moves
-    /// forward to the instant of the newest one discarded. Returns how many rows it dropped.
+    /// Drops what the limits do not allow: the rows older than the age limit, and the oldest ones until the log
+    /// fits the size limit. When a row is discarded, the start of the recording moves forward to the instant of
+    /// the newest one discarded. Returns how many rows it dropped.
+    ///
+    /// The log at its size limit is trimmed every 30 s, hundreds of thousands of rows at a time under load, and on
+    /// every owner of the blocks at once. So the measure reads by the read connections of each topic, in one pass
+    /// over the index by instant, and the delete goes in chunks of `TRIM_CHUNK` rows through the write queue of the
+    /// topic, each taking its turn among the publications: a trim that held the connection for the whole job (a
+    /// bisection with about 27 sums over the table, then one `DELETE` of every row) stopped the publications of the
+    /// three nodes for seconds (PRB-090).
     pub fn trim_excluded(&self, now_ms: u64) -> io::Result<u64> {
+        self.trim_excluded_paced(now_ms, Duration::ZERO)
+    }
+
+    /// `trim_excluded` with a `pause` after each chunk: the node spreads the delete over the interval between two
+    /// trims, so the writes of a trim (the deleted pages, their WAL and its fsync) do not come in one burst. On three
+    /// nodes sharing a disk the burst of hundreds of thousands of rows froze the three for a second (PRB-090).
+    pub fn trim_excluded_paced(&self, now_ms: u64, pause: Duration) -> io::Result<u64> {
         let limits = self.excluded.limits;
         let topics = self.topics_on_disk()?;
-        let mut removed = 0u64;
-        let mut newest_dropped = 0u64;
-
-        let age_cutoff = now_ms.saturating_sub(limits.max_age_ms) as i64;
-        removed += self.drop_excluded_before(&topics, age_cutoff, &mut newest_dropped)?;
-
-        let mut total = 0u64;
+        // The exclusions that wait (in memory and in the write queue) count too.
         for topic in &topics {
-            total += self.excluded_bytes_since(topic, 0)?;
-        }
-        if total > limits.max_bytes {
-            // The smallest instant from which what remains fits: a bisection over the instants.
-            let (mut low, mut high) = (age_cutoff, now_ms as i64 + 1);
-            while low < high {
-                let middle = low + (high - low) / 2;
-                let mut bytes = 0u64;
-                for topic in &topics {
-                    bytes += self.excluded_bytes_since(topic, middle)?;
-                }
-                if bytes <= limits.max_bytes {
-                    high = middle;
-                } else {
-                    low = middle + 1;
-                }
+            if let Some(disk) = self.disk(topic, false)? {
+                drop(disk.conn_with_exclusions()?);
             }
-            removed += self.drop_excluded_before(&topics, low, &mut newest_dropped)?;
         }
+        let age_cutoff = now_ms.saturating_sub(limits.max_age_ms) as i64;
+        let cutoff = match self.size_cutoff(&topics, age_cutoff, limits.max_bytes)? {
+            Some(by_size) => by_size.max(age_cutoff),
+            None => age_cutoff,
+        };
+        let mut newest_dropped = 0u64;
+        let removed = self.drop_excluded_before(&topics, cutoff, pause, &mut newest_dropped)?;
         if newest_dropped > 0 {
             self.advance_excluded_since(newest_dropped)?;
         }
         Ok(removed)
     }
 
+    /// The smallest instant from which the rows (only those from `from_ms` on) fit `max_bytes`, over every topic,
+    /// or `None` when they all fit. Two reads of the index by instant: the bytes per second, then the bytes per
+    /// millisecond of the one second where the limit falls.
+    fn size_cutoff(
+        &self,
+        topics: &[String],
+        from_ms: i64,
+        max_bytes: u64,
+    ) -> io::Result<Option<i64>> {
+        let per_second = self.excluded_histogram(
+            topics,
+            "SELECT at_ms / 1000, SUM(length(id) + ?1) FROM excluded WHERE at_ms >= ?2 GROUP BY 1",
+            from_ms,
+            i64::MAX,
+        )?;
+        let mut kept = 0u64;
+        let Some(second) = per_second.iter().rev().find_map(|(&second, &bytes)| {
+            kept += bytes;
+            (kept > max_bytes).then(|| {
+                kept -= bytes;
+                second
+            })
+        }) else {
+            return Ok(None);
+        };
+        let per_ms = self.excluded_histogram(
+            topics,
+            "SELECT at_ms, SUM(length(id) + ?1) FROM excluded WHERE at_ms >= ?2 AND at_ms < ?3 GROUP BY 1",
+            from_ms.max(second * 1000),
+            second * 1000 + 1000,
+        )?;
+        for (&at_ms, &bytes) in per_ms.iter().rev() {
+            if kept + bytes > max_bytes {
+                return Ok(Some(at_ms + 1));
+            }
+            kept += bytes;
+        }
+        Ok(Some(second * 1000))
+    }
+
+    /// The sum of the bytes of the rows by the key of `sql` (`?1` the weight of a row besides its `id`, `?2` and,
+    /// when the query has it, `?3` the bounds of the instant), over every topic.
+    fn excluded_histogram(
+        &self,
+        topics: &[String],
+        sql: &str,
+        from_ms: i64,
+        until_ms: i64,
+    ) -> io::Result<BTreeMap<i64, u64>> {
+        let mut sums: BTreeMap<i64, u64> = BTreeMap::new();
+        for topic in topics {
+            let Some(disk) = self.disk(topic, false)? else {
+                continue;
+            };
+            disk.read(|conn| {
+                let mut stmt = conn.prepare(sql)?;
+                let bounds = [ROW_OVERHEAD, from_ms, until_ms];
+                let args = &bounds[..stmt.parameter_count()];
+                let mut rows = stmt.query(rusqlite::params_from_iter(args))?;
+                while let Some(row) = rows.next()? {
+                    *sums.entry(row.get(0)?).or_default() += row.get::<_, i64>(1)?.max(0) as u64;
+                }
+                Ok(())
+            })?;
+        }
+        Ok(sums)
+    }
+
     fn drop_excluded_before(
         &self,
         topics: &[String],
         before_ms: i64,
+        pause: Duration,
         newest_dropped: &mut u64,
     ) -> io::Result<u64> {
         let mut removed = 0;
@@ -486,19 +561,23 @@ impl MessageStore {
             let Some(disk) = self.disk(topic, false)? else {
                 continue;
             };
-            let conn = disk.conn_with_exclusions()?;
-            let newest: Option<i64> = conn
-                .query_row(
-                    "SELECT MAX(at_ms) FROM excluded WHERE at_ms < ?1",
+            let (newest, count): (Option<i64>, i64) = disk.read(|conn| {
+                conn.query_row(
+                    "SELECT MAX(at_ms), COUNT(*) FROM excluded WHERE at_ms < ?1",
                     params![before_ms],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
-                .map_err(to_io)?;
+            })?;
             let Some(newest) = newest else { continue };
             *newest_dropped = (*newest_dropped).max(newest.max(0) as u64);
-            removed += conn
-                .execute("DELETE FROM excluded WHERE at_ms < ?1", params![before_ms])
-                .map_err(to_io)? as u64;
+            // One chunk per operation of the write queue, until none is left.
+            for _ in 0..(count + TRIM_CHUNK - 1) / TRIM_CHUNK {
+                disk.submit(Op::TrimExcluded { before_ms })?;
+                if !pause.is_zero() {
+                    std::thread::sleep(pause);
+                }
+            }
+            removed += count.max(0) as u64;
         }
         Ok(removed)
     }

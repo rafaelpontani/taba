@@ -89,7 +89,8 @@ export function barChart({ title, subtitle, unit, categories, series, note }) {
   const slots = series.map((s) => SYSTEM_SLOTS[s.key] ?? 4);
   const legend = series.map((s, i) => ({ label: s.label, color: `var(--s${i})` }));
   const [head, top] = header({ title, subtitle, legend });
-  const height = top + 250 + (note ? 18 : 0);
+  const notes = [note].flat().filter(Boolean);
+  const height = top + 250 + 18 * notes.length;
   const left = 64, right = 20, plotH = 200, bottom = top + plotH;
   const plotW = W - left - right;
   const max = niceMax(Math.max(0, ...series.flatMap((s) => s.values.filter(Number.isFinite))));
@@ -120,7 +121,7 @@ export function barChart({ title, subtitle, unit, categories, series, note }) {
     });
     p.push(`<text class="lg" x="${left + ci * groupW + groupW / 2}" y="${bottom + 20}" text-anchor="middle">${esc(cat)}</text>`);
   });
-  if (note) p.push(`<text class="ax" x="20" y="${height - 12}">${esc(note)}</text>`);
+  notes.forEach((line, i) => p.push(`<text class="ax" x="20" y="${height - 12 - 18 * (notes.length - 1 - i)}">${esc(line)}</text>`));
   return frame(height, slots, p, { title, desc: subtitle });
 }
 
@@ -133,7 +134,8 @@ export function lineChart({ title, subtitle, unit, xLabel, series, markers = [],
   const color = (s) => `var(--s${keys.indexOf(s.key)})`;
   const lg = legend ?? keys.map((k) => ({ label: series.find((s) => s.key === k).label, color: `var(--s${keys.indexOf(k)})`, line: true }));
   const [head, top] = header({ title, subtitle, legend: lg.map((l) => ({ ...l, color: l.color ?? (l.key ? `var(--s${keys.indexOf(l.key)})` : 'var(--ink2)') })) });
-  const height = top + 262 + (note ? 18 : 0);
+  const notes = [note].flat().filter(Boolean);
+  const height = top + 262 + 18 * notes.length;
   const left = 64, right = endLabels ? 96 : 24, plotH = 200, bottom = top + plotH;
   const plotW = W - left - right;
   const pts = (s) => s.values.map((v, i) => [s.times ? s.times[i] : (s.start ?? s.step) + i * s.step, v]);
@@ -175,7 +177,7 @@ export function lineChart({ title, subtitle, unit, xLabel, series, markers = [],
     for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;
     for (const e of ends) p.push(`<text class="v" x="${left + plotW + 6}" y="${e.y + 4}">${esc(e.text)}</text>`);
   }
-  if (note) p.push(`<text class="ax" x="20" y="${height - 12}">${esc(note)}</text>`);
+  notes.forEach((line, i) => p.push(`<text class="ax" x="20" y="${height - 12 - 18 * (notes.length - 1 - i)}">${esc(line)}</text>`));
   return frame(height, slots, p, { title, desc: subtitle });
 }
 

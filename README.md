@@ -12,9 +12,18 @@ Its goal is to do the work of a message broker with **few resources**: little CP
 
 ## Messaging, not streaming
 
-Taba belongs to the class of **message brokers** (RabbitMQ, NATS JetStream, SQS), not to the class of **streaming platforms** (Kafka, Redpanda, Pulsar). A streaming platform is an append-only log: very fast at writing bytes and replaying them, but it leaves the work around each message to the application: confirming one message and not the next, redelivering only the one that failed, sending it to a dead-letter queue, keeping order by key with more consumers than partitions, expiring a single message. Taba does that work in the broker, and does it with as few resources as it can.
+Taba belongs to the class of **message brokers** (RabbitMQ, NATS JetStream, SQS), not to the class of **streaming platforms** (Kafka, Redpanda, Pulsar). They solve different problems, so this README compares Taba only with systems of its own class.
 
-That is also how Taba is measured: [against brokers of the same class](doc/en-US/38-benchmarks.md#what-the-comparison-measures). A streaming platform appears in the benchmark as the reference for the speed of a pure log, not as the target.
+**Why the two cannot be compared.** A streaming platform is an append-only log split into partitions. A consumer does not take a message: it reads the log from a position (an offset) and moves that position forward. That is why it is so fast at writing bytes and replaying them: the broker only appends and reads in sequence, and almost all the work around each message is left to the application:
+
+- **Confirming one message and not the next.** The offset is one number per partition: confirming message 10 confirms 1 to 9. A message that failed in the middle has to be handled by the application, or it blocks the partition.
+- **Redelivering only the one that failed, and sending it to a dead-letter queue** after a number of attempts: the application writes this logic (retry topics, a dead-letter topic).
+- **Spreading the load:** the number of consumers that work in parallel is capped by the number of partitions; more consumers than partitions stay idle.
+- **Expiring a single message, or hiding it for a while** (visibility): the log only expires whole segments, by age or size.
+
+A broker does that work itself, for each message: it records the delivery, waits for the ack, redelivers on the deadline, counts the attempts and moves the message to a dead-letter queue. Measuring both on the same workload compares a log with nothing to do against a broker doing the work the log leaves to the application. The throughput numbers come out of different jobs, so neither one says which system is faster for a queue.
+
+That is why Taba is measured [against brokers of the same class](doc/en-US/38-benchmarks.md#what-the-comparison-measures). If what you need is to replay history or process streams, a streaming platform is the right tool; if you need queues, FIFO and pub/sub with each message handled on its own, Taba is.
 
 ## At a glance
 
@@ -26,7 +35,7 @@ That is also how Taba is measured: [against brokers of the same class](doc/en-US
 | **Durability** | Each message is confirmed by a **quorum** of nodes (3 copies by default) and backed up **continuously to S3** (AWS, SeaweedFS, MinIO, Ceph...) |
 | **Deployment** | One Docker image (58 MB), Docker Compose, or the **Helm chart** at `oci://ghcr.io/rafaelpontani/charts/taba` |
 | **Operation** | `taba-cli`, a command line with a **full-screen terminal UI** (cluster health, topics, queue charts), plus Prometheus and OpenTelemetry metrics |
-| **Clients** | Plain HTTP from any language; ready connectors for Rust (crates.io) and C#/.NET (nuget.org) |
+| **Clients** | Plain HTTP from any language; ready connectors for **Java, C#/.NET, Python, Node.js and Rust** (Rust on crates.io, C# on nuget.org), all with no dependencies, plus a driver for the [OpenMessaging Benchmark](connectors/omb/README.md) |
 | **License** | Server AGPLv3, connectors Apache-2.0 |
 
 ## Why Taba
@@ -44,6 +53,20 @@ That is also how Taba is measured: [against brokers of the same class](doc/en-US
 - Nodes **monitor each other** and vote out the one that fails; it **rejoins by itself** when it comes back.
 - The **S3 backup never delays a write** and lets a whole cluster that went down **restore itself** at start (only the last backup window is at risk).
 - Every candidate is validated end to end before it becomes a final release: a three-node cluster with nodes crashing, draining and returning, **with no loss of confirmed messages**, plus S3 backup and restore ([docker/validate.sh](docker/validate.sh)).
+
+## Performance
+
+Measured with the [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) against RabbitMQ (quorum queue), a broker of the same class, on one machine, with the same CPU and memory limits for both and every write confirmed after `fsync`: one node with 4 cores and 3 GB, and a cluster of three nodes with 2 cores and 1.5 GB each. Messages of 1 KB, each one consumed and acknowledged.
+
+![Maximum throughput, 1 KB messages: Taba 29 thousand messages per second on one node and 10 thousand on three nodes; RabbitMQ 15 thousand and 5.6 thousand](doc/diagrams/img/en-US/bench-throughput.svg)
+
+![End-to-end latency at 10,000 messages per second: Taba p50 2 ms and p99 17 ms on one node, p50 232 ms and p99 1.5 s on three nodes; RabbitMQ p50 517 ms and p99 1 s on one node, p50 1.2 s and p99 2 s on three nodes](doc/diagrams/img/en-US/bench-latency.svg)
+
+- **Throughput:** Taba consumes **2 times** as many messages per second as RabbitMQ on one node (29,200 against 14,800) and **1.8 times** on three nodes (10,000 against 5,600).
+- **Latency:** at a fixed 10,000 messages per second, a message takes **2 ms** (p50) from publish to delivery on one node, against 517 ms; on three nodes, 232 ms against 1.2 s, and RabbitMQ does not keep up with the rate there (5,900 per second).
+- **Memory at rest:** 21 MB on one node and 87 MB for three nodes, against 227 MB and 534 MB.
+
+NATS JetStream, the other broker of the same class, is in the run too, with the same guarantee (`sync_interval: always`, one fsync per message): on this machine it fails above about 380 messages per second, because each fsync stalls its server and the client gives up after 2 s, so the charts leave it out of the bars and say so. These are numbers of one local run (2026-11-03, a laptop; three rounds of Taba on three nodes at the maximum rate, the median shown), useful to compare the systems with each other, not as absolute numbers. Every chart, the method and how to run it yourself are in the [benchmark guide](doc/en-US/38-benchmarks.md#results).
 
 ## See it running
 
@@ -85,16 +108,18 @@ The client API is also at `http://localhost:8080` for any HTTP client (with `Aut
 
 ## Taba vs. the alternatives
 
-| | **Taba** | SQS + SNS | Kafka | RabbitMQ |
+Systems of the same class, the message brokers ([why streaming platforms are not here](#messaging-not-streaming)):
+
+| | **Taba** | SQS + SNS | RabbitMQ | NATS JetStream |
 |---|---|---|---|---|
 | **Where it runs** | Anywhere: machine, VM, Docker, Kubernetes | AWS only | Wherever you host it, or as a managed service | Wherever you host it, or as a managed service |
-| **What to run** | The same image on 3 nodes (1 for dev) | Nothing (managed) | Brokers and metadata coordination | A broker (more nodes for high availability) |
-| **Queue and pub/sub** | In the same HTTP API | Two separate services | Topics and consumer groups | Queues and exchanges |
-| **Work per message** | Ack, redelivery, dead-letter and expiry per message, in the broker | Per message, in the service | An offset per partition; the rest is left to the application (per-record ack only with the share groups of Kafka 4) | Ack, redelivery and dead-letter per message, in the broker |
-| **High availability** | Built in: replication by quorum, vote and automatic rejoin | Managed by AWS | Replicated partitions | Quorum queues on a cluster |
-| **Scaling** | Add or remove a node: it rebalances by itself | Automatic (managed) | Brokers and partitions, reassigned by hand or by tools | Nodes in the cluster; queue leaders rebalanced by command |
-| **Backup** | Continuous to S3, restored at start | Managed by AWS | Replication; backup with external tools | Definitions export; messages with external tools |
-| **Local development** | The same image as production | An emulator (LocalStack) or an AWS account | The same software, heavier | The same software |
+| **What to run** | The same image on 3 nodes (1 for dev) | Nothing (managed) | A broker (more nodes for high availability) | A server (3 or more for replicated streams) |
+| **Queue and pub/sub** | In the same HTTP API | Two separate services | Queues and exchanges | Subjects, streams and consumers |
+| **Work per message** | Ack, redelivery, dead-letter and expiry per message, in the broker | Per message, in the service | Ack, redelivery and dead-letter per message, in the broker | Ack and redelivery per message; no dead-letter queue (an advisory when the attempts run out) |
+| **High availability** | Built in: replication by quorum, vote and automatic rejoin | Managed by AWS | Quorum queues on a cluster | Streams replicated by Raft |
+| **Scaling** | Add or remove a node: it rebalances by itself | Automatic (managed) | Nodes in the cluster; queue leaders rebalanced by command | Servers in the cluster; streams placed when created and moved by command |
+| **Backup** | Continuous to S3, restored at start | Managed by AWS | Definitions export; messages with external tools | Stream snapshots by command |
+| **Local development** | The same image as production | An emulator (LocalStack) or an AWS account | The same software | The same software |
 | **Billing** | No per-message billing: infrastructure only | Per request | Infrastructure, or a managed plan | Infrastructure, or a managed plan |
 
 ## Common questions
@@ -124,10 +149,10 @@ What limits a Taba cluster is the hardware you give it, not a fixed number:
 
 What Taba does not do:
 
-- **Not a protocol replacement:** Taba speaks HTTP. There is no AMQP, MQTT or Kafka protocol compatibility, so switching brokers means switching the client.
-- **Not a streaming platform:** stream processing and replaying message history are out of scope. For queues and pub/sub, yes; for re-reading the past, no.
+- **Not a protocol replacement:** Taba speaks HTTP. There is no AMQP or MQTT protocol compatibility, so switching brokers means switching the client.
+- **Not a streaming platform:** stream processing and replaying message history are out of scope ([Messaging, not streaming](#messaging-not-streaming)). For queues and pub/sub, yes; for re-reading the past, no.
 - **Out of scope for now:** a web interface, advanced authentication (OAuth/OIDC) and multi-region.
-- **Still to come:** the connectors for the other languages, the OpenAPI contract and published benchmark results (the script is in [`bench/`](bench/README.md)). See the [roadmap](doc/en-US/32-roadmap.md) and the [known issues](doc/en-US/36-known-issues.md).
+- **Still to come:** the connectors for PHP, Ruby, Go, C and C++, and the packages of the Java, Node.js and Python connectors (today they are used from the source). See the [roadmap](doc/en-US/32-roadmap.md) and the [known issues](doc/en-US/36-known-issues.md).
 
 ## Develop on one node
 
@@ -229,11 +254,55 @@ The API is HTTP, so any language can already talk to Taba with the HTTP client i
 | C | `connectors/c/` | C89 | planned | TODO |
 | C++ | `connectors/cpp/` | C++03 | planned | TODO |
 
+The five ready connectors have the same operations, the same defaults and the same errors: the [contract tests](connectors/contract/README.md) run one scenario through each of them against a real node, each in its oldest supported runtime, and then make them read each other's messages. Publishing and consuming with an automatic ack (the message is deleted only if the handler does not fail):
+
+```java
+// Java
+try (TabaClient client = new TabaClient(TabaConfig.of("http://localhost:8080").token(token))) {
+    client.publishText("orders", "hello");
+    client.consume("orders", new ConsumeOptions().waitTime(20), ctx -> System.out.println(ctx.getMessage().getBodyText()));
+}
+```
+
+```csharp
+// C#
+using (var client = new TabaClient(new TabaConfig("http://localhost:8080") { Token = token }))
+{
+    await client.PublishJsonAsync("orders", new { order = 9001 });
+    await client.ConsumeAsync<Order>("orders", async ctx => await ProcessAsync(ctx.Body));
+}
+```
+
+```python
+# Python
+with Client("http://localhost:8080", token=token) as client:
+    client.publish_json("orders", {"order": 9001})
+    client.consume_with("orders", lambda ctx: print(ctx.message.body_text), wait_time=20)
+```
+
+```js
+// Node.js
+const client = new TabaClient({ baseUrl: 'http://localhost:8080', token });
+await client.publishJson('orders', { order: 9001 });
+await client.consumeWith('orders', { waitTime: 20 }, async ({ message }) => console.log(message.bodyText));
+```
+
+```rust
+// Rust (feature "serde")
+client.publish_object("orders", &Order { number: 9001 })?;
+client.consume_typed::<Order, _>("orders", &ConsumeOptions::default(), |d| {
+    process_order(&d.body)?;
+    Ok(())
+})?;
+```
+
+Each one also has `subscribe` (the whole consume loop, until it is cancelled) and batch calls (`publishBatch`, `ackBatch`, `changeVisibilityBatch`); see its README.
+
 The `taba-cli`, the client command line ([connectors/rust/cli](connectors/rust/cli/README.md)), is ready and is the shortest way to try a cluster.
 
-Other languages use their own HTTP client or the C library. The design is in [the connectors guide](doc/en-US/21-connectors.md).
+**OpenMessaging Benchmark driver.** [`connectors/omb`](connectors/omb/README.md) is a driver for the [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark), written on the Java connector, so Taba can be measured with the same tool and the same workloads as RabbitMQ and NATS. It is what the [benchmark](#performance) uses.
 
-<!-- TODO: add usage examples (create topic, publish, consume with long polling and ack) for each language, once the connectors exist. -->
+Other languages use their own HTTP client or the C library. The design is in [the connectors guide](doc/en-US/21-connectors.md).
 
 > The base versions are proposals and may change until confirmed (pending item D68, see [pending items](doc/en-US/31-pending-items.md)).
 

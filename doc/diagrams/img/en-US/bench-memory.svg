@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 358" width="760" height="358" role="img" aria-labelledby="t d">
+<title id="t">Server memory</title><desc id="d">sum of every node, at rest and the peak at maximum rate · local run, not representative</desc>
+<style>
+svg{--bg:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;--s0:#2a78d6;--s1:#eb6834;--s2:#1baf7a}
+@media (prefers-color-scheme: dark){svg{--bg:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;--s0:#3987e5;--s1:#d95926;--s2:#199e70}}
+text{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;fill:var(--ink2);font-size:12px}
+.t{fill:var(--ink);font-size:16px;font-weight:600}.st{font-size:12.5px}.v{fill:var(--ink);font-size:11.5px;font-weight:600}
+.lg{fill:var(--ink);font-size:12.5px}.ax{fill:var(--muted);font-size:11px}.mk{fill:var(--ink2);font-size:11px}
+</style>
+<rect width="760" height="358" rx="10" fill="var(--bg)"/>
+<text class="t" x="20" y="28">Server memory</text>
+<text class="st" x="20" y="48">sum of every node, at rest and the peak at maximum rate · local run, not representative</text>
+<rect x="20" y="62" width="12" height="12" rx="3" fill="var(--s0)"/>
+<text class="lg" x="38" y="72">Taba</text>
+<rect x="88" y="62" width="12" height="12" rx="3" fill="var(--s1)"/>
+<text class="lg" x="106" y="72">RabbitMQ</text>
+<rect x="184" y="62" width="12" height="12" rx="3" fill="var(--s2)"/>
+<text class="lg" x="202" y="72">NATS JetStream</text>
+<line x1="64" y1="290" x2="740" y2="290" stroke="var(--axis)" stroke-width="1"/>
+<text class="ax" x="56" y="294" text-anchor="end">0</text>
+<line x1="64" y1="240" x2="740" y2="240" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="244" text-anchor="end">1k</text>
+<line x1="64" y1="190" x2="740" y2="190" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="194" text-anchor="end">2k</text>
+<line x1="64" y1="140" x2="740" y2="140" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="144" text-anchor="end">3k</text>
+<line x1="64" y1="90" x2="740" y2="90" stroke="var(--grid)" stroke-width="1"/>
+<text class="ax" x="56" y="94" text-anchor="end">4k</text>
+<text class="ax" x="56" y="84" text-anchor="end">MB</text>
+<path d="M88.66000000000001 290V289.47499999999997Q88.66000000000001 288.95 89.18500000000002 288.95H126.695Q127.22 288.95 127.22 289.47499999999997V290Z" fill="var(--s0)"><title>Taba · at rest · 1 node: 21 MB</title></path>
+<text class="v" x="107.94000000000001" y="283.95" text-anchor="middle">21</text>
+<path d="M129.22 290V282.65Q129.22 278.65 133.22 278.65H163.78Q167.78 278.65 167.78 282.65V290Z" fill="var(--s1)"><title>RabbitMQ · at rest · 1 node: 227 MB</title></path>
+<text class="v" x="148.5" y="273.65" text-anchor="middle">227</text>
+<path d="M169.78 290V289.5Q169.78 289 170.28 289H207.84Q208.34 289 208.34 289.5V290Z" fill="var(--s2)"><title>NATS JetStream · at rest · 1 node: 6 MB</title></path>
+<text class="v" x="189.06" y="284" text-anchor="middle">6</text>
+<text class="lg" x="148.5" y="310" text-anchor="middle">at rest · 1 node</text>
+<path d="M257.66 290V237.63Q257.66 233.63 261.66 233.63H292.22Q296.22 233.63 296.22 237.63V290Z" fill="var(--s0)"><title>Taba · maximum rate · 1 node: 1.1k MB</title></path>
+<text class="v" x="276.94" y="228.63" text-anchor="middle">1.1k</text>
+<path d="M298.22 290V248.065Q298.22 244.065 302.22 244.065H332.78000000000003Q336.78000000000003 244.065 336.78000000000003 248.065V290Z" fill="var(--s1)"><title>RabbitMQ · maximum rate · 1 node: 919 MB</title></path>
+<text class="v" x="317.5" y="239.065" text-anchor="middle">919</text>
+<text class="ax" x="358.06" y="284" text-anchor="middle">n/d</text>
+<text class="lg" x="317.5" y="310" text-anchor="middle">maximum rate · 1 node</text>
+<path d="M426.66 290V287.825Q426.66 285.65 428.83500000000004 285.65H463.045Q465.22 285.65 465.22 287.825V290Z" fill="var(--s0)"><title>Taba · at rest · 3 nodes: 87 MB</title></path>
+<text class="v" x="445.94" y="280.65" text-anchor="middle">87</text>
+<path d="M467.22 290V267.3Q467.22 263.3 471.22 263.3H501.78000000000003Q505.78000000000003 263.3 505.78000000000003 267.3V290Z" fill="var(--s1)"><title>RabbitMQ · at rest · 3 nodes: 534 MB</title></path>
+<text class="v" x="486.5" y="258.3" text-anchor="middle">534</text>
+<path d="M507.78000000000003 290V289.5Q507.78000000000003 289 508.28000000000003 289H545.84Q546.34 289 546.34 289.5V290Z" fill="var(--s2)"><title>NATS JetStream · at rest · 3 nodes: 20 MB</title></path>
+<text class="v" x="527.0600000000001" y="284" text-anchor="middle">20</text>
+<text class="lg" x="486.5" y="310" text-anchor="middle">at rest · 3 nodes</text>
+<path d="M595.66 290V190.64499999999998Q595.66 186.64499999999998 599.66 186.64499999999998H630.2199999999999Q634.2199999999999 186.64499999999998 634.2199999999999 190.64499999999998V290Z" fill="var(--s0)"><title>Taba · maximum rate · 3 nodes: 2.1k MB</title></path>
+<text class="v" x="614.9399999999999" y="181.64499999999998" text-anchor="middle">2.1k</text>
+<path d="M636.2199999999999 290V188.76999999999998Q636.2199999999999 184.76999999999998 640.2199999999999 184.76999999999998H670.7799999999999Q674.7799999999999 184.76999999999998 674.7799999999999 188.76999999999998V290Z" fill="var(--s1)"><title>RabbitMQ · maximum rate · 3 nodes: 2.1k MB</title></path>
+<text class="v" x="655.4999999999999" y="179.76999999999998" text-anchor="middle">2.1k</text>
+<text class="ax" x="696.06" y="284" text-anchor="middle">n/d</text>
+<text class="lg" x="655.5" y="310" text-anchor="middle">maximum rate · 3 nodes</text>
+<text class="ax" x="20" y="346">Same limits for every system: 1 node 4 cores / 3 GB · 3 nodes 2 cores / 1536 MB each · durability: fsync</text>
+</svg>

@@ -82,7 +82,17 @@ taba_cli() {
   if [ "${TABA_CLI_VERBOSE:-0}" = "1" ]; then
     taba_compose run --rm -T taba-cli "$@" | tr -d '\r'
   else
-    taba_compose run --rm -T taba-cli "$@" 2>/dev/null | tr -d '\r'
+    # O stderr do `compose run` é só barulho (contêineres criados e removidos), mas o erro do taba-cli também vai
+    # para ele: quando o comando falha, as últimas linhas que não são do compose aparecem, para dizer por quê.
+    local err status
+    err="$(mktemp)"
+    taba_compose run --rm -T taba-cli "$@" 2>"$err" | tr -d '\r'
+    status="${PIPESTATUS[0]}"
+    if [ "$status" -ne 0 ]; then
+      grep -v -E '^ *(Container|Network|Volume) ' "$err" | tr -d '\r' | tail -5 | sed 's/^/  taba-cli: /' >&2
+    fi
+    rm -f "$err"
+    return "$status"
   fi
 }
 

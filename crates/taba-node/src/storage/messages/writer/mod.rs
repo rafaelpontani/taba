@@ -58,6 +58,10 @@ pub(super) enum Op {
     },
     /// Os pares da tabela `expiry`, em ordem: `true` grava, `false` apaga.
     Expiry(Vec<(bool, u64, String)>),
+    /// Um pedaço da limpeza do log de excluídas: até `TRIM_CHUNK` linhas com instante antes de `before_ms`. Vai pela
+    /// fila para entrar na vez dele entre as publicações: tomando a conexão direto, a limpeza a pegava de novo antes
+    /// da escritora (o `Mutex` não é justo) e as publicações esperavam a limpeza inteira (PRB-090).
+    TrimExcluded { before_ms: i64 },
 }
 
 /// O que uma leitura por `id` vê de uma escrita que ainda está na fila.
@@ -295,6 +299,7 @@ impl TopicDisk {
                 }
                 None
             }
+            Op::TrimExcluded { .. } => None,
         };
         if let Some((id, pending)) = pending {
             queue.overlay.insert(id, (seq, pending));
@@ -563,6 +568,14 @@ impl TopicDisk {
                 }
                 tx.commit().map_err(to_io)
             }
+            Op::TrimExcluded { before_ms } => conn
+                .prepare_cached(
+                    "DELETE FROM excluded WHERE id IN \
+                     (SELECT id FROM excluded WHERE at_ms < ?1 LIMIT ?2)",
+                )
+                .and_then(|mut stmt| stmt.execute(params![before_ms, super::excluded::TRIM_CHUNK]))
+                .map(|_| ())
+                .map_err(to_io),
         }
     }
 

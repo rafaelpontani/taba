@@ -526,6 +526,10 @@ pub const OVERFLOW_SUMMARY_EVERY: Duration = Duration::from_secs(60);
 /// How often the limits of the log of excluded messages are applied.
 const EXCLUDED_TRIM_EVERY: Duration = Duration::from_secs(30);
 
+/// The pause after each chunk of a trim: hundreds of thousands of rows go over about 10 s instead of in one burst
+/// (PRB-090). The trim runs out of the sweep, so the pause does not hold the expiry nor the dead-letter.
+const EXCLUDED_TRIM_PAUSE: Duration = Duration::from_millis(100);
+
 pub struct Messages {
     topics: Arc<Topics>,
     clock: Arc<dyn Clock>,
@@ -2236,10 +2240,12 @@ impl Messages {
     /// schedule, not at each pass of the sweep.
     pub fn trim_excluded(&self) {
         let now = self.clock.now_millis();
-        match self.store.trim_excluded(now) {
+        let started = std::time::Instant::now();
+        match self.store.trim_excluded_paced(now, EXCLUDED_TRIM_PAUSE) {
             Ok(0) => {}
             Ok(removed) => tracing::info!(
                 removed,
+                took_ms = started.elapsed().as_millis() as u64,
                 "the log of excluded messages dropped what the limits do not allow"
             ),
             Err(e) => tracing::error!(error = %e, "failed to trim the log of excluded messages"),
@@ -2282,6 +2288,7 @@ impl Messages {
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut last_summary = tokio::time::Instant::now();
         let mut last_trim = tokio::time::Instant::now();
+        let mut trim: Option<tokio::task::JoinHandle<()>> = None;
         loop {
             tokio::select! {
                 () = cancel.cancelled() => return,
@@ -2292,9 +2299,10 @@ impl Messages {
                         this.flush_excluded();
                     })
                     .await;
-                    if last_trim.elapsed() >= EXCLUDED_TRIM_EVERY {
+                    // The trim runs beside the sweep (its pauses take seconds); one at a time.
+                    if last_trim.elapsed() >= EXCLUDED_TRIM_EVERY && trim.as_ref().is_none_or(|t| t.is_finished()) {
                         let this = self.clone();
-                        let _ = tokio::task::spawn_blocking(move || this.trim_excluded()).await;
+                        trim = Some(tokio::task::spawn_blocking(move || this.trim_excluded()));
                         last_trim = tokio::time::Instant::now();
                     }
                     if last_summary.elapsed() >= OVERFLOW_SUMMARY_EVERY {
