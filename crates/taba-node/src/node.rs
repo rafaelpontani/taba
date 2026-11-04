@@ -31,6 +31,7 @@ use crate::engine::messages::stats::StatsRules;
 use crate::engine::messages::{MessageRules, Messages};
 use crate::engine::tokens::{TokenRules, Tokens};
 use crate::engine::topics::{TopicRules, Topics};
+use crate::gateway;
 use crate::http::auth::Auth;
 use crate::http::client_ip::ClientIpRules;
 use crate::http::observe::{self, Observer};
@@ -71,6 +72,9 @@ pub enum NodeError {
 
     #[error("transport between nodes: {0}")]
     Transport(String),
+
+    #[error("gateway: {0}")]
+    Gateway(String),
 }
 
 /// Registers the node on a network (the in-memory one of the tests): receives its address and the `Handler`.
@@ -226,6 +230,8 @@ pub struct RunningNode {
     client_addr: SocketAddr,
     operations_addr: SocketAddr,
     cluster_addr: SocketAddr,
+    /// The gateway's port (SQS and SNS), if `gateway.sqs.enabled` or `gateway.sns.enabled`.
+    gateway_addr: Option<SocketAddr>,
     cancel: CancellationToken,
     tasks: JoinSet<io::Result<()>>,
     drain: Arc<DrainController>,
@@ -294,6 +300,11 @@ impl RunningNode {
         self.cluster_addr
     }
 
+    /// The gateway's port actually opened; `None` with `gateway.sqs.enabled` and `gateway.sns.enabled` off.
+    pub fn gateway_addr(&self) -> Option<SocketAddr> {
+        self.gateway_addr
+    }
+
     /// This node's S3 backup; `None` without `backup.s3.bucket`.
     pub fn backup(&self) -> Option<&Arc<Backup>> {
         self.backup.as_ref()
@@ -359,6 +370,18 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let client = bind("of the client API", deps.bind_ip, config.ports.api).await?;
     let operations = bind("of operations", deps.bind_ip, config.ports.operations).await?;
     let cluster = bind("do cluster", deps.bind_ip, config.ports.cluster).await?;
+    // The gateway for the AWS SDKs: one port, opened only when SQS or SNS is on (doc 39).
+    let gateway_on = config.gateway.sqs.enabled || config.gateway.sns.enabled;
+    let gateway = if gateway_on {
+        Some(bind("of the gateway", deps.bind_ip, config.gateway.port).await?)
+    } else {
+        None
+    };
+    let gateway_credentials = if gateway_on {
+        Some(gateway::open_credentials(&config).map_err(NodeError::Gateway)?)
+    } else {
+        None
+    };
 
     let now = deps.clock.now();
     let shared = Arc::new(NodeShared::new(id::new_at(deps.clock.now_millis()), now));
@@ -640,6 +663,23 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             state.clone(),
         )));
     }
+    let mut gateway_addr = None;
+    let mut gateway_reload = None;
+    if let (Some(credentials), Some(listener)) = (gateway_credentials, gateway) {
+        let addr = addr_of(&listener)?;
+        gateway_addr = Some(addr);
+        let router = gateway::aws_router(
+            &config,
+            client_router.clone(),
+            credentials.clone(),
+            state.auth.enabled,
+            deps.clock.clone(),
+        );
+        serve(listener, router, addr.port(), None);
+        if credentials.has_file() {
+            gateway_reload = Some(credentials);
+        }
+    }
     serve(client, client_router, client_addr.port(), None);
     serve(
         operations,
@@ -795,6 +835,20 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             }
         });
     }
+    if let Some(credentials) = gateway_reload {
+        // The credentials file of the gateway is re-read, to add or change a key without restarting.
+        let cancel = cancel.clone();
+        tasks.spawn(async move {
+            let mut ticker = tokio::time::interval(reload_interval);
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tokio::select! {
+                    () = cancel.cancelled() => return Ok(()),
+                    _ = ticker.tick() => credentials.reload(),
+                }
+            }
+        });
+    }
     if auth.root.has_file() {
         // The root token file is re-read, to change the secret without restarting.
         let (cancel, auth) = (cancel.clone(), auth.clone());
@@ -815,6 +869,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         client = %client_addr,
         operations = %operations_addr,
         cluster = %cluster_addr,
+        gateway = ?gateway_addr,
         "node is up"
     );
     Ok(RunningNode {
@@ -825,6 +880,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         client_addr,
         operations_addr,
         cluster_addr,
+        gateway_addr,
         cancel,
         tasks,
         drain,

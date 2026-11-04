@@ -42,6 +42,7 @@ Each module knows only those on its left. This is verifiable: `core` imports no 
 | `engine` | Topics, messages, ready and invisible lists, fair delivery, FIFO, dead-letter, tokens, statistics | Network |
 | `cluster` | Members, node protocol, channel, voting, freezing, synchronization, replication, drain, version upgrade, recovery, volatile topics, health | Client HTTP |
 | `http` | The three APIs, their OpenAPI documents (`http/openapi`), authentication, rate limit, client IP, forwarding, metrics | Domain rules (only reads the request and builds the response) |
+| `gateway` | The gateway for the AWS SDKs ([39-gateway.md](39-gateway.md)): one port for SQS and SNS (`dispatch` hands each call to its service), each off by default; turns a call of SQS or SNS into calls to the client API in the process (`backend`), with the signature, the credentials, the errors, the parameters, the HTTP answer and the XML of AWS (`aws`), the attributes of the message (`envelope`) and the names (`naming`); `sqs` and `sns` do not import each other | Domain rules and state of its own (it only translates) |
 | `telemetry` | Metrics, traces and logs; OTLP and Prometheus export | — |
 | `config` | `.yml` file, `TABA_*` variables, the parameter table and the startup validations | — |
 | `secrets` | The secrets folder: cluster certificate and root token (`taba init`, `taba cert generate`, `taba token generate`) | — |
@@ -111,6 +112,8 @@ crates/taba-node/src/
                      upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
                      nodes openapi operations ratelimit tokens topic_stats topics
+  gateway/           backend dispatch envelope naming aws (sigv4, auth, credentials, errors, params, reply, xml, form) sqs sns
+                     sqs (protocol_json, protocol_query, queues, messages, receipt)
   telemetry/         histogram metrics otlp process prometheus trace
 ```
 

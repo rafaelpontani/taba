@@ -190,6 +190,21 @@ service:
   annotations: {}
   loadBalancerClass: ""
 
+# ---------------------------------------------------------------------------------------------------
+# Gateway para os SDKs da AWS (doc 39): o SQS e o SNS atendem na mesma porta; cada um vem desligado.
+# ---------------------------------------------------------------------------------------------------
+gateway:
+  port: 9324             # porta do container (gateway.aws.port); a mesma no Service <release>-gateway
+  sqs:
+    enabled: false
+    publicUrl: ""        # gateway.sqs.public-url: o endereço que volta na QueueUrl (o do Service/ingress que os clients usam)
+  sns:
+    enabled: false
+  # Secret com o arquivo de chaves de acesso (gateway.aws.credentials-file). Com a autenticação ligada, sem ele toda chamada é recusada.
+  credentialsSecret:
+    name: ""
+    key: credentials.json
+
 ingress:                 # somente a API (8080). Cluster e operações nunca passam por aqui.
   enabled: false
   className: ""          # vazio = classe padrão do cluster; alguns controllers querem a annotation legada

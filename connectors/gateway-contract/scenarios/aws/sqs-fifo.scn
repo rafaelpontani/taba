@@ -1,0 +1,95 @@
+# SQS FIFO queue, as AWS defines it (runs on Taba and on ElasticMQ). Language of the file: see sqs-standard.scn.
+
+# --- the name carries .fifo and the attribute says so ------------------------------------------------------------
+createQueue name={p}-f.fifo fifo=true as=f => url~/{p}-f.fifo
+getQueueAttributes queue=$f.url names=All => attr_FifoQueue=true attr_ContentBasedDeduplication=false
+createQueue name={p}-notfifo fifo=true => error=InvalidParameterValue|InvalidAttributeName|InvalidAttributeValue
+createQueue name={p}-plain.fifo => error=InvalidParameterValue|InvalidAttributeName|InvalidAttributeValue
+
+# --- order inside a group ---------------------------------------------------------------------------------------------
+send queue=$f.url body=1 group=g1 dedup=d1
+send queue=$f.url body=2 group=g1 dedup=d2
+send queue=$f.url body=3 group=g1 dedup=d3
+receive queue=$f.url max=1 wait=2 visibility=30 as=r => count=1 body=1
+deleteMessage queue=$f.url handle=$r.handle
+receive queue=$f.url max=1 wait=2 visibility=30 as=r => count=1 body=2
+deleteMessage queue=$f.url handle=$r.handle
+receive queue=$f.url max=1 wait=2 visibility=30 as=r => count=1 body=3
+deleteMessage queue=$f.url handle=$r.handle
+receive queue=$f.url max=10 wait=0 => count=0
+
+# --- one group is delivered one message at a time: the next waits for the delete -------------------------------
+send queue=$f.url body=a1 group=ga dedup=a1
+send queue=$f.url body=a2 group=ga dedup=a2
+send queue=$f.url body=b1 group=gb dedup=b1
+receive queue=$f.url max=1 wait=2 visibility=30 as=r1 => count=1
+receive queue=$f.url max=10 wait=2 visibility=30 as=r2 => count=1
+deleteMessage queue=$f.url handle=$r1.handle
+deleteMessage queue=$f.url handle=$r2.handle
+receive queue=$f.url max=10 wait=2 visibility=30 as=r3 => count=1
+deleteMessage queue=$f.url handle=$r3.handle
+receive queue=$f.url max=10 wait=0 => count=0
+
+# --- the group and the deduplication id come back with the message -----------------------------------------------
+send queue=$f.url body=meta group=g-meta dedup=d-meta as=m => id=* sequence=*
+receive queue=$f.url max=1 wait=2 visibility=30 attrs=All as=r => count=1 body=meta attr_MessageGroupId=g-meta attr_MessageDeduplicationId=d-meta
+deleteMessage queue=$f.url handle=$r.handle
+
+# --- deduplication: the same id inside the window is one message ------------------------------------------------
+send queue=$f.url body=once group=g1 dedup=same as=first => id=*
+send queue=$f.url body=once group=g1 dedup=same as=second => id=$first.id
+receive queue=$f.url max=10 wait=2 visibility=30 as=r => count=1 body=once
+deleteMessage queue=$f.url handle=$r.handle
+receive queue=$f.url max=10 wait=0 => count=0
+
+# --- a group id with punctuation the Taba names do not allow is still a group id ----------------------------------
+send queue=$f.url body=odd group=tenant%2F42!blue dedup=odd1
+receive queue=$f.url max=1 wait=2 visibility=30 attrs=All as=r => count=1 body=odd attr_MessageGroupId=tenant%2F42!blue
+deleteMessage queue=$f.url handle=$r.handle
+
+# --- without a deduplication id and without content-based deduplication, SQS refuses ----------------------------
+send queue=$f.url body=nodedup group=g1 => error=InvalidParameterValue|MissingParameter
+send queue=$f.url body=nogroup dedup=x => error=MissingParameter|InvalidParameterValue
+
+# --- content-based deduplication: the body is the id -----------------------------------------------------------
+createQueue name={p}-cb.fifo fifo=true attrs=ContentBasedDeduplication:true as=cb
+send queue=$cb.url body=same-body group=g1 as=c1 => id=*
+send queue=$cb.url body=same-body group=g1 as=c2 => id=$c1.id
+send queue=$cb.url body=other-body group=g1
+receive queue=$cb.url max=1 wait=2 visibility=30 as=r => count=1 body=same-body
+deleteMessage queue=$cb.url handle=$r.handle
+receive queue=$cb.url max=1 wait=2 visibility=30 as=r => count=1 body=other-body
+deleteMessage queue=$cb.url handle=$r.handle
+receive queue=$cb.url max=10 wait=0 => count=0
+
+# --- batches on FIFO ------------------------------------------------------------------------------------------------------
+sendBatch queue=$f.url bodies=x1,x2,x3 group=gx dedupPrefix=bx => ok=3 failed=0
+receive queue=$f.url max=1 wait=2 visibility=30 as=r => count=1 body=x1
+deleteMessage queue=$f.url handle=$r.handle
+receive queue=$f.url max=1 wait=2 visibility=30 as=r => count=1 body=x2
+deleteMessage queue=$f.url handle=$r.handle
+receive queue=$f.url max=1 wait=2 visibility=30 as=r => count=1 body=x3
+deleteMessage queue=$f.url handle=$r.handle
+
+# --- the per-message delay does not exist on FIFO queues --------------------------------------------------------
+send queue=$f.url body=delayed group=g1 dedup=dl1 delay=5 => error=InvalidParameterValue|AWS.SimpleQueueService.InvalidParameterValue
+
+# --- dead-letter: after maxReceiveCount the message goes to the other queue -------------------------------------
+createQueue name={p}-dlq.fifo fifo=true as=dlq
+getQueueAttributes queue=$dlq.url names=QueueArn as=dlqa
+createQueue name={p}-src.fifo fifo=true redriveArn=$dlqa.attr_QueueArn redriveMax=2 as=src
+getQueueAttributes queue=$src.url names=RedrivePolicy => attr_RedrivePolicy~maxReceiveCount
+send queue=$src.url body=poison group=g1 dedup=p1
+receive queue=$src.url max=1 wait=2 visibility=1 => count=1 body=poison
+sleep seconds=2
+receive queue=$src.url max=1 wait=2 visibility=1 => count=1 body=poison
+sleep seconds=2
+receive queue=$src.url max=1 wait=1 visibility=30 => count=0
+receive queue=$dlq.url max=1 wait=5 visibility=30 as=r => count=1 body=poison
+deleteMessage queue=$dlq.url handle=$r.handle
+
+# --- cleanup --------------------------------------------------------------------------------------------------------------------
+deleteQueue queue=$f.url
+deleteQueue queue=$cb.url
+deleteQueue queue=$src.url
+deleteQueue queue=$dlq.url

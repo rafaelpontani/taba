@@ -89,6 +89,7 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 | [36-known-issues.md](36-known-issues.md) | Tests turned off because they fail intermittently in CI |
 | [37-guarantees.md](37-guarantees.md) | The guarantees as checkable rules (I1 to I6) and the chaos run that checks them |
 | [38-benchmarks.md](38-benchmarks.md) | The local comparative benchmark (`bench/run.sh`): fairness rules, durability levels, workloads and the report |
+| [39-gateway.md](39-gateway.md) | The gateway for the AWS SDKs: SQS and SNS on ports of the node, the access keys, what is supported and the differences from SQS and SNS |
 | [26-use-cases.md](26-use-cases.md) | The `UC-…` format and the coverage rule |
 | [26a-implemented-use-cases.md](26a-implemented-use-cases.md) | Cases with a test |
 | [26b-planned-use-cases.md](26b-planned-use-cases.md) | Cases without a test yet |

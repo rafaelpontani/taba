@@ -35,6 +35,14 @@ x-taba: &taba
     TABA_REPLICATION_FACTOR: "3"
     # Colored text logs in `docker compose logs` (node default: `text`; `json` is also available).
     TABA_TELEMETRY_LOGS_FORMAT: color
+    # Gateway for the AWS SDKs (doc 39): ON in this example, so an application that uses the AWS SDK for SQS/SNS can
+    # point its endpoint at http://localhost:9324 (SQS and SNS, one port) and start. The demo access key
+    # (AWS_ACCESS_KEY_ID=taba, AWS_SECRET_ACCESS_KEY=taba-secret) is written by the init service below and acts with the root
+    # token: for anything real, replace the file with the keys of your applications, each mapped to a token of its own.
+    # To turn it off: TABA_GATEWAY_SQS_ENABLED=false TABA_GATEWAY_SNS_ENABLED=false docker compose up -d
+    TABA_GATEWAY_SQS_ENABLED: ${TABA_GATEWAY_SQS_ENABLED:-true}
+    TABA_GATEWAY_SNS_ENABLED: ${TABA_GATEWAY_SNS_ENABLED:-true}
+    TABA_GATEWAY_AWS_CREDENTIALS_FILE: /etc/taba/secrets/aws-credentials.json
     # S3 backup (the example's SeaweedFS). Demo credentials: change them in any real use.
     TABA_BACKUP_S3_BUCKET: taba
     TABA_BACKUP_S3_ENDPOINT: http://seaweedfs:8333
@@ -48,7 +56,7 @@ x-taba: &taba
     start_period: 5s
 
 services:
-  # Creates the secrets folder (cluster certificate and root token) once; on later runs it does
+  # Creates the secrets folder (cluster certificate, root token and the demo access key of the AWS gateway) once; on later runs it does
   # nothing. Runs as root only to write to the new volume and hand the files to the node's user.
   init:
     image: rafaelpontani/taba:${TABA_VERSION:-latest}
@@ -57,6 +65,7 @@ services:
     command:
       - |
         test -f /secrets/root-token || taba init --out /secrets
+        test -f /secrets/aws-credentials.json || printf '{"taba":{"secret":"taba-secret","token":"%s"}}' "$$(cat /secrets/root-token)" > /secrets/aws-credentials.json
         chown -R 10001:10001 /secrets
     volumes:
       - secrets:/secrets
@@ -141,6 +150,7 @@ services:
       - ./docker/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     ports:
       - "8080:8080"
+      - "9324:9324"   # gateway for the AWS SDKs: SQS and SNS (gateway.sqs.enabled, gateway.sns.enabled)
 
   # The client command line, already pointed at the cluster. It only runs on demand:
   #   docker compose run --rm taba-cli topic list

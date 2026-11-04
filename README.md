@@ -35,7 +35,7 @@ That is why Taba is measured [against brokers of the same class](doc/en-US/38-be
 | **Durability** | Each message is confirmed by a **quorum** of nodes (3 copies by default) and backed up **continuously to S3** (AWS, SeaweedFS, MinIO, Ceph...) |
 | **Deployment** | One Docker image (58 MB), Docker Compose, or the **Helm chart** at `oci://ghcr.io/rafaelpontani/charts/taba` |
 | **Operation** | `taba-cli`, a command line with a **full-screen terminal UI** (cluster health, topics, queue charts), plus Prometheus and OpenTelemetry metrics |
-| **Clients** | Plain HTTP from any language; ready connectors for **Java, C#/.NET, Python, Node.js and Rust** (Rust on crates.io, C# on nuget.org), all with no dependencies, plus a driver for the [OpenMessaging Benchmark](connectors/omb/README.md) |
+| **Clients** | Plain HTTP from any language; ready connectors for **Java, C#/.NET, Python, Node.js and Rust** (Rust on crates.io, C# on nuget.org), all with no dependencies, plus a driver for the [OpenMessaging Benchmark](connectors/omb/README.md). Applications that use the **AWS SDK (SQS and SNS)** connect with no code change ([gateway](#use-the-aws-sdk-without-changing-your-code)) |
 | **License** | Server AGPLv3, connectors Apache-2.0 |
 
 ## Why Taba
@@ -136,6 +136,8 @@ Systems of the same class, the message brokers ([why streaming platforms are not
 
 **Is there a user interface?** Yes, in the terminal: `taba-cli tui` ([See it running](#see-it-running)). There is no web dashboard; for long-term charts, use the Prometheus metrics.
 
+**Can my application that uses Amazon SQS or SNS use Taba?** Yes, with the gateway of the node: you change the endpoint of the SDK and keep the code ([how, with examples in six languages](#use-the-aws-sdk-without-changing-your-code)). It covers SQS (standard and FIFO) and SNS topics that publish to those queues; what is not covered is listed there.
+
 **Is it in production?** Yes. Every version is published to Docker Hub, GHCR, crates.io, nuget.org and GitHub Releases, signed and with provenance ([Verifying a release](#verifying-a-release)).
 
 ## Limits
@@ -149,7 +151,7 @@ What limits a Taba cluster is the hardware you give it, not a fixed number:
 
 What Taba does not do:
 
-- **Not a protocol replacement:** Taba speaks HTTP. There is no AMQP or MQTT protocol compatibility, so switching brokers means switching the client.
+- **Not a protocol replacement, except the AWS one:** Taba speaks HTTP, and an optional gateway speaks the **SQS and SNS** protocols ([above](#use-the-aws-sdk-without-changing-your-code), with its limits). There is no AMQP or MQTT compatibility yet, so coming from RabbitMQ means switching the client.
 - **Not a streaming platform:** stream processing and replaying message history are out of scope ([Messaging, not streaming](#messaging-not-streaming)). For queues and pub/sub, yes; for re-reading the past, no.
 - **Out of scope for now:** a web interface, advanced authentication (OAuth/OIDC) and multi-region.
 - **Still to come:** the connectors for PHP, Ruby, Go, C and C++, and the packages of the Java, Node.js and Python connectors (today they are used from the source). See the [roadmap](doc/en-US/32-roadmap.md) and the [known issues](doc/en-US/36-known-issues.md).
@@ -305,6 +307,127 @@ The `taba-cli`, the client command line ([connectors/rust/cli](connectors/rust/c
 Other languages use their own HTTP client or the C library. The design is in [the connectors guide](doc/en-US/21-connectors.md).
 
 > The base versions are proposals and may change until confirmed (pending item D68, see [pending items](doc/en-US/31-pending-items.md)).
+
+## Use the AWS SDK without changing your code
+
+An application that already sends to **Amazon SQS** or publishes to **Amazon SNS** topics that feed SQS queues can run on Taba by **changing only the endpoint**. The node has a gateway that speaks the SQS and SNS wire protocols (the JSON and Query protocols, SigV4) and turns each call into a call to the client API, so the queues are ordinary Taba queues: replicated by quorum, backed up to S3 and reachable by the native API and the connectors as well. It is part of the node and of the image, **off by default**, and SQS and SNS are served on **one port**, `9324`.
+
+**Advantages**
+- **No code change, no new client:** the SDK you already use (C#, Java, Rust, Go, Python, Node.js, in current and in older versions) keeps working. The same scenarios run against the native SDK of each language in [the gateway contract tests](connectors/gateway-contract/README.md), and against ElasticMQ and moto to show that the tests are right.
+- **Leave AWS without rewriting:** no billing per request, and the same queues run on your machine, on a VM or on Kubernetes. The local development is the same image as production, with no emulator.
+- **Nothing more to run:** the gateway is inside every node. There is no extra service, no state of its own, and any node serves any call.
+- **One system, two doors:** a message sent through the SDK is read by a native connector, and the other way around. Standard and **FIFO** queues, delay, dead-letter, message attributes, long polling and the AWS error codes are supported ([the full list](doc/en-US/39-gateway.md#what-is-supported)).
+
+**Limitations** (each one is an explicit error, never silently ignored; all of them in [doc 39](doc/en-US/39-gateway.md#differences-from-sqs))
+- SQS and SNS only. Amazon SNS delivers to **SQS queues only**: no HTTP, e-mail, SMS or Lambda subscribers.
+- `RawMessageDelivery=true` and `FilterPolicy` on a subscription are **refused**, FIFO **topics** are refused, and a topic holds up to 20 subscriptions. The notification is not signed, so an application that verifies the SNS signature fails.
+- A subscription is a name **prefix**: subscribing `orders` also copies to `orders-eu`, and a topic and a queue cannot share a name.
+- The access keys are static and listed in a file (`gateway.aws.credentials-file`); temporary IAM role credentials are not accepted.
+- There is no IAM, KMS or CloudWatch here: the queue policy and the encryption attributes are accepted and ignored.
+
+### Run it
+
+With the [Docker Compose cluster](#try-it-in-a-minute) the gateway is **already on** (SQS and SNS on `localhost:9324`), with a demo access key you can use right away:
+
+```bash
+docker compose up -d
+export AWS_ENDPOINT_URL_SQS=http://localhost:9324 AWS_ENDPOINT_URL_SNS=http://localhost:9324
+export AWS_ACCESS_KEY_ID=taba AWS_SECRET_ACCESS_KEY=taba-secret AWS_REGION=us-east-1
+```
+
+That key acts with the root token and is only for trying Taba (see [the access keys](doc/en-US/39-gateway.md#the-access-keys)). Or one node for development (no authentication, so any access key is accepted; it must never face a network):
+
+```bash
+docker run -d --name taba-dev -p 8080:8080 -p 9324:9324 \
+  -e TABA_REPLICATION_FACTOR=1 -e TABA_GATEWAY_SQS_ENABLED=true -e TABA_GATEWAY_SNS_ENABLED=true \
+  rafaelpontani/taba
+```
+
+Point the SDK at it. Current SDKs read the endpoint from the environment, so **the code does not change at all**:
+
+```bash
+export AWS_ENDPOINT_URL_SQS=http://localhost:9324
+export AWS_ENDPOINT_URL_SNS=http://localhost:9324
+export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_REGION=us-east-1   # any value while the authentication is off
+```
+
+Older SDK versions (before the endpoint variable) take it in the code, as every example below does. In a cluster the authentication is on: each application gets an access key that maps to a Taba token (its permissions and topic prefixes) in a credentials file mounted on the nodes. With the [Helm chart](#run-it-on-kubernetes-helm): `kubectl create secret generic aws-keys --from-file=credentials.json` and `helm install taba oci://ghcr.io/rafaelpontani/charts/taba --set gateway.sqs.enabled=true --set gateway.sns.enabled=true --set gateway.credentialsSecret.name=aws-keys --set gateway.sqs.publicUrl=https://queues.example.com`. The file format, the permissions and the settings are in [the gateway guide](doc/en-US/39-gateway.md#the-access-keys) and [the configuration](doc/en-US/22-configuration.md#gateway-for-the-aws-sdks).
+
+### Connect
+
+In every example the queue is called `orders`: that is the SQS queue name and also the name of the Taba topic (queue), so `taba-cli consume orders` reads the same messages. SQS does not use the name in the message calls, it uses the **queue URL** (`QueueUrl`). You get it from the name: `CreateQueue` (creates the queue, or returns the one that exists) or `GetQueueUrl` return `http://localhost:9324/000000000000/orders`, and that URL is what goes in `SendMessage`, `ReceiveMessage` and `DeleteMessage`. The `QueueArn` (`arn:aws:sqs:us-east-1:000000000000:orders`) is the identification of the queue that SNS uses in the subscription.
+
+```python
+# Python (boto3): create a queue, send, receive and delete
+import boto3
+
+sqs = boto3.client("sqs", region_name="us-east-1", endpoint_url="http://localhost:9324")
+url = sqs.create_queue(QueueName="orders")["QueueUrl"]   # CreateQueue takes the NAME and returns the URL; the other calls use the URL
+sqs.send_message(QueueUrl=url, MessageBody='{"order": 9001}')
+for m in sqs.receive_message(QueueUrl=url, WaitTimeSeconds=5).get("Messages", []):
+    print(m["Body"])
+    sqs.delete_message(QueueUrl=url, ReceiptHandle=m["ReceiptHandle"])
+```
+
+SNS publishing to the same queue:
+
+```python
+sns = boto3.client("sns", region_name="us-east-1", endpoint_url="http://localhost:9324")
+topic = sns.create_topic(Name="events")["TopicArn"]
+queue_arn = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]   # arn:aws:sqs:us-east-1:000000000000:orders
+sns.subscribe(TopicArn=topic, Protocol="sqs", Endpoint=queue_arn)   # the queue "orders" now gets every publication
+sns.publish(TopicArn=topic, Message="hello", Subject="greeting")
+```
+
+```js
+// Node.js (AWS SDK v3)
+import { SQSClient, CreateQueueCommand, SendMessageCommand, ReceiveMessageCommand } from "@aws-sdk/client-sqs";
+
+const sqs = new SQSClient({ region: "us-east-1", endpoint: "http://localhost:9324" });
+const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: "orders" }));   // the name goes in, the URL comes out
+await sqs.send(new SendMessageCommand({ QueueUrl, MessageBody: "hello" }));
+const { Messages } = await sqs.send(new ReceiveMessageCommand({ QueueUrl, WaitTimeSeconds: 5 }));
+```
+
+```java
+// Java (AWS SDK v2)
+SqsClient sqs = SqsClient.builder()
+    .region(Region.US_EAST_1)
+    .endpointOverride(URI.create("http://localhost:9324"))
+    .build();
+String url = sqs.createQueue(r -> r.queueName("orders")).queueUrl();   // the name goes in, the URL comes out
+sqs.sendMessage(r -> r.queueUrl(url).messageBody("hello"));
+```
+
+```csharp
+// C# (AWSSDK.SQS)
+var sqs = new AmazonSQSClient(new AmazonSQSConfig { ServiceURL = "http://localhost:9324", AuthenticationRegion = "us-east-1" });
+var url = (await sqs.CreateQueueAsync("orders")).QueueUrl;   // the name goes in, the URL comes out
+await sqs.SendMessageAsync(new SendMessageRequest { QueueUrl = url, MessageBody = "hello" });
+```
+
+```go
+// Go (aws-sdk-go-v2)
+cfg, _ := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+client := sqs.NewFromConfig(cfg, func(o *sqs.Options) { o.BaseEndpoint = aws.String("http://localhost:9324") })
+created, _ := client.CreateQueue(ctx, &sqs.CreateQueueInput{QueueName: aws.String("orders")})   // the name goes in, the URL comes out
+client.SendMessage(ctx, &sqs.SendMessageInput{QueueUrl: created.QueueUrl, MessageBody: aws.String("hello")})
+```
+
+```rust
+// Rust (aws-sdk-sqs)
+let shared = aws_config::defaults(BehaviorVersion::latest()).region("us-east-1").load().await;
+let conf = aws_sdk_sqs::config::Builder::from(&shared).endpoint_url("http://localhost:9324").build();
+let client = aws_sdk_sqs::Client::from_conf(conf);
+let url = client.create_queue().queue_name("orders").send().await?.queue_url().unwrap().to_string();   // the name goes in, the URL comes out
+client.send_message().queue_url(&url).message_body("hello").send().await?;
+```
+
+And the same message with no SDK at all, through the native API (the body of a message sent without attributes is stored as it is):
+
+```bash
+taba-cli consume orders --wait 5 --ack
+```
 
 ## How it works inside
 

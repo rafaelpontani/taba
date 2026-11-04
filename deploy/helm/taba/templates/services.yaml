@@ -69,3 +69,28 @@ spec:
     - { name: ops, port: {{ .Values.ports.operations }}, targetPort: ops }
   selector:
     {{- include "taba.selectorLabels" . | nindent 4 }}
+{{- if (or .Values.gateway.sqs.enabled .Values.gateway.sns.enabled) }}
+---
+# Gateway para os SDKs da AWS (doc 39): uma porta para o SQS e o SNS. É o endereço que as aplicações usam
+# (AWS_ENDPOINT_URL_SQS e AWS_ENDPOINT_URL_SNS apontam para ele).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "taba.fullname" . }}-gateway
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+    app.kubernetes.io/service: gateway
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- with .Values.service.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  ports:
+    - { name: gateway, port: {{ .Values.gateway.port }}, targetPort: gateway }
+  selector:
+    {{- include "taba.selectorLabels" . | nindent 4 }}
+{{- end }}

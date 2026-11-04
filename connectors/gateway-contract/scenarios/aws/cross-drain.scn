@@ -1,0 +1,3 @@
+# Cross-language, step 3 (every language): reads the queue of the language before it and finds what that language sent, byte for byte.
+getQueueUrl name={p}-x-{prev} as=q
+drainAll queue=$q.url count=4 timeout=30 msgattrs=All => count=4 bodies~text-from-{prev} bodies~caf%C3%A9-%E2%82%AC-{prev} bodies~%7B%22from%22%3A%22{prev}%22%7D bodies~attrs-from-{prev} msgattr_origin={prev} msgattr_n=7
