@@ -10386,6 +10386,409 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+## GTW: Gateway for the AWS SDKs
+
+### UC-GTW-001
+
+**Case:** The credentials file of the gateway maps each access key to a secret and to a Taba token; it is read again while the node runs, an invalid new content keeps the previous keys, and a file that cannot be read when the node starts stops the start ([39-gateway.md](39-gateway.md))  
+**Level:** U  
+**Tests:**
+  - `src/gateway/aws/credentials/tests.rs::a_valid_file_gives_the_secret_and_the_token_of_each_key`
+  - `src/gateway/aws/credentials/tests.rs::an_entry_without_a_secret_or_a_token_is_refused`
+  - `src/gateway/aws/credentials/tests.rs::the_file_is_read_again_and_an_invalid_one_keeps_the_previous_keys`
+  - `src/gateway/aws/credentials/tests.rs::an_unreadable_file_at_the_start_is_an_error`
+  - `src/gateway/tests.rs::the_credentials_file_is_optional_but_an_invalid_one_stops_the_start`
+
+---
+
+### UC-GTW-002
+
+**Case:** A request signed with SigV4 is accepted when the signature, the date (15 minutes either way) and the body agree (the vector of the AWS test suite included); a wrong secret, a changed path or body, a declared payload hash that is not the body, or an old date is refused  
+**Level:** U  
+**Tests:**
+  - `src/gateway/aws/sigv4/tests.rs::hmac_matches_the_rfc_4231_vector`
+  - `src/gateway/aws/sigv4/tests.rs::the_signature_of_the_aws_test_suite_is_accepted`
+  - `src/gateway/aws/sigv4/tests.rs::a_wrong_secret_or_a_changed_request_does_not_match`
+  - `src/gateway/aws/sigv4/tests.rs::a_signature_far_from_the_clock_is_expired`
+  - `src/gateway/aws/sigv4/tests.rs::what_sign_produces_verify_accepts_with_a_body_and_a_query`
+  - `src/gateway/aws/sigv4/tests.rs::a_declared_payload_hash_that_is_not_the_body_is_refused`
+  - `src/gateway/aws/sigv4/tests.rs::a_missing_or_malformed_authorization_header_is_reported`
+  - `src/gateway/aws/sigv4/tests.rs::the_amz_date_is_read_in_utc`
+
+---
+
+### UC-GTW-003
+
+**Case:** An error of the client API becomes the AWS error the SDK expects: a topic that does not exist is `QueueDoesNotExist`, a permission error `AccessDenied`, an overload `ThrottlingException` / `RequestThrottled` and a cluster or drain error `ServiceUnavailable` (a receiver fault, with `Retry-After`)  
+**Level:** U  
+**Tests:**
+  - `src/gateway/aws/errors/tests.rs::a_topic_that_does_not_exist_is_a_queue_that_does_not_exist`
+  - `src/gateway/aws/errors/tests.rs::permission_errors_are_access_denied`
+  - `src/gateway/aws/errors/tests.rs::overload_and_cluster_errors_tell_the_client_to_retry`
+  - `src/gateway/aws/errors/tests.rs::a_validation_error_is_an_invalid_parameter_and_an_unknown_one_is_internal`
+
+---
+
+### UC-GTW-004
+
+**Case:** The XML of the Query protocol escapes the reserved characters, drops the characters XML 1.0 cannot carry and keeps accented text  
+**Level:** U  
+**Tests:**
+  - `src/gateway/aws/xml/tests.rs::the_reserved_characters_are_escaped`
+  - `src/gateway/aws/xml/tests.rs::control_characters_xml_cannot_carry_are_dropped_and_text_is_kept`
+  - `src/gateway/aws/xml/tests.rs::elements_are_written_in_order`
+
+---
+
+### UC-GTW-005
+
+**Case:** The form of the Query protocol is decoded into the shape of the JSON protocol (numbered lists in order, lists of objects), and a repeated or conflicting name, too many pairs, a position too large, a path too deep or text that is not UTF-8 is refused  
+**Level:** U  
+**Tests:**
+  - `src/gateway/aws/form/tests.rs::plain_pairs_are_decoded_with_plus_as_space`
+  - `src/gateway/aws/form/tests.rs::numbered_segments_become_lists_in_numeric_order`
+  - `src/gateway/aws/form/tests.rs::lists_of_objects_keep_their_fields`
+  - `src/gateway/aws/form/tests.rs::a_repeated_or_conflicting_name_is_refused`
+  - `src/gateway/aws/form/tests.rs::limits_bound_what_a_form_can_ask_for`
+  - `src/gateway/aws/form/tests.rs::text_that_is_not_utf8_is_refused`
+
+---
+
+### UC-GTW-006
+
+**Case:** The gateway calls the client API in the process with the token of the access key, the connection address of the caller and the client-IP headers of the proxy, never forwards the AWS signature, and turns an error of the API into the AWS error with its `Retry-After`  
+**Level:** U  
+**Tests:**
+  - `src/gateway/backend/tests.rs::the_call_carries_the_token_the_peer_and_the_proxy_headers`
+  - `src/gateway/backend/tests.rs::the_aws_signature_never_reaches_the_client_api`
+  - `src/gateway/backend/tests.rs::a_body_goes_with_its_content_type`
+  - `src/gateway/backend/tests.rs::an_error_of_the_api_becomes_an_aws_error_with_the_retry_after`
+
+---
+
+### UC-GTW-007
+
+**Case:** A message without attributes is stored as its plain text; with attributes it is stored as an envelope that comes back whole; `MD5OfMessageBody` and `MD5OfMessageAttributes` follow the AWS encoding; the attributes of a request are checked (type, value, name, up to 10)  
+**Level:** U  
+**Tests:**
+  - `src/gateway/envelope/tests.rs::a_message_without_attributes_is_stored_as_its_plain_text`
+  - `src/gateway/envelope/tests.rs::a_message_with_attributes_is_an_envelope_that_comes_back_whole`
+  - `src/gateway/envelope/tests.rs::a_message_that_was_not_published_through_the_gateway_is_read_as_text`
+  - `src/gateway/envelope/tests.rs::the_md5_of_the_body_is_the_md5_of_its_bytes`
+  - `src/gateway/envelope/tests.rs::the_md5_of_the_attributes_follows_the_aws_encoding`
+  - `src/gateway/envelope/tests.rs::the_names_are_sorted_before_the_md5`
+  - `src/gateway/envelope/tests.rs::the_attributes_of_a_request_are_checked`
+
+---
+
+### UC-GTW-008
+
+**Case:** A standard SQS queue name is the Taba topic name, the URL and the ARN carry it and come back, and names SQS refuses and `-dead-letter` names are refused; a `.fifo` name is the FIFO topic of the name without the suffix  
+**Level:** U  
+**Tests:**
+  - `src/gateway/naming/tests.rs::a_valid_sqs_name_is_the_topic_name`
+  - `src/gateway/naming/tests.rs::names_sqs_refuses_are_refused`
+  - `src/gateway/naming/tests.rs::the_dead_letter_names_are_refused_and_a_fifo_name_is_the_topic_without_the_suffix`
+  - `src/gateway/naming/tests.rs::the_url_and_the_arn_carry_the_name_and_come_back`
+  - `src/gateway/naming/tests.rs::a_url_without_an_account_and_a_name_is_a_queue_that_does_not_exist`
+
+---
+
+### UC-GTW-009
+
+**Case:** The `ReceiptHandle` carries the message `id` and the `receiptToken` (URL-safe, no state), and a text that is not a handle is `ReceiptHandleIsInvalid`  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sqs/receipt/tests.rs::a_handle_gives_back_the_id_and_the_receipt_token`
+  - `src/gateway/sqs/receipt/tests.rs::a_handle_is_safe_in_a_url_and_in_a_form`
+  - `src/gateway/sqs/receipt/tests.rs::a_text_that_is_not_a_handle_is_invalid`
+
+---
+
+### UC-GTW-010
+
+**Case:** The JSON protocol is chosen by `X-Amz-Target`, names the action, decodes an object body and writes an error with `__type` and the `x-amzn-query-error` header  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sqs/protocol_json/tests.rs::the_target_header_chooses_the_protocol_and_names_the_action`
+  - `src/gateway/sqs/protocol_json/tests.rs::a_target_that_is_not_sqs_is_an_invalid_action`
+  - `src/gateway/sqs/protocol_json/tests.rs::the_body_is_an_object_and_an_empty_body_is_no_parameters`
+  - `src/gateway/sqs/protocol_json/tests.rs::an_error_carries_both_names_of_the_code`
+  - `src/gateway/sqs/protocol_json/tests.rs::a_result_without_content_is_an_empty_object`
+
+---
+
+### UC-GTW-011
+
+**Case:** The Query protocol reads the action and the parameters from the body and the query, gives its lists the shape of the JSON protocol (attributes, tags, names, batch entries) and writes results and errors as the XML of the protocol (flat lists, `Name`/`Value` pairs)  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sqs/protocol_query/tests.rs::the_action_and_the_parameters_come_from_the_body_and_the_query`
+  - `src/gateway/sqs/protocol_query/tests.rs::a_request_without_an_action_is_refused`
+  - `src/gateway/sqs/protocol_query/tests.rs::the_query_lists_take_the_shape_of_the_json_protocol`
+  - `src/gateway/sqs/protocol_query/tests.rs::batch_entries_and_their_message_attributes_take_the_shape_of_the_json_protocol`
+  - `src/gateway/sqs/protocol_query/tests.rs::a_result_is_written_as_the_xml_of_the_protocol`
+  - `src/gateway/sqs/protocol_query/tests.rs::lists_are_flat_repeated_elements_and_the_batch_entries_are_named_by_the_action`
+  - `src/gateway/sqs/protocol_query/tests.rs::an_action_without_data_answers_only_the_metadata`
+  - `src/gateway/sqs/protocol_query/tests.rs::an_error_is_written_with_its_query_code`
+  - `src/gateway/sqs/protocol_query/tests.rs::the_lists_may_be_named_in_the_plural_as_the_java_sdks_do`
+
+---
+
+### UC-GTW-012
+
+**Case:** The gateway keys are off by default, have the documented ports, are read from the environment, and a gateway port that repeats another port of the node or a public URL without a scheme is refused  
+**Level:** U  
+**Tests:**
+  - `src/gateway/tests.rs::the_gateway_is_off_by_default_and_has_the_documented_ports`
+  - `src/gateway/tests.rs::the_keys_of_the_gateway_are_read_from_the_environment`
+  - `src/gateway/tests.rs::the_port_of_the_gateway_cannot_repeat_another_port_of_the_node`
+  - `src/gateway/tests.rs::a_public_url_without_a_scheme_is_refused`
+
+---
+
+### UC-GTW-013
+
+**Case:** The SQS port serves both protocols against a fake client API: a send publishes plain text (or the envelope with attributes) with the delay and the queue taken from the path, a receive gives the handle, the count and the sent time, and errors and unknown actions are answered in the protocol of the client  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sqs/tests.rs::a_send_over_the_json_protocol_publishes_plain_text_and_answers_the_md5`
+  - `src/gateway/sqs/tests.rs::a_send_over_the_query_protocol_answers_xml`
+  - `src/gateway/sqs/tests.rs::a_message_with_attributes_is_published_as_the_envelope`
+  - `src/gateway/sqs/tests.rs::a_receive_gives_the_handle_the_count_and_the_sent_time`
+  - `src/gateway/sqs/tests.rs::an_error_of_the_queue_is_answered_in_the_protocol_of_the_client`
+  - `src/gateway/sqs/tests.rs::an_unknown_action_is_refused`
+  - `src/gateway/sqs/tests.rs::the_parameters_are_read_as_numbers_or_texts`
+
+---
+
+### UC-GTW-014
+
+**Case:** With the Taba authentication on, a signed call runs with the token of its key; a wrong secret, an unknown key, no signature or a body changed after signing is refused and nothing reaches the client API  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sqs/tests.rs::with_authentication_on_a_signed_call_runs_with_the_token_of_the_key`
+  - `src/gateway/sqs/tests.rs::with_authentication_on_a_wrong_secret_an_unknown_key_or_no_signature_is_refused`
+  - `src/gateway/sqs/tests.rs::a_body_changed_after_signing_is_refused`
+
+---
+
+### UC-GTW-015
+
+**Case:** The attributes of a queue map to the fields of the Taba queue or to the tags of the gateway, are checked (range, name, `RedrivePolicy`), the queue `Policy` is accepted and ignored, the defaults of SQS apply to what the queue does not set, tags must fit a Taba tag, and the list token comes back to where the page stopped  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sqs/queues/tests.rs::the_attributes_that_have_a_field_in_taba_use_it_and_the_others_go_to_tags`
+  - `src/gateway/sqs/queues/tests.rs::values_out_of_range_and_unknown_names_are_refused`
+  - `src/gateway/sqs/queues/tests.rs::the_queue_policy_that_sns_needs_is_accepted_and_has_no_effect`
+  - `src/gateway/sqs/queues/tests.rs::a_queue_says_its_defaults_and_the_gateway_tags_stay_hidden`
+  - `src/gateway/sqs/queues/tests.rs::a_queue_without_settings_has_the_defaults_of_sqs`
+  - `src/gateway/sqs/queues/tests.rs::tags_the_application_chooses_must_fit_a_taba_tag`
+  - `src/gateway/sqs/queues/tests.rs::the_queue_comes_from_the_url`
+  - `src/gateway/sqs/queues/tests.rs::the_list_token_comes_back_to_where_the_page_stopped`
+
+---
+
+### UC-GTW-016
+
+**Case:** Message actions check what SQS checks: allowed characters, size, delay (the queue's applies unless the message says), batches of 1 to 10 entries with distinct valid ids, attributes asked for by name, `All` or prefix; the items of a batch answer become successes or AWS errors, and deleting what is already gone is not an error  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sqs/messages/tests.rs::only_the_characters_sqs_allows_are_accepted_in_a_body`
+  - `src/gateway/sqs/messages/tests.rs::a_message_is_prepared_with_its_delay_md5_and_size_limit`
+  - `src/gateway/sqs/messages/tests.rs::a_batch_has_one_to_ten_entries_with_distinct_valid_ids`
+  - `src/gateway/sqs/messages/tests.rs::the_attributes_a_receive_asks_for_are_matched_by_name_all_or_prefix`
+  - `src/gateway/sqs/messages/tests.rs::the_items_of_a_batch_answer_become_successes_or_aws_errors`
+  - `src/gateway/sqs/messages/tests.rs::deleting_what_is_already_gone_is_not_an_error`
+  - `src/gateway/sqs/messages/tests.rs::a_failed_entry_says_who_is_to_blame_and_the_code`
+
+---
+
+### UC-GTW-017
+
+**Case:** On a real node, the SQS port only opens with its key on; the JSON and Query protocols share the same queues and a native Taba client reads what SQS sent and the other way round; a message with attributes is an envelope for a native consumer and without them plain text; the attributes and counts of a queue follow its messages  
+**Level:** I  
+**Tests:**
+  - `tests/gateway_sqs.rs::with_the_key_off_the_gateway_does_not_open_a_port`
+  - `tests/gateway_sqs.rs::without_authentication_both_protocols_share_the_queues_and_a_native_client_reads_them`
+  - `tests/gateway_sqs.rs::a_message_with_attributes_is_an_envelope_for_a_native_consumer_and_plain_text_without_them`
+  - `tests/gateway_sqs.rs::the_attributes_of_a_queue_come_back_and_the_counts_follow_the_messages`
+
+---
+
+### UC-GTW-018
+
+**Case:** On a real node with authentication, the access key decides what the gateway may do: the permissions and the prefixes of its token apply, a wrong secret, an unknown key and no signature are refused with the AWS codes, and `ListQueues` shows only what the token reaches  
+**Level:** I  
+**Tests:**
+  - `tests/gateway_sqs.rs::with_authentication_the_key_decides_what_the_gateway_may_do`
+
+---
+
+### UC-GTW-019
+
+**Case:** A node in drain with no other node answers the SQS call with `ServiceUnavailable`, a receiver fault with `Retry-After`, so the SDK tries again  
+**Level:** I  
+**Tests:**
+  - `tests/gateway_sqs.rs::a_draining_node_tells_the_sdk_to_try_again`
+
+---
+
+### UC-GTW-020
+
+**Case:** A group or deduplication id that Taba does not accept (SQS allows more punctuation) goes as a stable hash and the original travels in the envelope, even without attributes, and comes back on receipt; an id Taba accepts goes as it is  
+**Level:** U  
+**Tests:**
+  - `src/gateway/envelope/tests.rs::the_original_ids_of_a_fifo_message_travel_in_an_envelope_even_without_attributes`
+  - `src/gateway/envelope/tests.rs::the_sha256_is_hexadecimal`
+  - `src/gateway/naming/tests.rs::a_group_id_taba_accepts_goes_as_it_is_and_another_becomes_a_hash_that_keeps_the_original`
+  - `src/gateway/naming/tests.rs::an_sqs_id_has_up_to_128_letters_digits_and_punctuation`
+  - `src/gateway/sqs/messages/tests.rs::ids_taba_does_not_accept_go_as_hashes_and_the_original_travels_in_the_envelope`
+  - `tests/gateway_sqs.rs::a_group_id_with_punctuation_taba_does_not_accept_comes_back_as_it_was_sent`
+
+---
+
+### UC-GTW-021
+
+**Case:** The attributes of a FIFO queue (`FifoQueue`, `ContentBasedDeduplication`, `DeduplicationScope`, `FifoThroughputLimit`) are read and checked, the name and `FifoQueue` must agree, `ContentBasedDeduplication` only exists on a FIFO queue, and a FIFO queue cannot have a delay  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sqs/queues/tests.rs::the_fifo_attributes_are_read_and_the_content_based_deduplication_is_a_tag`
+  - `src/gateway/sqs/queues/tests.rs::the_name_and_the_attributes_must_agree_on_the_kind_of_queue`
+  - `src/gateway/sqs/queues/tests.rs::a_fifo_queue_cannot_have_a_delay`
+
+---
+
+### UC-GTW-022
+
+**Case:** A send to a FIFO queue needs a `MessageGroupId` and a deduplication id (or content-based deduplication, where the id is the SHA-256 of the body), refuses a delay, and answers a `SequenceNumber` that grows with the message id  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sqs/messages/tests.rs::a_fifo_message_needs_a_group_and_a_deduplication_id`
+  - `src/gateway/sqs/messages/tests.rs::with_content_based_deduplication_the_id_is_the_hash_of_the_body`
+  - `src/gateway/sqs/messages/tests.rs::a_fifo_message_has_no_delay`
+  - `src/gateway/sqs/messages/tests.rs::the_sequence_number_grows_with_the_message_id_inside_a_group`
+
+---
+
+### UC-GTW-023
+
+**Case:** The `RedrivePolicy` names the dead-letter queue (the count and the ARN are read and checked) and a queue knows the dead-letter queue it named and the source it is the dead-letter queue of  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sqs/queues/tests.rs::the_redrive_policy_names_the_dead_letter_queue_and_the_count`
+  - `src/gateway/sqs/queues/tests.rs::a_queue_knows_its_dead_letter_queue_and_the_source_it_is_the_dead_letter_of`
+  - `tests/gateway_sqs.rs::the_queue_named_as_the_dead_letter_queue_shows_what_the_source_dead_letters`
+
+---
+
+### UC-GTW-024
+
+**Case:** On a real node, a FIFO queue is the Taba FIFO topic without the suffix (a standard queue of the same name does not exist beside it), a group is delivered in order and one message at a time, a repeated deduplication id is one message, the send checks the group, the id and the delay, and the queue named as the dead-letter queue shows what the source dead-letters and is freed when the source is deleted  
+**Level:** I  
+**Tests:**
+  - `tests/gateway_sqs.rs::a_fifo_queue_is_the_fifo_topic_of_the_name_without_the_suffix`
+  - `tests/gateway_sqs.rs::a_fifo_send_checks_the_group_the_deduplication_and_the_delay_as_sqs_does`
+
+---
+
+### UC-GTW-025
+
+**Case:** The signature of a call to an AWS port is checked for the service of that port (`sqs` or `sns`, same credentials file): a call signed for the other service, with a wrong secret, an unknown key or no signature is refused, the token of the key applies, and with the authentication off nobody is checked; the parameters and the HTTP answer are read and written the same way for both services  
+**Level:** U  
+**Tests:**
+  - `src/gateway/aws/auth/tests.rs::a_call_signed_for_the_service_of_the_port_gets_the_token_of_its_key`
+  - `src/gateway/aws/auth/tests.rs::a_call_signed_for_another_service_is_refused`
+  - `src/gateway/aws/auth/tests.rs::a_wrong_secret_an_unknown_key_and_a_missing_signature_are_refused`
+  - `src/gateway/aws/auth/tests.rs::with_the_authentication_off_nobody_is_checked_and_the_region_is_the_signed_one_or_the_default`
+  - `src/gateway/aws/reply/tests.rs::the_answer_carries_the_status_the_content_type_the_request_id_and_the_extra_headers`
+  - `src/gateway/aws/params/tests.rs::a_number_comes_as_a_json_number_or_as_text_and_an_empty_text_is_absent`
+  - `src/gateway/aws/params/tests.rs::texts_lists_and_maps_are_read_from_the_shape_both_protocols_give`
+  - `src/gateway/aws/params/tests.rs::a_path_segment_is_escaped_for_the_client_api`
+  - `src/gateway/sns/tests.rs::with_authentication_the_call_is_signed_for_sns_and_carries_the_token_of_the_key`
+
+---
+
+### UC-GTW-026
+
+**Case:** An SNS topic is a Taba distributor of the same name: the Query form and the XML (members and entries), the ARNs, `CreateTopic` (idempotent, tags, refusal of a queue name, a FIFO or reserved name and the attributes the distributor cannot honor), `ListTopics` (only distributors, paged), the attributes, `DeleteTopic` (idempotent, never deletes a queue) and the tags; the SNS error codes  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sns/protocol/tests.rs::the_member_and_entry_levels_of_the_form_disappear`
+  - `src/gateway/sns/protocol/tests.rs::a_list_of_texts_and_the_query_string_of_a_get_are_read`
+  - `src/gateway/sns/protocol/tests.rs::a_request_without_an_action_or_with_a_broken_form_is_refused`
+  - `src/gateway/sns/protocol/tests.rs::a_result_is_written_with_members_and_entries`
+  - `src/gateway/sns/protocol/tests.rs::an_action_without_data_answers_only_the_metadata_and_text_is_escaped`
+  - `src/gateway/sns/protocol/tests.rs::an_error_names_the_sns_code_and_who_is_to_blame`
+  - `src/gateway/sns/tests.rs::an_unknown_action_is_invalid_and_an_unsupported_one_says_so`
+  - `src/gateway/sns/tests.rs::an_answer_is_xml_with_the_request_id_in_the_body_and_in_the_header`
+  - `src/gateway/sns/tests.rs::a_body_over_the_limit_is_refused`
+  - `src/gateway/sns/topics/tests.rs::a_topic_is_a_distributor_with_the_same_name_and_creating_it_again_answers_the_same_arn`
+  - `src/gateway/sns/topics/tests.rs::a_name_that_is_a_queue_a_fifo_topic_or_a_bad_name_is_refused`
+  - `src/gateway/sns/topics/tests.rs::the_display_name_and_the_policy_are_accepted`
+  - `src/gateway/sns/topics/tests.rs::the_list_has_only_the_topics_and_goes_on_with_the_token_through_pages_full_of_queues`
+  - `src/gateway/sns/topics/tests.rs::the_attributes_of_a_topic_count_its_subscriptions`
+  - `src/gateway/sns/topics/tests.rs::deleting_a_topic_removes_it_and_deleting_what_is_not_a_topic_changes_nothing`
+  - `src/gateway/sns/topics/tests.rs::the_tags_of_a_topic_are_added_replaced_removed_and_listed`
+  - `src/gateway/naming/tests.rs::a_topic_name_is_a_distributor_name_and_the_fifo_and_dead_letter_names_are_refused`
+  - `src/gateway/naming/tests.rs::the_topic_arn_and_the_subscription_arn_carry_their_names_and_come_back`
+  - `src/gateway/aws/errors/tests.rs::for_sns_a_topic_that_does_not_exist_is_not_found_and_a_refused_request_is_an_invalid_parameter`
+  - `src/gateway/aws/errors/tests.rs::for_sns_permission_throttling_and_cluster_errors_keep_their_meaning`
+
+---
+
+### UC-GTW-027
+
+**Case:** A subscription of a queue is a prefix of the distributor: `Subscribe` (idempotent, the queue must exist and be of the kind its ARN says, FIFO by the `.fifo` name, at most 20), `Unsubscribe` (idempotent), the lists, the attributes of a subscription (never raw, never pending); what the distributor cannot do (raw delivery, filter policy, other protocols, other attributes) is refused with a message that names it and changes nothing  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sns/subscriptions/tests.rs::subscribing_a_queue_adds_its_name_as_a_prefix_and_the_arn_says_topic_and_queue`
+  - `src/gateway/sns/subscriptions/tests.rs::a_fifo_queue_is_subscribed_by_its_topic_name_and_listed_with_its_fifo_name`
+  - `src/gateway/sns/subscriptions/tests.rs::what_the_distributor_cannot_do_is_refused_with_a_clear_message`
+  - `src/gateway/sns/subscriptions/tests.rs::a_topic_that_does_not_exist_or_a_dead_letter_queue_cannot_be_subscribed`
+  - `src/gateway/sns/subscriptions/tests.rs::the_twenty_first_subscription_is_refused_and_the_first_twenty_stay`
+  - `src/gateway/sns/subscriptions/tests.rs::unsubscribing_removes_the_prefix_and_doing_it_twice_is_not_an_error`
+  - `src/gateway/sns/subscriptions/tests.rs::the_subscriptions_of_a_topic_and_of_all_the_topics_are_listed`
+  - `src/gateway/sns/subscriptions/tests.rs::the_attributes_of_a_subscription_say_it_is_confirmed_and_never_raw`
+
+---
+
+### UC-GTW-028
+
+**Case:** A publication is one notification (SNS envelope without signature, `Subject`, `MessageAttributes`, `MessageStructure=json`) published once to the distributor with the `MessageId` the publisher gets; what a topic of this gateway cannot take is refused before anything is published; a missing topic or a queue name is `NotFound`; a failed copy fails the call; a batch publishes each entry, fails an entry alone and fails as a whole on a bad shape  
+**Level:** U  
+**Tests:**
+  - `src/gateway/sns/protocol/tests.rs::the_message_attributes_and_the_batch_entries_have_the_shape_the_actions_read`
+  - `src/gateway/sns/publish/tests.rs::a_publication_is_one_notification_to_the_distributor_with_the_id_the_application_gets`
+  - `src/gateway/sns/publish/tests.rs::the_subject_and_the_message_attributes_go_inside_the_notification`
+  - `src/gateway/sns/publish/tests.rs::text_that_needs_escaping_survives_the_notification`
+  - `src/gateway/sns/publish/tests.rs::a_message_for_each_protocol_gives_the_queue_the_sqs_text_or_the_default`
+  - `src/gateway/sns/publish/tests.rs::what_a_topic_of_this_gateway_cannot_take_is_refused_before_anything_is_published`
+  - `src/gateway/sns/publish/tests.rs::publishing_to_a_topic_that_does_not_exist_or_to_a_queue_is_not_found_and_publishes_nothing`
+  - `src/gateway/sns/publish/tests.rs::a_topic_with_no_subscription_accepts_the_publication`
+  - `src/gateway/sns/publish/tests.rs::when_a_copy_fails_the_call_fails_so_the_application_publishes_again`
+  - `src/gateway/sns/publish/tests.rs::a_batch_publishes_each_entry_and_answers_an_id_for_each`
+  - `src/gateway/sns/publish/tests.rs::an_entry_that_is_wrong_fails_alone_and_the_others_go`
+  - `src/gateway/sns/publish/tests.rs::a_batch_with_a_bad_shape_or_a_missing_topic_fails_as_a_whole`
+  - `src/gateway/sns/publish/tests.rs::the_notification_has_the_fields_of_sns_and_none_of_the_signature`
+
+---
+
+### UC-GTW-029
+
+**Case:** The SNS gateway is off by default with the port 9325, turns on by itself (independent of SQS), and its port cannot repeat another one; on a real node a publication reaches the queues subscribed and only those, in the notification with the id the publisher got, the native API sees the distributor and the prefixes (and a prefix set natively is a subscription), topics and queues stay apart, the permissions and prefixes of the token and the service of the signature apply, and a draining node tells the SDK to try again  
+**Level:** I  
+**Tests:**
+  - `src/gateway/tests.rs::the_sns_gateway_is_off_by_default_and_its_keys_are_read_from_the_environment`
+  - `src/gateway/tests.rs::the_port_of_sns_cannot_repeat_another_port_of_the_node_or_the_sqs_port`
+  - `tests/gateway_sns.rs::with_the_key_off_the_sns_gateway_does_not_open_a_port`
+  - `tests/gateway_sns.rs::a_publication_reaches_the_queues_subscribed_and_only_those_and_the_native_api_sees_the_same`
+  - `tests/gateway_sns.rs::a_publication_from_the_native_api_and_one_from_sns_are_the_same_to_the_queue`
+  - `tests/gateway_sns.rs::with_authentication_the_key_and_the_service_of_the_signature_decide_what_sns_may_do`
+  - `tests/gateway_sns.rs::a_draining_node_tells_the_sdk_to_try_again`
+
+---
+
 ## Sources and evidence
 
 - The cases came from `doc/20a`, `20b` and `20c` (the historical catalogue, removed in commit `efeb47a`); the tests, from the `/// UC:` lines of the code. The test `crates/taba-node/tests/uc_coverage.rs` checks the codes.

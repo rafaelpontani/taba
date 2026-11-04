@@ -302,6 +302,19 @@ O recurso liga com `backup.s3.bucket`; sem ele nada disto existe. Como funciona:
 | `backup.reconcile.interval` | `TABA_BACKUP_RECONCILE_INTERVAL` | **60s** | De quanto em quanto tempo o gestor regrava as definições que divergem do bucket, apaga segmentos vencidos pelo `ttl` e o nó limpa batimentos mortos. |
 | `backup.restore.lock-ttl` | `TABA_BACKUP_RESTORE_LOCK_TTL` | **60s** | A validade da trava de restauração: o titular a renova; parada por este tempo, outro nó a toma. |
 
+## Gateway para os SDKs da AWS
+
+Cada protocolo do gateway tem uma porta própria e vem **desligado**; com a chave desligada a porta não abre. Como funciona e o que é suportado: [39-gateway.md](39-gateway.md).
+
+| Chave | Variável | Padrão | O que faz |
+|---|---|---|---|
+| `gateway.sqs.enabled` | `TABA_GATEWAY_SQS_ENABLED` | **false** | Liga o gateway SQS e abre a porta dele. |
+| `gateway.sqs.port` | `TABA_GATEWAY_SQS_PORT` | **9324** | Porta do gateway SQS. Precisa ser diferente de `api.port`, `cluster.port` e `operations.port` (conferido com o gateway ligado). |
+| `gateway.sqs.public-url` | `TABA_GATEWAY_SQS_PUBLIC_URL` | sem valor (o `Host` do pedido) | Endereço escrito na `QueueUrl` que o gateway devolve, como `https://filas.exemplo.com`. O nó não conhece o balanceador, e alguns SDKs usam a `QueueUrl` como endpoint da chamada seguinte; atrás de um balanceador, defina. Começa com `http://` ou `https://`. |
+| `gateway.sns.enabled` | `TABA_GATEWAY_SNS_ENABLED` | **false** | Liga o gateway SNS e abre a porta dele. É independente do SQS, mas as filas em que um tópico publica são filas SQS do gateway SQS (ou filas do Taba). |
+| `gateway.sns.port` | `TABA_GATEWAY_SNS_PORT` | **9325** | Porta do gateway SNS. Precisa ser diferente de `api.port`, `cluster.port`, `operations.port` e `gateway.sqs.port` (conferido com o gateway ligado). |
+| `gateway.aws.credentials-file` | `TABA_GATEWAY_AWS_CREDENTIALS_FILE` | sem valor | Arquivo JSON com as chaves de acesso das aplicações: `{"<accessKeyId>": {"secret": "...", "token": "tb_..."}}`. O mesmo arquivo serve aos gateways SQS e SNS. O gateway confere a assinatura SigV4 com o `secret` e age com as permissões e prefixos do `token` do Taba. É lido de novo a cada `auth.reload-interval`; um arquivo que não pode ser lido na partida impede o nó de subir. Com a autenticação do Taba desligada, não precisa de arquivo e nenhuma assinatura é conferida. |
+
 ## Limites fixos (não são configuração)
 
 As faixas de `ttl`, `maxDeliveries`, `idleTimeout`, nomes, tags, prefixos e o `waitTime` de 0 a 20 s são **fixas** no código: ver [19-erros-e-limites.md](19-erros-e-limites.md).

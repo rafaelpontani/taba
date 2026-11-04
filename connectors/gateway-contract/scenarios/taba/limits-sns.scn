@@ -1,0 +1,28 @@
+# What differs from SNS on purpose or by a known limit (doc 39 and the plan, section 5.2). Only Taba: a line here is
+# written against the table of the plan, not against an emulator.
+
+# --- what the distributor cannot do is refused, never accepted and ignored ---------------------------------------------
+createTopic name={p}-lim as=t
+createQueue name={p}-lim-q as=q
+getQueueAttributes queue=$q.url names=QueueArn as=qa
+subscribe topic=$t.arn protocol=sqs endpoint=$qa.attr_QueueArn attrs=RawMessageDelivery:true => error=InvalidParameter|InvalidParameterValue
+subscribe topic=$t.arn protocol=sqs endpoint=$qa.attr_QueueArn attrs=FilterPolicy:%7B%22a%22%3A%5B%22b%22%5D%7D => error=InvalidParameter|InvalidParameterValue
+subscribe topic=$t.arn protocol=https endpoint=https://example.invalid/hook => error=InvalidParameter|InvalidParameterValue
+subscribe topic=$t.arn protocol=email endpoint=someone@example.invalid => error=InvalidParameter|InvalidParameterValue
+subscribe topic=$t.arn protocol=sqs endpoint=$qa.attr_QueueArn as=s => arn=*
+getSubscriptionAttributes sub=$s.arn => attr_RawMessageDelivery=false
+setSubscriptionAttributes sub=$s.arn attrs=RawMessageDelivery:true => error=InvalidParameter|InvalidParameterValue
+setSubscriptionAttributes sub=$s.arn attrs=RawMessageDelivery:false
+setSubscriptionAttributes sub=$s.arn attrs=FilterPolicy:%7B%7D => error=InvalidParameter|InvalidParameterValue
+getSubscriptionAttributes sub=$s.arn => attr_RawMessageDelivery=false
+
+# --- the delivery is always the SNS envelope, with the queue policy that SNS needs accepted -------------------------
+allowSnsToSend queue=$q.url queueArn=$qa.attr_QueueArn topic=$t.arn
+publish topic=$t.arn message=enveloped
+receive queue=$q.url max=1 wait=5 visibility=30 as=r => count=1 json_Type=Notification json_Message=enveloped
+deleteMessage queue=$q.url handle=$r.handle
+
+# --- cleanup --------------------------------------------------------------------------------------------------------------
+unsubscribe sub=$s.arn
+deleteTopic topic=$t.arn
+deleteQueue queue=$q.url

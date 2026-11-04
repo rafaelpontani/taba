@@ -18,6 +18,24 @@ spec:
       from:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+    {{- if .Values.gateway.sqs.enabled }}
+    # Gateway SQS: o mesmo conjunto de origens da API do cliente
+    - ports:
+        - { port: {{ .Values.gateway.sqs.port }}, protocol: TCP }
+      {{- with .Values.networkPolicy.apiFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- if .Values.gateway.sns.enabled }}
+    # Gateway SNS: o mesmo conjunto de origens da API do cliente
+    - ports:
+        - { port: {{ .Values.gateway.sns.port }}, protocol: TCP }
+      {{- with .Values.networkPolicy.apiFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
     # Cluster (mTLS) e operações: só os próprios nós, o coletor do chart e o que for liberado
     - ports:
         - { port: {{ .Values.ports.cluster }}, protocol: TCP }

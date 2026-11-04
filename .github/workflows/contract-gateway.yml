@@ -1,0 +1,36 @@
+# Contract tests of the SQS and SNS gateway (connectors/gateway-contract/README.md): the native AWS SDK of six languages
+# (C#, Java, Rust, Go, Python, Node.js, each in a current and in an older Query-protocol version) against one Taba node
+# built from this commit with gateway.sqs and gateway.sns on, then each language reading what the previous one sent.
+# The same scenarios (scenarios/aws/) also run on ElasticMQ and moto: that is what shows that the tests are right.
+# Called by ci.yml (pull requests to release). Publishes nothing.
+name: Gateway contract tests
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator:
+    name: Scenarios on the emulators
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Contract tests (ElasticMQ and moto)
+        run: connectors/gateway-contract/run.sh --target emulator
+
+  taba:
+    name: Scenarios on a Taba node
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Contract tests (native SDKs against the gateway)
+        run: connectors/gateway-contract/run.sh

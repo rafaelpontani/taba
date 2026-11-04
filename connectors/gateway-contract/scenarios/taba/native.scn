@@ -1,0 +1,4 @@
+# The SDK sends, and run.sh reads it back with the Taba API (a native consumer). Queue name = topic name.
+createQueue name={p}-native as=q
+send queue=$q.url body=native-from-{lang} => id=*
+send queue=$q.url body=caf%C3%A9-%E2%82%AC-native-{lang}

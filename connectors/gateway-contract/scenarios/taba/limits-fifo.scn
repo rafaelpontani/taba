@@ -1,0 +1,10 @@
+# What differs from SQS on purpose or by a known limit, FIFO part (doc 39 and the plan, section 5.1). Only Taba.
+
+# --- the deduplication id is scoped to the group in Taba (queue-wide in SQS) --------------------------------------
+createQueue name={p}-lim-f.fifo fifo=true as=f
+send queue=$f.url body=in-g1 group=g1 dedup=shared
+send queue=$f.url body=in-g2 group=g2 dedup=shared
+receive queue=$f.url max=10 wait=2 visibility=30 as=r => count=2
+
+# --- cleanup --------------------------------------------------------------------------------------------------------------
+deleteQueue queue=$f.url

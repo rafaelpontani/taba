@@ -63,6 +63,7 @@ utoipa = "6"
 utoipa-axum = "0.3"
 utoipa-swagger-ui = { version = "10", features = ["axum", "vendored"] }
 mimalloc = { version = "0.1.52", default-features = false }
+md5 = "0.8.1"
 
 [dev-dependencies]
 mimalloc = { version = "0.1.52", default-features = false, features = ["extended"] }

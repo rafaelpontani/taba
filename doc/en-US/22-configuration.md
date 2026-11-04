@@ -302,6 +302,19 @@ The feature turns on with `backup.s3.bucket`; without it none of this exists. Ho
 | `backup.reconcile.interval` | `TABA_BACKUP_RECONCILE_INTERVAL` | **60s** | How often the manager rewrites the definitions that diverge from the bucket, deletes segments expired by `ttl` and the node cleans dead heartbeats. |
 | `backup.restore.lock-ttl` | `TABA_BACKUP_RESTORE_LOCK_TTL` | **60s** | Validity of the restore lock: the holder renews it; stopped for this long, another node takes it. |
 
+## Gateway for the AWS SDKs
+
+Each protocol of the gateway has a port of its own and is **off by default**; with its key off the port does not open. How it works and what is supported: [39-gateway.md](39-gateway.md).
+
+| Key | Variable | Default | What it does |
+|---|---|---|---|
+| `gateway.sqs.enabled` | `TABA_GATEWAY_SQS_ENABLED` | **false** | Turns on the SQS gateway and opens its port. |
+| `gateway.sqs.port` | `TABA_GATEWAY_SQS_PORT` | **9324** | The SQS gateway port. It must differ from `api.port`, `cluster.port` and `operations.port` (checked when the gateway is on). |
+| `gateway.sqs.public-url` | `TABA_GATEWAY_SQS_PUBLIC_URL` | no value (the `Host` of the request) | The address written in the `QueueUrl` the gateway returns, such as `https://queues.example.com`. The node does not know the load balancer, and some SDKs use the `QueueUrl` as the endpoint of the next call, so behind a balancer set it. Must start with `http://` or `https://`. |
+| `gateway.sns.enabled` | `TABA_GATEWAY_SNS_ENABLED` | **false** | Turns on the SNS gateway and opens its port. It is independent of the SQS one, but the queues a topic publishes to are SQS queues of the SQS gateway (or Taba queues). |
+| `gateway.sns.port` | `TABA_GATEWAY_SNS_PORT` | **9325** | The SNS gateway port. It must differ from `api.port`, `cluster.port`, `operations.port` and `gateway.sqs.port` (checked when the gateway is on). |
+| `gateway.aws.credentials-file` | `TABA_GATEWAY_AWS_CREDENTIALS_FILE` | no value | JSON file with the access keys of the applications: `{"<accessKeyId>": {"secret": "...", "token": "tb_..."}}`. The same file serves the SQS and the SNS gateways. The gateway checks the SigV4 signature with the `secret` and acts with the permissions and prefixes of the Taba `token`. It is read again every `auth.reload-interval`; a file that cannot be read when the node starts stops the start. With the Taba authentication off, no file is needed and no signature is checked. |
+
 ## Fixed limits (not configuration)
 
 The ranges of `ttl`, `maxDeliveries`, `idleTimeout`, names, tags, prefixes and the `waitTime` of 0 to 20 s are **fixed** in the code: see [19-errors-and-limits.md](19-errors-and-limits.md).

@@ -1,0 +1,72 @@
+# SNS publishing to SQS queues, as AWS defines it (runs on Taba and on moto, which has SNS and SQS together).
+# Language of the file: see sqs-standard.scn. The queues of this file are made through the SQS client of the same system.
+
+# --- topics -----------------------------------------------------------------------------------------------------------------
+createTopic name={p}-t1 as=t => arn~:{p}-t1
+createTopic name={p}-t1 as=t_again => arn=$t.arn
+listTopics prefix={p}- => names={p}-t1
+getTopicAttributes topic=$t.arn => attr_TopicArn=$t.arn
+createTopic name={p}-t2 as=t2
+listTopics prefix={p}- => count=2 names={p}-t1,{p}-t2
+deleteTopic topic=$t2.arn
+listTopics prefix={p}- => count=1 names={p}-t1
+
+# --- subscribe a queue and publish: the copy arrives in the SNS envelope ------------------------------------------
+createQueue name={p}-sub1 as=q1
+getQueueAttributes queue=$q1.url names=QueueArn as=q1a
+allowSnsToSend queue=$q1.url queueArn=$q1a.attr_QueueArn topic=$t.arn
+subscribe topic=$t.arn protocol=sqs endpoint=$q1a.attr_QueueArn as=s1 => arn=*
+listSubscriptions topic=$t.arn => count=1 endpoints=$q1a.attr_QueueArn protocols=sqs
+publish topic=$t.arn message=hello%20sns as=pm => messageId=*
+receive queue=$q1.url max=1 wait=5 visibility=30 as=r => count=1 json_Type=Notification json_Message=hello%20sns json_TopicArn=$t.arn json_MessageId=$pm.messageId
+deleteMessage queue=$q1.url handle=$r.handle
+
+# --- subject and message attributes go inside the envelope ---------------------------------------------------------
+publish topic=$t.arn message=with%20subject subject=greeting msgattrs=color:String:blue
+receive queue=$q1.url max=1 wait=5 visibility=30 as=r => count=1 json_Message=with%20subject json_Subject=greeting body~%22color%22
+deleteMessage queue=$q1.url handle=$r.handle
+
+# --- text that needs escaping inside the envelope --------------------------------------------------------------------
+publish topic=$t.arn message=caf%C3%A9%20%22quoted%22%20%5Cslash%5C%0Aline2
+receive queue=$q1.url max=1 wait=5 visibility=30 as=r => count=1 json_Message=caf%C3%A9%20%22quoted%22%20%5Cslash%5C%0Aline2
+deleteMessage queue=$q1.url handle=$r.handle
+
+# --- a second queue gets its own copy ------------------------------------------------------------------------------------
+createQueue name={p}-sub2 as=q2
+getQueueAttributes queue=$q2.url names=QueueArn as=q2a
+allowSnsToSend queue=$q2.url queueArn=$q2a.attr_QueueArn topic=$t.arn
+subscribe topic=$t.arn protocol=sqs endpoint=$q2a.attr_QueueArn as=s2
+listSubscriptions topic=$t.arn => count=2
+publish topic=$t.arn message=fanout
+receive queue=$q1.url max=1 wait=5 visibility=30 as=r1 => count=1 json_Message=fanout
+receive queue=$q2.url max=1 wait=5 visibility=30 as=r2 => count=1 json_Message=fanout
+deleteMessage queue=$q1.url handle=$r1.handle
+deleteMessage queue=$q2.url handle=$r2.handle
+
+# --- batch publish ------------------------------------------------------------------------------------------------------------
+publishBatch topic=$t.arn messages=m1,m2,m3 => ok=3 failed=0
+receive queue=$q1.url max=10 wait=5 visibility=30 as=r1 => count=3
+receive queue=$q2.url max=10 wait=5 visibility=30 as=r2 => count=3
+deleteAll queue=$q1.url from=$r1 => ok=3
+deleteAll queue=$q2.url from=$r2 => ok=3
+
+# --- unsubscribe: later publications no longer reach the queue -----------------------------------------------------
+unsubscribe sub=$s2.arn
+listSubscriptions topic=$t.arn => count=1
+publish topic=$t.arn message=after-unsubscribe
+receive queue=$q1.url max=1 wait=5 visibility=30 as=r1 => count=1 json_Message=after-unsubscribe
+receive queue=$q2.url max=1 wait=1 visibility=30 => count=0
+deleteMessage queue=$q1.url handle=$r1.handle
+
+# --- subscription attributes ----------------------------------------------------------------------------------------------
+getSubscriptionAttributes sub=$s1.arn => attr_SubscriptionArn=$s1.arn attr_TopicArn=$t.arn attr_Protocol=sqs attr_Endpoint=$q1a.attr_QueueArn attr_RawMessageDelivery=false
+
+# --- errors -------------------------------------------------------------------------------------------------------------------------
+publish topic=$t2.arn message=gone => error=NotFound|NotFoundException
+subscribe topic=$t2.arn protocol=sqs endpoint=$q1a.attr_QueueArn => error=NotFound|NotFoundException
+
+# --- cleanup --------------------------------------------------------------------------------------------------------------------
+unsubscribe sub=$s1.arn
+deleteTopic topic=$t.arn
+deleteQueue queue=$q1.url
+deleteQueue queue=$q2.url

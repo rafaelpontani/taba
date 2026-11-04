@@ -69,3 +69,51 @@ spec:
     - { name: ops, port: {{ .Values.ports.operations }}, targetPort: ops }
   selector:
     {{- include "taba.selectorLabels" . | nindent 4 }}
+{{- if .Values.gateway.sqs.enabled }}
+---
+# Gateway SQS (doc 39): é o endereço que as aplicações com o SDK da AWS usam (AWS_ENDPOINT_URL_SQS).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "taba.fullname" . }}-sqs
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+    app.kubernetes.io/service: sqs
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- with .Values.service.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  ports:
+    - { name: sqs, port: {{ .Values.gateway.sqs.port }}, targetPort: sqs }
+  selector:
+    {{- include "taba.selectorLabels" . | nindent 4 }}
+{{- end }}
+{{- if .Values.gateway.sns.enabled }}
+---
+# Gateway SNS (doc 39): é o endereço que as aplicações com o SDK da AWS usam (AWS_ENDPOINT_URL_SNS).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "taba.fullname" . }}-sns
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+    app.kubernetes.io/service: sns
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- with .Values.service.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  ports:
+    - { name: sns, port: {{ .Values.gateway.sns.port }}, targetPort: sns }
+  selector:
+    {{- include "taba.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,132 @@
+# SQS standard queue, as AWS defines it (runs on Taba and on ElasticMQ). One operation per line:
+#   op key=value ... [as=name] [=> expectation ...]
+# Values are percent-decoded; {p} is the run prefix, {lang} the language, $name.field a field of an earlier result.
+# Expectations: key=value, key~contains, key!=value, key>=n, key<=n, key=* (present), error=A|B (AWS error code).
+# The language of the file is in connectors/gateway-contract/README.md.
+
+# --- queues: create, find, list, attributes, tags, delete ---------------------------------------------------------
+createQueue name={p}-std as=q => url~/{p}-std
+createQueue name={p}-std as=q_again => url=$q.url
+getQueueUrl name={p}-std => url=$q.url
+getQueueUrl name={p}-nope => error=QueueDoesNotExist|AWS.SimpleQueueService.NonExistentQueue
+createQueue name={p}-attrs attrs=VisibilityTimeout:45,MessageRetentionPeriod:86400,DelaySeconds:0 as=qa
+getQueueAttributes queue=$qa.url names=All => attr_VisibilityTimeout=45 attr_DelaySeconds=0 attr_QueueArn~:{p}-attrs
+setQueueAttributes queue=$qa.url attrs=VisibilityTimeout:60
+getQueueAttributes queue=$qa.url names=VisibilityTimeout => attr_VisibilityTimeout=60
+listQueues prefix={p}- => count=2 names={p}-attrs,{p}-std
+tagQueue queue=$q.url tags=team:billing,env:test
+listQueueTags queue=$q.url => tag_team=billing tag_env=test
+untagQueue queue=$q.url keys=env
+listQueueTags queue=$q.url => tag_team=billing tag_env=
+createQueue name={p}-gone as=gone
+deleteQueue queue=$gone.url
+getQueueUrl name={p}-gone => error=QueueDoesNotExist|AWS.SimpleQueueService.NonExistentQueue
+send queue=$gone.url body=x => error=QueueDoesNotExist|AWS.SimpleQueueService.NonExistentQueue
+
+# --- send, receive, delete ------------------------------------------------------------------------------------
+send queue=$q.url body=hello%20world as=m => id=* md5Ok=true
+receive queue=$q.url max=1 wait=2 visibility=30 attrs=All as=r => count=1 body=hello%20world id=$m.id md5Ok=true attr_ApproximateReceiveCount=1 attr_SentTimestamp=*
+receive queue=$q.url wait=0 => count=0
+deleteMessage queue=$q.url handle=$r.handle
+receive queue=$q.url wait=0 => count=0
+
+# --- the visibility timeout: a message that is not deleted comes back, with the count up -------------------------
+send queue=$q.url body=again
+receive queue=$q.url max=1 wait=2 visibility=1 attrs=All as=r1 => count=1 body=again attr_ApproximateReceiveCount=1
+receive queue=$q.url wait=0 => count=0
+sleep seconds=2
+receive queue=$q.url max=1 wait=2 visibility=30 attrs=All as=r2 => count=1 body=again attr_ApproximateReceiveCount=2
+changeVisibility queue=$q.url handle=$r2.handle seconds=1
+sleep seconds=2
+receive queue=$q.url max=1 wait=2 visibility=30 as=r3 => count=1 body=again
+deleteMessage queue=$q.url handle=$r3.handle
+receive queue=$q.url wait=0 => count=0
+
+# --- bodies arrive as they were sent -----------------------------------------------------------------------------
+send queue=$q.url body=caf%C3%A9%20%E2%82%AC%20%E6%97%A5%E6%9C%AC => md5Ok=true
+receive queue=$q.url max=1 wait=2 visibility=30 as=r => count=1 body=caf%C3%A9%20%E2%82%AC%20%E6%97%A5%E6%9C%AC md5Ok=true
+deleteMessage queue=$q.url handle=$r.handle
+send queue=$q.url body=%7B%22a%22%3A1%2C%22b%22%3A%5B1%2C2%5D%7D
+receive queue=$q.url max=1 wait=2 visibility=30 as=r => count=1 body=%7B%22a%22%3A1%2C%22b%22%3A%5B1%2C2%5D%7D
+deleteMessage queue=$q.url handle=$r.handle
+sendBig queue=$q.url size=200000 => md5Ok=true
+receive queue=$q.url max=1 wait=2 visibility=30 as=r => count=1 size=200000
+deleteMessage queue=$q.url handle=$r.handle
+
+# --- message attributes -------------------------------------------------------------------------------------------
+send queue=$q.url body=with-attrs msgattrs=color:String:blue,count:Number:42,blob:Binary:b64:AAEC/w== => id=*
+receive queue=$q.url max=1 wait=2 visibility=30 msgattrs=All as=r => count=1 body=with-attrs msgattr_color=blue msgattrtype_color=String msgattr_count=42 msgattrtype_count=Number msgattr_blob=b64:AAEC/w== msgattrtype_blob=Binary
+deleteMessage queue=$q.url handle=$r.handle
+send queue=$q.url body=with-attrs2 msgattrs=color:String:blue,size:String:large
+receive queue=$q.url max=1 wait=2 visibility=30 msgattrs=color as=r => count=1 msgattr_color=blue msgattr_size=
+deleteMessage queue=$q.url handle=$r.handle
+
+# --- batches: send, receive many, delete and change visibility in one request ------------------------------------
+createQueue name={p}-batch as=qb
+sendBatch queue=$qb.url bodies=b1,b2,b3,b4 => ok=4 failed=0
+receive queue=$qb.url max=10 wait=2 visibility=30 as=rb => count=4 sorted=b1,b2,b3,b4
+changeVisibilityAll queue=$qb.url from=$rb seconds=1 => ok=4 failed=0
+sleep seconds=2
+receive queue=$qb.url max=10 wait=2 visibility=30 as=rb => count=4 sorted=b1,b2,b3,b4
+deleteAll queue=$qb.url from=$rb => ok=4 failed=0
+receive queue=$qb.url max=10 wait=0 => count=0
+sendBatchTooMany queue=$qb.url count=11 => error=AWS.SimpleQueueService.TooManyEntriesInBatchRequest|TooManyEntriesInBatchRequest
+sendBatch queue=$qb.url bodies=x,y,z delays=0,0,0 => ok=3 failed=0
+
+# --- what one receive returns ---------------------------------------------------------------------------------------
+createQueue name={p}-many as=qm
+sendBatch queue=$qm.url bodies=1,2,3,4,5,6,7,8,9,10
+sendBatch queue=$qm.url bodies=11,12,13,14,15
+receive queue=$qm.url max=10 wait=2 visibility=30 as=r1 => count=10
+receive queue=$qm.url max=10 wait=2 visibility=30 as=r2 => count=5
+receive queue=$qm.url max=10 wait=0 => count=0
+deleteAll queue=$qm.url from=$r1 => ok=10 failed=0
+deleteAll queue=$qm.url from=$r2 => ok=5 failed=0
+
+# --- long polling: waits when empty, and answers as soon as a delayed message becomes visible ----------------------
+createQueue name={p}-poll as=qp
+receive queue=$qp.url max=1 wait=2 visibility=30 => count=0 elapsedMs>=1500
+send queue=$qp.url body=late delay=2
+receive queue=$qp.url max=1 wait=10 visibility=30 as=r => count=1 body=late elapsedMs<=8000
+deleteMessage queue=$qp.url handle=$r.handle
+
+# --- delay: per message and per queue -------------------------------------------------------------------------------
+createQueue name={p}-delay as=qd
+send queue=$qd.url body=later delay=2
+receive queue=$qd.url max=1 wait=0 visibility=30 => count=0
+sleep seconds=3
+receive queue=$qd.url max=1 wait=2 visibility=30 as=r => count=1 body=later
+deleteMessage queue=$qd.url handle=$r.handle
+createQueue name={p}-qdelay attrs=DelaySeconds:2 as=qq
+send queue=$qq.url body=queue-delayed
+receive queue=$qq.url max=1 wait=0 visibility=30 => count=0
+sleep seconds=3
+receive queue=$qq.url max=1 wait=2 visibility=30 as=r => count=1 body=queue-delayed
+deleteMessage queue=$qq.url handle=$r.handle
+send queue=$qd.url body=zero delay=0
+receive queue=$qd.url max=1 wait=2 visibility=30 as=r => count=1 body=zero
+deleteMessage queue=$qd.url handle=$r.handle
+send queue=$qd.url body=toolong delay=901 => error=InvalidParameterValue|AWS.SimpleQueueService.InvalidParameterValue|InvalidAttributeValue
+
+# --- counts -----------------------------------------------------------------------------------------------------------
+createQueue name={p}-count as=qc
+sendBatch queue=$qc.url bodies=c1,c2,c3
+receive queue=$qc.url max=1 wait=2 visibility=60 => count=1
+getQueueAttributes queue=$qc.url names=ApproximateNumberOfMessages,ApproximateNumberOfMessagesNotVisible => attr_ApproximateNumberOfMessages=2 attr_ApproximateNumberOfMessagesNotVisible=1
+purgeQueue queue=$qc.url
+sleep seconds=1
+receive queue=$qc.url max=10 wait=0 => count=0
+
+# --- errors the application tells apart ------------------------------------------------------------------------
+deleteMessage queue=$q.url handle=not-a-valid-handle => error=ReceiptHandleIsInvalid|InvalidParameterValue
+
+# --- cleanup --------------------------------------------------------------------------------------------------------------
+deleteQueue queue=$q.url
+deleteQueue queue=$qa.url
+deleteQueue queue=$qb.url
+deleteQueue queue=$qm.url
+deleteQueue queue=$qp.url
+deleteQueue queue=$qd.url
+deleteQueue queue=$qq.url
+deleteQueue queue=$qc.url
+listQueues prefix={p}- => count=0

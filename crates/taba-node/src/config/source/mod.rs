@@ -36,6 +36,16 @@ impl EnvSource for ProcessEnv {
 pub struct MapEnv(pub BTreeMap<String, String>);
 
 impl MapEnv {
+    /// Like [`Self::new`], for a list whose length is only known at run time.
+    pub fn from_pairs(pairs: &[(&str, &str)]) -> Self {
+        Self(
+            pairs
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect(),
+        )
+    }
+
     pub fn new<const N: usize>(pairs: [(&str, &str); N]) -> Self {
         Self(
             pairs

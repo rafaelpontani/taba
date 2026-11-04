@@ -42,6 +42,7 @@ Cada módulo conhece apenas os da esquerda. Isso é verificável: `core` não im
 | `engine` | Tópicos, mensagens, listas de prontos e de invisíveis, entrega justa, FIFO, dead-letter, tokens, estatísticas | Rede |
 | `cluster` | Membros, protocolo entre nós, canal, votação, freezing, sincronização, replicação, drain, atualização de versão, recuperação, tópicos voláteis, saúde | HTTP de cliente |
 | `http` | As três APIs, seus documentos OpenAPI (`http/openapi`), autenticação, rate limit, IP do cliente, repasse, métricas | Regras de domínio (só lê a requisição e monta a resposta) |
+| `gateway` | O gateway para os SDKs da AWS ([39-gateway.md](39-gateway.md)): uma porta por protocolo, desligado por padrão; transforma uma chamada do SQS ou do SNS em chamadas à API do cliente em processo (`backend`), com a assinatura, as credenciais, os erros, os parâmetros, a resposta HTTP e o XML da AWS (`aws`), os atributos da mensagem (`envelope`) e os nomes (`naming`); `sqs` e `sns` não se importam entre si | Regras de domínio e estado próprio (só traduz) |
 | `telemetry` | Métricas, traces e logs; exportação OTLP e Prometheus | — |
 | `config` | Arquivo `.yml`, variáveis `TABA_*`, a tabela de parâmetros e as validações de partida | — |
 | `secrets` | A pasta de segredos: certificado do cluster e token raiz (`taba init`, `taba cert generate`, `taba token generate`) | — |
@@ -111,6 +112,8 @@ crates/taba-node/src/
                      upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
                      nodes openapi operations ratelimit tokens topic_stats topics
+  gateway/           backend envelope naming aws (sigv4, auth, credentials, errors, params, reply, xml, form) sqs sns
+                     sqs (protocol_json, protocol_query, queues, messages, receipt)
   telemetry/         histogram metrics otlp process prometheus trace
 ```
 
