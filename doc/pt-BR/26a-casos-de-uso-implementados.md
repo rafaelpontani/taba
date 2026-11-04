@@ -10776,16 +10776,31 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-GTW-029
 
-**Caso:** O gateway SNS vem desligado com a porta 9325, liga sozinho (independente do SQS), e a porta dele não pode repetir outra; num nó real uma publicação chega às filas assinadas e só a elas, na notificação com o id que quem publica recebeu, a API nativa enxerga o distribuidor e os prefixos (e um prefixo posto pela API nativa é uma assinatura), tópicos e filas ficam separados, valem as permissões e os prefixos do token e o serviço da assinatura, e um nó em drain diz ao SDK para tentar de novo  
+**Caso:** O gateway SNS vem desligado e liga sozinho (independente do SQS); num nó real uma publicação chega às filas assinadas e só a elas, na notificação com o id que quem publica recebeu, a API nativa enxerga o distribuidor e os prefixos (e um prefixo posto pela API nativa é uma assinatura), tópicos e filas ficam separados, valem as permissões e os prefixos do token e o serviço da assinatura, e um nó em drain diz ao SDK para tentar de novo  
 **Nível:** I  
 **Testes:**
   - `src/gateway/tests.rs::the_sns_gateway_is_off_by_default_and_its_keys_are_read_from_the_environment`
-  - `src/gateway/tests.rs::the_port_of_sns_cannot_repeat_another_port_of_the_node_or_the_sqs_port`
-  - `tests/gateway_sns.rs::with_the_key_off_the_sns_gateway_does_not_open_a_port`
   - `tests/gateway_sns.rs::a_publication_reaches_the_queues_subscribed_and_only_those_and_the_native_api_sees_the_same`
   - `tests/gateway_sns.rs::a_publication_from_the_native_api_and_one_from_sns_are_the_same_to_the_queue`
   - `tests/gateway_sns.rs::with_authentication_the_key_and_the_service_of_the_signature_decide_what_sns_may_do`
   - `tests/gateway_sns.rs::a_draining_node_tells_the_sdk_to_try_again`
+
+---
+
+### UC-GTW-030
+
+**Case:** SQS and SNS are served on one port: the port of the gateway cannot repeat another port of the node for either protocol and opens when SQS or SNS is on; a request goes to the protocol of the service in the credential scope of its signature, of the SQS JSON `X-Amz-Target`, or, unsigned, of the `Action` of its form, with the body kept; a call for a protocol that is off answers `404` with the key that turns it on
+**Nível:** I
+**Testes:**
+  - `src/gateway/tests.rs::the_one_port_of_the_gateway_cannot_repeat_another_port_of_the_node_for_either_protocol`
+  - `src/gateway/dispatch/tests.rs::a_signed_call_goes_to_the_service_of_its_credential_scope`
+  - `src/gateway/dispatch/tests.rs::the_json_protocol_of_sqs_is_known_by_its_target_header`
+  - `src/gateway/dispatch/tests.rs::an_unsigned_form_goes_to_the_service_of_its_action_and_its_body_is_kept`
+  - `src/gateway/dispatch/tests.rs::an_unsigned_call_for_a_service_that_is_off_is_told_so`
+  - `src/gateway/dispatch/tests.rs::a_service_that_is_off_answers_with_the_key_that_turns_it_on`
+  - `src/gateway/dispatch/tests.rs::a_body_over_the_limit_is_left_to_the_sqs_handler`
+  - `src/gateway/dispatch/tests.rs::every_action_of_sns_the_port_knows_is_a_distinct_name`
+  - `tests/gateway_sns.rs::one_port_serves_both_protocols_and_a_protocol_that_is_off_says_which_key_turns_it_on`
 
 ---
 

@@ -230,10 +230,8 @@ pub struct RunningNode {
     client_addr: SocketAddr,
     operations_addr: SocketAddr,
     cluster_addr: SocketAddr,
-    /// The SQS gateway's port, if `gateway.sqs.enabled`.
-    gateway_sqs_addr: Option<SocketAddr>,
-    /// The SNS gateway's port, if `gateway.sns.enabled`.
-    gateway_sns_addr: Option<SocketAddr>,
+    /// The gateway's port (SQS and SNS), if `gateway.sqs.enabled` or `gateway.sns.enabled`.
+    gateway_addr: Option<SocketAddr>,
     cancel: CancellationToken,
     tasks: JoinSet<io::Result<()>>,
     drain: Arc<DrainController>,
@@ -302,14 +300,9 @@ impl RunningNode {
         self.cluster_addr
     }
 
-    /// The SQS gateway's port actually opened; `None` with `gateway.sqs.enabled` off.
-    pub fn gateway_sqs_addr(&self) -> Option<SocketAddr> {
-        self.gateway_sqs_addr
-    }
-
-    /// The SNS gateway's port actually opened; `None` with `gateway.sns.enabled` off.
-    pub fn gateway_sns_addr(&self) -> Option<SocketAddr> {
-        self.gateway_sns_addr
+    /// The gateway's port actually opened; `None` with `gateway.sqs.enabled` and `gateway.sns.enabled` off.
+    pub fn gateway_addr(&self) -> Option<SocketAddr> {
+        self.gateway_addr
     }
 
     /// This node's S3 backup; `None` without `backup.s3.bucket`.
@@ -377,18 +370,14 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let client = bind("of the client API", deps.bind_ip, config.ports.api).await?;
     let operations = bind("of operations", deps.bind_ip, config.ports.operations).await?;
     let cluster = bind("do cluster", deps.bind_ip, config.ports.cluster).await?;
-    // The gateway for the AWS SDKs: each protocol opens its port only when its key is on (doc 39).
-    let gateway_sqs = if config.gateway.sqs.enabled {
-        Some(bind("of the SQS gateway", deps.bind_ip, config.gateway.sqs.port).await?)
+    // The gateway for the AWS SDKs: one port, opened only when SQS or SNS is on (doc 39).
+    let gateway_on = config.gateway.sqs.enabled || config.gateway.sns.enabled;
+    let gateway = if gateway_on {
+        Some(bind("of the gateway", deps.bind_ip, config.gateway.port).await?)
     } else {
         None
     };
-    let gateway_sns = if config.gateway.sns.enabled {
-        Some(bind("of the SNS gateway", deps.bind_ip, config.gateway.sns.port).await?)
-    } else {
-        None
-    };
-    let gateway_credentials = if config.gateway.sqs.enabled || config.gateway.sns.enabled {
+    let gateway_credentials = if gateway_on {
         Some(gateway::open_credentials(&config).map_err(NodeError::Gateway)?)
     } else {
         None
@@ -674,34 +663,19 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             state.clone(),
         )));
     }
-    let mut gateway_sqs_addr = None;
-    let mut gateway_sns_addr = None;
+    let mut gateway_addr = None;
     let mut gateway_reload = None;
-    if let Some(credentials) = gateway_credentials {
-        if let Some(listener) = gateway_sqs {
-            let addr = addr_of(&listener)?;
-            gateway_sqs_addr = Some(addr);
-            let router = gateway::sqs_router(
-                &config,
-                client_router.clone(),
-                credentials.clone(),
-                state.auth.enabled,
-                deps.clock.clone(),
-            );
-            serve(listener, router, addr.port(), None);
-        }
-        if let Some(listener) = gateway_sns {
-            let addr = addr_of(&listener)?;
-            gateway_sns_addr = Some(addr);
-            let router = gateway::sns_router(
-                &config,
-                client_router.clone(),
-                credentials.clone(),
-                state.auth.enabled,
-                deps.clock.clone(),
-            );
-            serve(listener, router, addr.port(), None);
-        }
+    if let (Some(credentials), Some(listener)) = (gateway_credentials, gateway) {
+        let addr = addr_of(&listener)?;
+        gateway_addr = Some(addr);
+        let router = gateway::aws_router(
+            &config,
+            client_router.clone(),
+            credentials.clone(),
+            state.auth.enabled,
+            deps.clock.clone(),
+        );
+        serve(listener, router, addr.port(), None);
         if credentials.has_file() {
             gateway_reload = Some(credentials);
         }
@@ -895,8 +869,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         client = %client_addr,
         operations = %operations_addr,
         cluster = %cluster_addr,
-        gateway_sqs = ?gateway_sqs_addr,
-        gateway_sns = ?gateway_sns_addr,
+        gateway = ?gateway_addr,
         "node is up"
     );
     Ok(RunningNode {
@@ -907,8 +880,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         client_addr,
         operations_addr,
         cluster_addr,
-        gateway_sqs_addr,
-        gateway_sns_addr,
+        gateway_addr,
         cancel,
         tasks,
         drain,

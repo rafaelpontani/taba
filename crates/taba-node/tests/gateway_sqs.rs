@@ -19,11 +19,11 @@ const REGION: &str = "eu-west-1";
 fn builder() -> common::TestNodeBuilder {
     TestNode::builder()
         .env("TABA_GATEWAY_SQS_ENABLED", "true")
-        .env("TABA_GATEWAY_SQS_PORT", "0")
+        .env("TABA_GATEWAY_AWS_PORT", "0")
 }
 
 fn gateway(node: &TestNode) -> SocketAddr {
-    node.node.gateway_sqs_addr().expect("the SQS gateway is on")
+    node.node.gateway_addr().expect("the gateway is on")
 }
 
 /// A call of the JSON protocol, not signed (for a node with the authentication off).
@@ -132,7 +132,7 @@ fn error_type(body: &Value) -> &str {
 #[tokio::test]
 async fn with_the_key_off_the_gateway_does_not_open_a_port() {
     let node = TestNode::single().await;
-    assert!(node.node.gateway_sqs_addr().is_none());
+    assert!(node.node.gateway_addr().is_none());
     node.shutdown().await;
 }
 

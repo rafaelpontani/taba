@@ -92,7 +92,7 @@ gw_make_token() { # gw_make_token <name> <permissions json> [prefixes json]
 
 gw_random() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$1"; }
 
-# Starts one Taba node with the gateway ports on and the credentials file (the keys are the ones of the plan, section 4.1).
+# Starts one Taba node with the gateway port on and the credentials file (the keys are the ones of the plan, section 4.1).
 gw_target_taba_up() {
   local image="${TABA_IMAGE:-taba:local}"
   docker image inspect "$image" >/dev/null 2>&1 || { gw_step "Building the node image ($image)"; docker build -t "$image" "$REPO_ROOT"; }
@@ -101,13 +101,13 @@ gw_target_taba_up() {
   GW_ADMIN_TOKEN="tb_dev.gatewaycontractdevsecret0123456789abcdef"
   mkdir -p "$GW_TMP/gateway"
   echo '{}' >"$GW_TMP/gateway/credentials.json"
-  gw_step "Starting one Taba node ($image) with gateway.sqs and gateway.sns on"
+  gw_step "Starting one Taba node ($image) with gateway.sqs and gateway.sns on (one port)"
   docker run -d --name "$GW_NODE" --network "$GW_NETWORK" \
     -v "$(gw_hostpath "$GW_TMP/gateway"):/gateway" \
     -e TABA_REPLICATION_FACTOR=1 -e TABA_CLUSTER_TLS_ENABLED=false \
     -e TABA_AUTH_DEV_TOKEN="${GW_ADMIN_TOKEN#tb_dev.}" -e TABA_OPERATIONS_PORT=9090 \
-    -e TABA_GATEWAY_SQS_ENABLED=true -e TABA_GATEWAY_SQS_PORT=9324 -e "TABA_GATEWAY_SQS_PUBLIC_URL=http://$GW_NODE:9324" \
-    -e TABA_GATEWAY_SNS_ENABLED=true -e TABA_GATEWAY_SNS_PORT=9325 \
+    -e TABA_GATEWAY_AWS_PORT=9324 -e TABA_GATEWAY_SQS_ENABLED=true -e "TABA_GATEWAY_SQS_PUBLIC_URL=http://$GW_NODE:9324" \
+    -e TABA_GATEWAY_SNS_ENABLED=true \
     -e TABA_GATEWAY_AWS_CREDENTIALS_FILE=/gateway/credentials.json \
     "$image" >/dev/null
   gw_wait_ready
@@ -129,7 +129,7 @@ EOF
   docker restart "$GW_NODE" >/dev/null
   gw_wait_ready
   GW_SQS_URL="http://$GW_NODE:9324"
-  GW_SNS_URL="http://$GW_NODE:9325"
+  GW_SNS_URL="$GW_SQS_URL"   # SQS and SNS are served on the same port
   GW_DEFAULT_KEY="$key_ok"; GW_DEFAULT_SECRET="$secret_ok"
   GW_CREDS=("ok=$key_ok:$secret_ok" "badsecret=$key_ok:$(gw_random 40)" "unknown=GWNO$(gw_random 16):$(gw_random 40)"
             "consumeonly=$key_consume:$secret_consume" "prefixed=$key_prefixed:$secret_prefixed")

@@ -310,7 +310,7 @@ Other languages use their own HTTP client or the C library. The design is in [th
 
 ## Use the AWS SDK without changing your code
 
-An application that already sends to **Amazon SQS** or publishes to **Amazon SNS** topics that feed SQS queues can run on Taba by **changing only the endpoint**. The node has a gateway that speaks the SQS and SNS wire protocols (the JSON and Query protocols, SigV4) and turns each call into a call to the client API, so the queues are ordinary Taba queues: replicated by quorum, backed up to S3 and reachable by the native API and the connectors as well. It is part of the node and of the image, **off by default**, and each protocol has a port of its own (SQS `9324`, SNS `9325`).
+An application that already sends to **Amazon SQS** or publishes to **Amazon SNS** topics that feed SQS queues can run on Taba by **changing only the endpoint**. The node has a gateway that speaks the SQS and SNS wire protocols (the JSON and Query protocols, SigV4) and turns each call into a call to the client API, so the queues are ordinary Taba queues: replicated by quorum, backed up to S3 and reachable by the native API and the connectors as well. It is part of the node and of the image, **off by default**, and SQS and SNS are served on **one port**, `9324`.
 
 **Advantages**
 - **No code change, no new client:** the SDK you already use (C#, Java, Rust, Go, Python, Node.js, in current and in older versions) keeps working. The same scenarios run against the native SDK of each language in [the gateway contract tests](connectors/gateway-contract/README.md), and against ElasticMQ and moto to show that the tests are right.
@@ -327,18 +327,18 @@ An application that already sends to **Amazon SQS** or publishes to **Amazon SNS
 
 ### Run it
 
-With the [Docker Compose cluster](#try-it-in-a-minute) the gateway is **already on** (SQS on `localhost:9324`, SNS on `localhost:9325`), with a demo access key you can use right away:
+With the [Docker Compose cluster](#try-it-in-a-minute) the gateway is **already on** (SQS and SNS on `localhost:9324`), with a demo access key you can use right away:
 
 ```bash
 docker compose up -d
-export AWS_ENDPOINT_URL_SQS=http://localhost:9324 AWS_ENDPOINT_URL_SNS=http://localhost:9325
+export AWS_ENDPOINT_URL_SQS=http://localhost:9324 AWS_ENDPOINT_URL_SNS=http://localhost:9324
 export AWS_ACCESS_KEY_ID=taba AWS_SECRET_ACCESS_KEY=taba-secret AWS_REGION=us-east-1
 ```
 
 That key acts with the root token and is only for trying Taba (see [the access keys](doc/en-US/39-gateway.md#the-access-keys)). Or one node for development (no authentication, so any access key is accepted; it must never face a network):
 
 ```bash
-docker run -d --name taba-dev -p 8080:8080 -p 9324:9324 -p 9325:9325 \
+docker run -d --name taba-dev -p 8080:8080 -p 9324:9324 \
   -e TABA_REPLICATION_FACTOR=1 -e TABA_GATEWAY_SQS_ENABLED=true -e TABA_GATEWAY_SNS_ENABLED=true \
   rafaelpontani/taba
 ```
@@ -347,7 +347,7 @@ Point the SDK at it. Current SDKs read the endpoint from the environment, so **t
 
 ```bash
 export AWS_ENDPOINT_URL_SQS=http://localhost:9324
-export AWS_ENDPOINT_URL_SNS=http://localhost:9325
+export AWS_ENDPOINT_URL_SNS=http://localhost:9324
 export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_REGION=us-east-1   # any value while the authentication is off
 ```
 
@@ -372,7 +372,7 @@ for m in sqs.receive_message(QueueUrl=url, WaitTimeSeconds=5).get("Messages", []
 SNS publishing to the same queue:
 
 ```python
-sns = boto3.client("sns", region_name="us-east-1", endpoint_url="http://localhost:9325")
+sns = boto3.client("sns", region_name="us-east-1", endpoint_url="http://localhost:9324")
 topic = sns.create_topic(Name="events")["TopicArn"]
 queue_arn = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]   # arn:aws:sqs:us-east-1:000000000000:orders
 sns.subscribe(TopicArn=topic, Protocol="sqs", Endpoint=queue_arn)   # the queue "orders" now gets every publication

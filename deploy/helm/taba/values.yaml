@@ -191,16 +191,15 @@ service:
   loadBalancerClass: ""
 
 # ---------------------------------------------------------------------------------------------------
-# Gateway para os SDKs da AWS (doc 39): cada protocolo tem uma porta própria e vem desligado.
+# Gateway para os SDKs da AWS (doc 39): o SQS e o SNS atendem na mesma porta; cada um vem desligado.
 # ---------------------------------------------------------------------------------------------------
 gateway:
+  port: 9324             # porta do container (gateway.aws.port); a mesma no Service <release>-gateway
   sqs:
     enabled: false
-    port: 9324           # porta do container (gateway.sqs.port); a mesma no Service <release>-sqs
     publicUrl: ""        # gateway.sqs.public-url: o endereço que volta na QueueUrl (o do Service/ingress que os clients usam)
   sns:
     enabled: false
-    port: 9325           # porta do container (gateway.sns.port); a mesma no Service <release>-sns
   # Secret com o arquivo de chaves de acesso (gateway.aws.credentials-file). Com a autenticação ligada, sem ele toda chamada é recusada.
   credentialsSecret:
     name: ""

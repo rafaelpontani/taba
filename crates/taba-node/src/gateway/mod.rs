@@ -1,6 +1,6 @@
-//! The gateway for the AWS SDKs (doc 39): an application that already uses SQS (and, later, SNS or RabbitMQ) points its
-//! client at a port of the Taba node and keeps its code. Each protocol has a module and a port of its own, off by
-//! default; `node.rs` is the only caller.
+//! The gateway for the AWS SDKs (doc 39): an application that already uses SQS or SNS points its client at the port of the
+//! Taba node and keeps its code. SQS and SNS are two modules behind one port ([`dispatch`]), each off by default;
+//! `node.rs` is the only caller.
 //!
 //! The gateway keeps no state. It translates a call of the foreign protocol into calls to the **client API**, in the process
 //! ([`backend`]), so authentication, permissions, rate limit, drain and forwarding between nodes are the ones of every other
@@ -10,11 +10,13 @@
 //! * [`backend`]: the only door into Taba.
 //! * [`envelope`]: where the message attributes live.
 //! * [`naming`]: queue names, URLs and ARNs.
+//! * [`dispatch`]: the one port; it hands each request to the service it is for.
 //! * [`sqs`]: the SQS protocols and actions.
 //! * [`sns`]: the SNS protocol and actions, over the distributor of Taba.
 
 pub mod aws;
 pub mod backend;
+pub mod dispatch;
 pub mod envelope;
 pub mod naming;
 pub mod sns;
@@ -38,61 +40,47 @@ pub fn open_credentials(config: &Config) -> Result<Arc<Credentials>, String> {
     }
 }
 
-/// The router of the SQS port. `client` is the router of the client API the calls are made against.
-pub fn sqs_router(
+/// The router of the port of the gateway: the SQS and the SNS protocols behind one address, each only when its key is on.
+/// `client` is the router of the client API the calls are made against.
+pub fn aws_router(
     config: &Config,
     client: Router,
     credentials: Arc<Credentials>,
     auth_enabled: bool,
     clock: Arc<dyn Clock>,
 ) -> Router {
+    let (sqs_on, sns_on) = (config.gateway.sqs.enabled, config.gateway.sns.enabled);
     if auth_enabled && credentials.is_empty() {
         tracing::warn!(
-            "gateway.sqs is on with the Taba authentication, but gateway.aws.credentials-file has no keys: every SQS call will be refused"
+            "gateway is on with the Taba authentication, but gateway.aws.credentials-file has no keys: every call will be refused"
         );
     }
     if !auth_enabled {
         tracing::warn!(
-            "gateway.sqs is on without authentication: any credential is accepted and the signature is not checked"
+            "gateway is on without authentication: any credential is accepted and the signature is not checked"
         );
     }
-    let state = sqs::SqsState::new(
-        Backend::new(client),
-        credentials,
-        auth_enabled,
-        config.gateway.sqs.public_url.clone(),
-        clock,
-        usize::try_from(config.batch.max_bytes).unwrap_or(usize::MAX),
-    );
-    sqs::router(Arc::new(state))
-}
-
-/// The router of the SNS port. `client` is the router of the client API the calls are made against.
-pub fn sns_router(
-    config: &Config,
-    client: Router,
-    credentials: Arc<Credentials>,
-    auth_enabled: bool,
-    clock: Arc<dyn Clock>,
-) -> Router {
-    if auth_enabled && credentials.is_empty() {
-        tracing::warn!(
-            "gateway.sns is on with the Taba authentication, but gateway.aws.credentials-file has no keys: every SNS call will be refused"
-        );
-    }
-    if !auth_enabled {
-        tracing::warn!(
-            "gateway.sns is on without authentication: any credential is accepted and the signature is not checked"
-        );
-    }
-    let state = sns::SnsState {
-        backend: Backend::new(client),
-        credentials,
-        auth_enabled,
-        clock,
-        max_body: usize::try_from(config.batch.max_bytes).unwrap_or(usize::MAX),
-    };
-    sns::router(Arc::new(state))
+    let max_body = usize::try_from(config.batch.max_bytes).unwrap_or(usize::MAX);
+    let sqs = sqs_on.then(|| {
+        sqs::router(Arc::new(sqs::SqsState::new(
+            Backend::new(client.clone()),
+            credentials.clone(),
+            auth_enabled,
+            config.gateway.sqs.public_url.clone(),
+            clock.clone(),
+            max_body,
+        )))
+    });
+    let sns = sns_on.then(|| {
+        sns::router(Arc::new(sns::SnsState {
+            backend: Backend::new(client.clone()),
+            credentials: credentials.clone(),
+            auth_enabled,
+            clock: clock.clone(),
+            max_body,
+        }))
+    });
+    dispatch::router(sqs, sns, max_body)
 }
 
 #[cfg(test)]

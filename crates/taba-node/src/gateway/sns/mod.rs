@@ -28,6 +28,35 @@ use super::aws::reply::build;
 use super::backend::{Backend, Caller};
 use crate::core::clock::Clock;
 
+/// The actions of SNS, the ones served and the ones refused with a message: the port of the gateway uses it to tell an unsigned
+/// SNS call from an SQS one.
+pub const ACTIONS: &[&str] = &[
+    "CreateTopic",
+    "DeleteTopic",
+    "ListTopics",
+    "GetTopicAttributes",
+    "SetTopicAttributes",
+    "TagResource",
+    "UntagResource",
+    "ListTagsForResource",
+    "Publish",
+    "PublishBatch",
+    "Subscribe",
+    "Unsubscribe",
+    "ListSubscriptions",
+    "ListSubscriptionsByTopic",
+    "GetSubscriptionAttributes",
+    "SetSubscriptionAttributes",
+    "ConfirmSubscription",
+    "GetDataProtectionPolicy",
+    "PutDataProtectionPolicy",
+    "CreatePlatformApplication",
+    "CreatePlatformEndpoint",
+    "CheckIfPhoneNumberIsOptedOut",
+    "OptInPhoneNumber",
+    "SetSMSAttributes",
+];
+
 /// What every action shares.
 pub struct SnsState {
     pub backend: Backend,

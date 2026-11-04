@@ -472,9 +472,11 @@ pub struct ClientIp {
     pub trusted_proxies: Vec<IpNet>,
 }
 
-/// The gateway for the AWS SDKs (`gateway.*`, doc 39): each protocol has a port of its own and is off by default.
+/// The gateway for the AWS SDKs (`gateway.*`, doc 39): one port for the SQS and the SNS protocols, each off by default.
 #[derive(Debug, Clone)]
 pub struct Gateway {
+    /// `gateway.aws.port`: opens when `sqs` or `sns` is enabled.
+    pub port: u16,
     pub sqs: GatewaySqs,
     pub sns: GatewaySns,
     /// `gateway.aws.credentials-file`: `accessKeyId -> {secret, token}`, shared by the AWS protocols.
@@ -484,13 +486,11 @@ pub struct Gateway {
 #[derive(Debug, Clone)]
 pub struct GatewaySns {
     pub enabled: bool,
-    pub port: u16,
 }
 
 #[derive(Debug, Clone)]
 pub struct GatewaySqs {
     pub enabled: bool,
-    pub port: u16,
     /// The address in the `QueueUrl` the gateway returns; without it, the `Host` of the request.
     pub public_url: Option<String>,
 }
@@ -883,9 +883,9 @@ impl Config {
         };
 
         let gateway = Gateway {
+            port: s.get("gateway.aws.port")?,
             sqs: GatewaySqs {
                 enabled: s.get("gateway.sqs.enabled")?,
-                port: s.get("gateway.sqs.port")?,
                 public_url: s
                     .opt::<String>("gateway.sqs.public-url")?
                     .map(|url| url.trim().trim_end_matches('/').to_owned())
@@ -893,45 +893,28 @@ impl Config {
             },
             sns: GatewaySns {
                 enabled: s.get("gateway.sns.enabled")?,
-                port: s.get("gateway.sns.port")?,
             },
             credentials_file: s
                 .opt::<String>("gateway.aws.credentials-file")?
                 .filter(|path| !path.trim().is_empty())
                 .map(PathBuf::from),
         };
-        if gateway.sqs.enabled {
+        if gateway.sqs.enabled || gateway.sns.enabled {
             // `0` (any free port) is only for the tests and never repeats another port.
-            if gateway.sqs.port != 0
-                && [ports.api, ports.cluster, ports.operations].contains(&gateway.sqs.port)
+            if gateway.port != 0
+                && [ports.api, ports.cluster, ports.operations].contains(&gateway.port)
             {
                 problems.push(format!(
-                    "gateway.sqs.port ({}) repeats api.port, cluster.port or operations.port",
-                    gateway.sqs.port
+                    "gateway.aws.port ({}) repeats api.port, cluster.port or operations.port",
+                    gateway.port
                 ));
-            }
-            if let Some(url) = &gateway.sqs.public_url
-                && !(url.starts_with("http://") || url.starts_with("https://"))
-            {
-                problems.push("gateway.sqs.public-url must start with http:// or https://".into());
             }
         }
-        if gateway.sns.enabled {
-            if gateway.sns.port != 0
-                && [ports.api, ports.cluster, ports.operations].contains(&gateway.sns.port)
-            {
-                problems.push(format!(
-                    "gateway.sns.port ({}) repeats api.port, cluster.port or operations.port",
-                    gateway.sns.port
-                ));
-            }
-            if gateway.sns.port != 0 && gateway.sqs.enabled && gateway.sns.port == gateway.sqs.port
-            {
-                problems.push(format!(
-                    "gateway.sns.port ({}) repeats gateway.sqs.port",
-                    gateway.sns.port
-                ));
-            }
+        if gateway.sqs.enabled
+            && let Some(url) = &gateway.sqs.public_url
+            && !(url.starts_with("http://") || url.starts_with("https://"))
+        {
+            problems.push("gateway.sqs.public-url must start with http:// or https://".into());
         }
 
         if let Some(level) = &telemetry.logs_level

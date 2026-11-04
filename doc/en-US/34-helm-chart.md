@@ -36,8 +36,8 @@ Prerequisites: Kubernetes 1.27+, a default `StorageClass` (one volume per node) 
 | `Secret` `<release>-secrets` | `root-token`, `tls.crt`, `tls.key`. Generated **once** by the pre-install Job (`taba init`); not deleted on `helm uninstall` nor recreated on upgrade |
 | `PodDisruptionBudget` | At most 1 node unavailable |
 | `Ingress` | Optional (`ingress.enabled`) |
-| `Service` `<release>-sqs` | Optional (`gateway.sqs.enabled`): the SQS gateway port (9324), the endpoint of the applications that use the AWS SDK ([39-gateway.md](39-gateway.md)) |
-| `Service` `<release>-sns` | Optional (`gateway.sns.enabled`): the SNS gateway port (9325), the same way |
+| `Service` `<release>-gateway` | Optional (`gateway.sqs.enabled` or `gateway.sns.enabled`): the gateway port (9324, SQS and SNS), the endpoint of the applications that use the AWS SDK ([39-gateway.md](39-gateway.md)) |
+
 | SeaweedFS (`StatefulSet`, `Service`, `Secret`, bucket Job) | Optional (`seaweedfs.enabled`) |
 | Prometheus or Telegraf (`Deployment`, `ConfigMap`, RBAC) or `ServiceMonitor` | Optional (`collector.type`) |
 | `ScaledObject` (KEDA) | Optional (`autoscaling.enabled`) |
@@ -143,20 +143,19 @@ ingress:
 
 ```yaml
 gateway:
+  port: 9324                                   # one port for SQS and SNS (gateway.aws.port); the same in the Service <release>-gateway
   sqs:
-    enabled: true                              # off by default; opens the port and creates the Service <release>-sqs
-    port: 9324
+    enabled: true                              # off by default; with sns, opens the port and creates the Service <release>-gateway
     publicUrl: http://queues.example.com:9324  # gateway.sqs.public-url: the address that comes back in the QueueUrl
   sns:
-    enabled: true                              # off by default; opens the port and creates the Service <release>-sns
-    port: 9325
+    enabled: true                              # off by default
   credentialsSecret:
     name: taba-aws-keys                        # Secret with the file of access keys (gateway.aws.credentials-file)
     key: credentials.json
 ```
 
-- The chart sets `gateway.sqs.*`, `gateway.sns.*` and `gateway.aws.credentials-file` by environment variable and mounts the Secret at `/etc/taba/gateway`. The file is `{"<accessKeyId>": {"secret": "...", "token": "tb_..."}}` ([39-gateway.md](39-gateway.md)); the chart does not create it, because the keys belong to the applications.
-- The Services `<release>-sqs` and `<release>-sns` take `service.type` and `service.annotations` from the API Service. The `NetworkPolicy` lets each port in from `networkPolicy.apiFrom`. Each protocol turns on by itself; the credentials Secret is mounted when either is on.
+- The chart sets `gateway.sqs.*`, `gateway.sns.*`, `gateway.aws.port` and `gateway.aws.credentials-file` by environment variable and mounts the Secret at `/etc/taba/gateway`. The file is `{"<accessKeyId>": {"secret": "...", "token": "tb_..."}}` ([39-gateway.md](39-gateway.md)); the chart does not create it, because the keys belong to the applications.
+- The Service `<release>-gateway` takes `service.type` and `service.annotations` from the API Service. The `NetworkPolicy` lets the port in from `networkPolicy.apiFrom`. Each protocol turns on by itself; the port, the Service and the credentials Secret exist when either is on.
 - Set `publicUrl` to the address the applications reach (Service, Ingress or load balancer): the `QueueUrl` the gateway returns points there. An Ingress for it is not created.
 
 ### S3 backup (doc 33)

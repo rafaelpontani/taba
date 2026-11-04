@@ -20,17 +20,17 @@ const REGION: &str = "eu-west-1";
 fn builder() -> common::TestNodeBuilder {
     TestNode::builder()
         .env("TABA_GATEWAY_SQS_ENABLED", "true")
-        .env("TABA_GATEWAY_SQS_PORT", "0")
         .env("TABA_GATEWAY_SNS_ENABLED", "true")
-        .env("TABA_GATEWAY_SNS_PORT", "0")
+        .env("TABA_GATEWAY_AWS_PORT", "0")
 }
 
+/// SQS and SNS are served on the same port.
 fn sns_addr(node: &TestNode) -> SocketAddr {
-    node.node.gateway_sns_addr().expect("the SNS gateway is on")
+    node.node.gateway_addr().expect("the gateway is on")
 }
 
 fn sqs_addr(node: &TestNode) -> SocketAddr {
-    node.node.gateway_sqs_addr().expect("the SQS gateway is on")
+    sns_addr(node)
 }
 
 /// A call of the SQS JSON protocol, not signed.
@@ -155,32 +155,41 @@ async fn receive(node: &TestNode, url: &str) -> Vec<Value> {
     got["Messages"].as_array().cloned().unwrap_or_default()
 }
 
-/// UC: UC-GTW-029
+/// UC: UC-GTW-030
 #[tokio::test]
-async fn with_the_key_off_the_sns_gateway_does_not_open_a_port() {
+async fn one_port_serves_both_protocols_and_a_protocol_that_is_off_says_which_key_turns_it_on() {
     let node = TestNode::single().await;
-    assert!(node.node.gateway_sns_addr().is_none());
+    assert!(node.node.gateway_addr().is_none(), "both off: no port");
     node.shutdown().await;
 
     let only_sqs = TestNode::builder()
         .env("TABA_GATEWAY_SQS_ENABLED", "true")
-        .env("TABA_GATEWAY_SQS_PORT", "0")
+        .env("TABA_GATEWAY_AWS_PORT", "0")
         .start()
         .await;
-    assert!(only_sqs.node.gateway_sqs_addr().is_some());
-    assert!(
-        only_sqs.node.gateway_sns_addr().is_none(),
-        "each protocol turns on by itself"
-    );
+    assert!(only_sqs.node.gateway_addr().is_some());
+    let (status, body) = sns(&only_sqs, "Action=ListTopics").await;
+    assert_eq!(status, 404, "{body}");
+    assert!(body.contains("gateway.sns.enabled"), "{body}");
     only_sqs.shutdown().await;
 
     let only_sns = TestNode::builder()
         .env("TABA_GATEWAY_SNS_ENABLED", "true")
-        .env("TABA_GATEWAY_SNS_PORT", "0")
+        .env("TABA_GATEWAY_AWS_PORT", "0")
         .start()
         .await;
-    assert!(only_sns.node.gateway_sns_addr().is_some());
-    assert!(only_sns.node.gateway_sqs_addr().is_none());
+    assert!(only_sns.node.gateway_addr().is_some());
+    let (status, body) = sqs(&only_sns, "ListQueues", json!({})).await;
+    assert_eq!(status, 404, "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("gateway.sqs.enabled"),
+        "{body}"
+    );
+    let (status, body) = sns(&only_sns, "Action=ListTopics").await;
+    assert_eq!(status, 200, "{body}");
     only_sns.shutdown().await;
 }
 
@@ -496,12 +505,13 @@ async fn with_authentication_the_key_and_the_service_of_the_signature_decide_wha
         "{denied}"
     );
 
-    // The signature: another service, a wrong secret, an unknown key, and no signature at all.
+    // The signature: a wrong secret, an unknown key, and no signature at all. A call signed for another service goes to
+    // that service (the credential scope decides), which does not know the action.
     let (status, wrong_service) =
         signed_sns(&node, "KEYALL", "secret-all", "sqs", "Action=ListTopics").await;
     assert_eq!(
         (status, code(&wrong_service)),
-        (403, "IncompleteSignature".into()),
+        (400, "InvalidAction".into()),
         "{wrong_service}"
     );
     let (status, bad) =

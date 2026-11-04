@@ -4,25 +4,26 @@ summary: The SQS and SNS gateways inside the node: an application that uses the 
 type: guide
 status: partial
 verified-on: 2026-11-04 @ a3bdab9
-sources: [crates/taba-node/src/gateway/mod.rs, crates/taba-node/src/gateway/backend/mod.rs, crates/taba-node/src/gateway/envelope/mod.rs, crates/taba-node/src/gateway/naming/mod.rs, crates/taba-node/src/gateway/aws/sigv4/mod.rs, crates/taba-node/src/gateway/aws/credentials/mod.rs, crates/taba-node/src/gateway/aws/errors/mod.rs, crates/taba-node/src/gateway/sqs/mod.rs, crates/taba-node/src/gateway/sqs/queues/mod.rs, crates/taba-node/src/gateway/sqs/messages/mod.rs, crates/taba-node/src/gateway/sns/mod.rs, crates/taba-node/src/gateway/sns/protocol/mod.rs, crates/taba-node/src/gateway/sns/topics/mod.rs, crates/taba-node/src/gateway/sns/publish/mod.rs, crates/taba-node/src/gateway/sns/subscriptions/mod.rs, crates/taba-node/src/gateway/aws/auth/mod.rs, crates/taba-node/tests/gateway_sqs.rs, crates/taba-node/tests/gateway_sns.rs, connectors/gateway-contract/README.md]
+sources: [crates/taba-node/src/gateway/mod.rs, crates/taba-node/src/gateway/backend/mod.rs, crates/taba-node/src/gateway/envelope/mod.rs, crates/taba-node/src/gateway/naming/mod.rs, crates/taba-node/src/gateway/aws/sigv4/mod.rs, crates/taba-node/src/gateway/aws/credentials/mod.rs, crates/taba-node/src/gateway/aws/errors/mod.rs, crates/taba-node/src/gateway/sqs/mod.rs, crates/taba-node/src/gateway/sqs/queues/mod.rs, crates/taba-node/src/gateway/sqs/messages/mod.rs, crates/taba-node/src/gateway/dispatch/mod.rs, crates/taba-node/src/gateway/sns/mod.rs, crates/taba-node/src/gateway/sns/protocol/mod.rs, crates/taba-node/src/gateway/sns/topics/mod.rs, crates/taba-node/src/gateway/sns/publish/mod.rs, crates/taba-node/src/gateway/sns/subscriptions/mod.rs, crates/taba-node/src/gateway/aws/auth/mod.rs, crates/taba-node/tests/gateway_sqs.rs, crates/taba-node/tests/gateway_sns.rs, connectors/gateway-contract/README.md]
 ---
 
 # Gateway for the AWS SDKs
 
 > Read first: [16-client-api.md](16-client-api.md) and [14-security.md](14-security.md).
 
-An application that already sends to and reads from Amazon SQS, or publishes to Amazon SNS topics that feed SQS queues, can use Taba **without changing its code**: it points the endpoint of the SDK (`AWS_ENDPOINT_URL_SQS` and `AWS_ENDPOINT_URL_SNS`, or the endpoint parameter of the client) at the SQS and SNS gateways of a Taba node. The gateway is part of the node and of its image; it is **off by default** and each protocol has a port of its own ([22-configuration.md](22-configuration.md#gateway-for-the-aws-sdks)).
+An application that already sends to and reads from Amazon SQS, or publishes to Amazon SNS topics that feed SQS queues, can use Taba **without changing its code**: it points the endpoint of the SDK (`AWS_ENDPOINT_URL_SQS` and `AWS_ENDPOINT_URL_SNS`, or the endpoint parameter of the client) at the gateway of a Taba node. The gateway is part of the node and of its image; it is **off by default** and SQS and SNS are served on **one port** (`gateway.aws.port`, 9324), each turned on by its own key ([22-configuration.md](22-configuration.md#gateway-for-the-aws-sdks)).
 
 **Status.** Today the gateway serves **standard and FIFO SQS queues** and **SNS topics that publish to SQS queues**. RabbitMQ (AMQP) is planned.
 
 ## How a call is served
 
 ```
-AWS SDK (SQS) ──JSON or Query──▶ gateway.sqs.port ──▶ gateway/sqs ┐
-AWS SDK (SNS) ──Query───────────▶ gateway.sns.port ──▶ gateway/sns ┴─▶ client API (in the process) ──▶ node engine
+AWS SDK (SQS) ──JSON or Query──┐
+AWS SDK (SNS) ──Query───────────┴▶ gateway.aws.port ──▶ gateway/dispatch ──▶ gateway/sqs ┐
+                                                                                   └─▶ gateway/sns ┴─▶ client API (in the process) ──▶ node engine
 ```
 
-1. The gateway reads the request, checks the signature (below) and decodes it. In SQS the **JSON** protocol (`X-Amz-Target: AmazonSQS.<Action>`, current SDKs) and the **Query** protocol (a form, XML answers, older SDKs) are both served, on the same port and path. SNS only has the Query protocol.
+1. The port hands the request to SQS or to SNS by the **service in the credential scope** of the signature (`.../us-east-1/sns/aws4_request`), or by the `X-Amz-Target: AmazonSQS.<Action>` header, or, for an unsigned call (only with the Taba authentication off), by the `Action` of the form. A protocol that is off answers `404` with the key that turns it on. Then the protocol reads the request, checks the signature (below) and decodes it. In SQS the **JSON** protocol (`X-Amz-Target: AmazonSQS.<Action>`, current SDKs) and the **Query** protocol (a form, XML answers, older SDKs) are both served. SNS only has the Query protocol.
 2. Each SQS action becomes one or a few calls to the client API, made **in the process** against the same router of `api.port`, with the token of the access key. So authentication, permissions and prefixes of the token, rate limit, drain (a draining node forwards the call to another node, or answers `ServiceUnavailable`), metrics and replication are the ones of every other client. The rate limit still counts by the real client IP (the connection address and the `X-Forwarded-For` of the proxy are passed on).
 3. The answer is written in the protocol the client used, with the error codes of AWS.
 
@@ -53,13 +54,13 @@ SigV4 never sends the secret, so the node cannot check a signature with the hash
 ```
 
 - The file is mounted as a secret on every node and read again every `auth.reload-interval`. A file that is invalid when the node starts stops the start; one that becomes invalid later is ignored and the previous keys keep applying.
-- The signature must be fresh (15 minutes either way), must cover the body, and must name the service of the port (`sqs` at the SQS port, `sns` at the SNS port; the same file serves both). A wrong secret is `SignatureDoesNotMatch`, an unknown key `InvalidClientTokenId`, a missing signature `MissingAuthenticationToken`, an old one `RequestExpired`.
+- The signature must be fresh (15 minutes either way), must cover the body, and must name the service it is for (`sqs` or `sns`, which is also what routes it; the same file serves both). A wrong secret is `SignatureDoesNotMatch`, an unknown key `InvalidClientTokenId`, a missing signature `MissingAuthenticationToken`, an old one `RequestExpired`.
 - The permissions of the token decide what the key may do (`create` to create queues, `publish` to send, `consume` to receive, delete and hide, `manage` to delete and purge); a refusal is `AccessDenied` (`AuthorizationError` in SNS). A token with topic prefixes confines the key to those queues, and `ListQueues` shows only them. In SNS the same permissions apply to the topic: `create` to create it, `manage` to delete it, subscribe and unsubscribe, `publish` to publish; a subscription also needs the prefix of the queue to be inside the prefixes of the token, and `ListTopics` shows only the topics the token reaches.
 - **With the Taba authentication off** no file is needed, any credential is accepted and no signature is checked (the node warns at the start).
 - **With the authentication on and no keys** every call is refused (the node warns at the start).
 - Temporary credentials of an IAM role cannot be checked without AWS: the application needs static keys.
 
-**The Compose example.** `docker compose up -d` starts the cluster with both gateways **on** (ports `9324` and `9325` on HAProxy) and a demo access key: the `init` service writes `aws-credentials.json` to the `secrets` volume with the key `taba` / secret `taba-secret`, which acts with the **root token**. It is only for trying Taba; for anything real replace the file with the keys of your applications, each mapped to a token of its own. `TABA_GATEWAY_SQS_ENABLED=false` and `TABA_GATEWAY_SNS_ENABLED=false` turn them off. The node default does not change: off.
+**The Compose example.** `docker compose up -d` starts the cluster with both gateways **on** (port `9324` on HAProxy, for SQS and SNS) and a demo access key: the `init` service writes `aws-credentials.json` to the `secrets` volume with the key `taba` / secret `taba-secret`, which acts with the **root token**. It is only for trying Taba; for anything real replace the file with the keys of your applications, each mapped to a token of its own. `TABA_GATEWAY_SQS_ENABLED=false` and `TABA_GATEWAY_SNS_ENABLED=false` turn them off. The node default does not change: off.
 
 ## How a queue is stored
 
@@ -161,5 +162,5 @@ The native AWS SDKs of six languages (C#, Java v1 and v2, Rust, Go, Python, Node
 ## Sources and evidence
 
 - `crates/taba-node/src/gateway/` (the module map is in [04-architecture.md](04-architecture.md)), `config/params/mod.rs` (the keys).
-- Use cases `UC-GTW-001` to `UC-GTW-029` in [26a](26a-implemented-use-cases.md); tests in `crates/taba-node/src/gateway/**/tests.rs`, `crates/taba-node/tests/gateway_sqs.rs` and `crates/taba-node/tests/gateway_sns.rs`.
+- Use cases `UC-GTW-001` to `UC-GTW-030` in [26a](26a-implemented-use-cases.md); tests in `crates/taba-node/src/gateway/**/tests.rs`, `crates/taba-node/tests/gateway_sqs.rs` and `crates/taba-node/tests/gateway_sns.rs`.
 - The contract suite of the native SDKs: `connectors/gateway-contract/`.

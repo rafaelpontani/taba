@@ -13,19 +13,18 @@
     "gateway": {
       "type": "object",
       "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
         "sqs": {
           "type": "object",
           "properties": {
             "enabled": { "type": "boolean" },
-            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
             "publicUrl": { "type": "string" }
           }
         },
         "sns": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+            "enabled": { "type": "boolean" }
           }
         },
         "credentialsSecret": {

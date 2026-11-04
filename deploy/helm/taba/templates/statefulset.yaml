@@ -75,11 +75,8 @@ spec:
             - { name: cluster, containerPort: {{ .Values.ports.cluster }} }
             {{- end }}
             - { name: ops, containerPort: {{ .Values.ports.operations }} }
-            {{- if .Values.gateway.sqs.enabled }}
-            - { name: sqs, containerPort: {{ .Values.gateway.sqs.port }} }
-            {{- end }}
-            {{- if .Values.gateway.sns.enabled }}
-            - { name: sns, containerPort: {{ .Values.gateway.sns.port }} }
+            {{- if (or .Values.gateway.sqs.enabled .Values.gateway.sns.enabled) }}
+            - { name: gateway, containerPort: {{ .Values.gateway.port }} }
             {{- end }}
           env:
             {{- if not $dev }}
@@ -103,16 +100,17 @@ spec:
                   key: secretKey
             {{- end }}
             {{- end }}
+            {{- if (or .Values.gateway.sqs.enabled .Values.gateway.sns.enabled) }}
+            - { name: TABA_GATEWAY_AWS_PORT, value: {{ .Values.gateway.port | quote }} }
+            {{- end }}
             {{- if .Values.gateway.sqs.enabled }}
             - { name: TABA_GATEWAY_SQS_ENABLED, value: "true" }
-            - { name: TABA_GATEWAY_SQS_PORT, value: {{ .Values.gateway.sqs.port | quote }} }
             {{- with .Values.gateway.sqs.publicUrl }}
             - { name: TABA_GATEWAY_SQS_PUBLIC_URL, value: {{ . | quote }} }
             {{- end }}
             {{- end }}
             {{- if .Values.gateway.sns.enabled }}
             - { name: TABA_GATEWAY_SNS_ENABLED, value: "true" }
-            - { name: TABA_GATEWAY_SNS_PORT, value: {{ .Values.gateway.sns.port | quote }} }
             {{- end }}
             {{- if and (or .Values.gateway.sqs.enabled .Values.gateway.sns.enabled) .Values.gateway.credentialsSecret.name }}
             - { name: TABA_GATEWAY_AWS_CREDENTIALS_FILE, value: /etc/taba/gateway/{{ .Values.gateway.credentialsSecret.key }} }

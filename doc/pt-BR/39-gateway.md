@@ -4,25 +4,26 @@ resumo: Os gateways de SQS e SNS dentro do nó: uma aplicação que usa o SDK da
 tipo: guia
 status: parcial
 verificado-em: 2026-11-04 @ a3bdab9
-fontes: [crates/taba-node/src/gateway/mod.rs, crates/taba-node/src/gateway/backend/mod.rs, crates/taba-node/src/gateway/envelope/mod.rs, crates/taba-node/src/gateway/naming/mod.rs, crates/taba-node/src/gateway/aws/sigv4/mod.rs, crates/taba-node/src/gateway/aws/credentials/mod.rs, crates/taba-node/src/gateway/aws/errors/mod.rs, crates/taba-node/src/gateway/sqs/mod.rs, crates/taba-node/src/gateway/sqs/queues/mod.rs, crates/taba-node/src/gateway/sqs/messages/mod.rs, crates/taba-node/src/gateway/sns/mod.rs, crates/taba-node/src/gateway/sns/protocol/mod.rs, crates/taba-node/src/gateway/sns/topics/mod.rs, crates/taba-node/src/gateway/sns/publish/mod.rs, crates/taba-node/src/gateway/sns/subscriptions/mod.rs, crates/taba-node/src/gateway/aws/auth/mod.rs, crates/taba-node/tests/gateway_sqs.rs, crates/taba-node/tests/gateway_sns.rs, connectors/gateway-contract/README.md]
+fontes: [crates/taba-node/src/gateway/mod.rs, crates/taba-node/src/gateway/backend/mod.rs, crates/taba-node/src/gateway/envelope/mod.rs, crates/taba-node/src/gateway/naming/mod.rs, crates/taba-node/src/gateway/aws/sigv4/mod.rs, crates/taba-node/src/gateway/aws/credentials/mod.rs, crates/taba-node/src/gateway/aws/errors/mod.rs, crates/taba-node/src/gateway/sqs/mod.rs, crates/taba-node/src/gateway/sqs/queues/mod.rs, crates/taba-node/src/gateway/sqs/messages/mod.rs, crates/taba-node/src/gateway/dispatch/mod.rs, crates/taba-node/src/gateway/sns/mod.rs, crates/taba-node/src/gateway/sns/protocol/mod.rs, crates/taba-node/src/gateway/sns/topics/mod.rs, crates/taba-node/src/gateway/sns/publish/mod.rs, crates/taba-node/src/gateway/sns/subscriptions/mod.rs, crates/taba-node/src/gateway/aws/auth/mod.rs, crates/taba-node/tests/gateway_sqs.rs, crates/taba-node/tests/gateway_sns.rs, connectors/gateway-contract/README.md]
 ---
 
 # Gateway para os SDKs da AWS
 
 > Leia antes: [16-api-cliente.md](16-api-cliente.md) e [14-seguranca.md](14-seguranca.md).
 
-Uma aplicação que já envia e lê do Amazon SQS, ou publica em tópicos do Amazon SNS que alimentam filas SQS, pode usar o Taba **sem mudar o código**: ela aponta o endpoint do SDK (`AWS_ENDPOINT_URL_SQS` e `AWS_ENDPOINT_URL_SNS`, ou o parâmetro de endpoint do client) para os gateways de SQS e SNS de um nó do Taba. O gateway faz parte do nó e da imagem dele; vem **desligado** e cada protocolo tem uma porta própria ([22-configuracao.md](22-configuracao.md#gateway-para-os-sdks-da-aws)).
+Uma aplicação que já envia e lê do Amazon SQS, ou publica em tópicos do Amazon SNS que alimentam filas SQS, pode usar o Taba **sem mudar o código**: ela aponta o endpoint do SDK (`AWS_ENDPOINT_URL_SQS` e `AWS_ENDPOINT_URL_SNS`, ou o parâmetro de endpoint do client) para o gateway de um nó do Taba. O gateway faz parte do nó e da imagem dele; vem **desligado** e o SQS e o SNS são atendidos em **uma porta só** (`gateway.aws.port`, 9324), cada um ligado pela sua chave ([22-configuracao.md](22-configuracao.md#gateway-para-os-sdks-da-aws)).
 
 **Situação.** Hoje o gateway atende as **filas padrão e FIFO do SQS** e os **tópicos do SNS que publicam em filas SQS**. O RabbitMQ (AMQP) está planejado.
 
 ## Como uma chamada é atendida
 
 ```
-SDK da AWS (SQS) ──JSON ou Query──▶ gateway.sqs.port ──▶ gateway/sqs ┐
-SDK da AWS (SNS) ──Query───────────▶ gateway.sns.port ──▶ gateway/sns ┴─▶ API do cliente (em processo) ──▶ motor do nó
+SDK da AWS (SQS) ──JSON ou Query──┐
+SDK da AWS (SNS) ──Query───────────────┴▶ gateway.aws.port ──▶ gateway/dispatch ──▶ gateway/sqs ┐
+                                                                                    └─▶ gateway/sns ┴─▶ API do cliente (em processo) ──▶ motor do nó
 ```
 
-1. O gateway lê o pedido, confere a assinatura (abaixo) e o decodifica. No SQS, o protocolo **JSON** (`X-Amz-Target: AmazonSQS.<Ação>`, SDKs atuais) e o **Query** (um formulário, respostas em XML, SDKs mais antigos) são atendidos, na mesma porta e no mesmo caminho. O SNS só tem o protocolo Query.
+1. A porta entrega o pedido ao SQS ou ao SNS pelo **serviço no escopo da credencial** da assinatura (`.../us-east-1/sns/aws4_request`), ou pelo cabeçalho `X-Amz-Target: AmazonSQS.<Ação>`, ou, numa chamada sem assinatura (só com a autenticação do Taba desligada), pela `Action` do formulário. Um protocolo desligado responde `404` com a chave que o liga. Depois o protocolo lê o pedido, confere a assinatura (abaixo) e o decodifica. No SQS, o protocolo **JSON** (`X-Amz-Target: AmazonSQS.<Ação>`, SDKs atuais) e o **Query** (um formulário, respostas em XML, SDKs mais antigos) são atendidos. O SNS só tem o protocolo Query.
 2. Cada ação do SQS vira uma ou poucas chamadas à API do cliente, feitas **em processo** no mesmo roteador da `api.port`, com o token da chave de acesso. Assim, autenticação, permissões e prefixos do token, rate limit, drain (um nó em drain encaminha a chamada a outro nó, ou responde `ServiceUnavailable`), métricas e replicação são os de qualquer outro cliente. O rate limit continua contando pelo IP real do cliente (o endereço da conexão e o `X-Forwarded-For` do proxy são repassados).
 3. A resposta sai no protocolo que o client usou, com os códigos de erro da AWS.
 
@@ -53,13 +54,13 @@ O SigV4 nunca envia o segredo, então o nó não consegue conferir uma assinatur
 ```
 
 - O arquivo é montado como segredo em cada nó e lido de novo a cada `auth.reload-interval`. Um arquivo inválido na partida impede o nó de subir; um que fica inválido depois é ignorado e as chaves anteriores continuam valendo.
-- A assinatura precisa ser recente (15 minutos para cada lado), cobrir o corpo e nomear o serviço da porta (`sqs` na porta do SQS, `sns` na do SNS; o mesmo arquivo serve às duas). Segredo errado é `SignatureDoesNotMatch`, chave desconhecida `InvalidClientTokenId`, assinatura ausente `MissingAuthenticationToken`, antiga `RequestExpired`.
+- A assinatura precisa ser recente (15 minutos para cada lado), cobrir o corpo e nomear o serviço a que se destina (`sqs` ou `sns`, que é também o que a encaminha; o mesmo arquivo serve aos dois). Segredo errado é `SignatureDoesNotMatch`, chave desconhecida `InvalidClientTokenId`, assinatura ausente `MissingAuthenticationToken`, antiga `RequestExpired`.
 - As permissões do token decidem o que a chave pode (`create` para criar filas, `publish` para enviar, `consume` para receber, apagar e esconder, `manage` para apagar e esvaziar); uma recusa é `AccessDenied` (`AuthorizationError` no SNS). Um token com prefixos de tópico confina a chave a essas filas, e o `ListQueues` mostra só elas. No SNS valem as mesmas permissões sobre o tópico: `create` para criá-lo, `manage` para apagá-lo, assinar e cancelar a assinatura, `publish` para publicar; uma assinatura também exige que o prefixo da fila esteja dentro dos prefixos do token, e o `ListTopics` mostra só os tópicos que o token alcança.
 - **Com a autenticação do Taba desligada** não precisa de arquivo, qualquer credencial é aceita e nenhuma assinatura é conferida (o nó avisa na partida).
 - **Com a autenticação ligada e sem chaves** toda chamada é recusada (o nó avisa na partida).
 - Credenciais temporárias de uma IAM role não podem ser conferidas sem a AWS: a aplicação precisa de chaves estáticas.
 
-**O exemplo do Compose.** O `docker compose up -d` sobe o cluster com os dois gateways **ligados** (portas `9324` e `9325` no HAProxy) e uma chave de acesso de demonstração: o serviço `init` grava o `aws-credentials.json` no volume `secrets` com a chave `taba` / segredo `taba-secret`, que age com o **token raiz**. Serve só para experimentar o Taba; para qualquer uso real troque o arquivo pelas chaves das suas aplicações, cada uma ligada a um token próprio. `TABA_GATEWAY_SQS_ENABLED=false` e `TABA_GATEWAY_SNS_ENABLED=false` desligam. O padrão do nó não muda: desligado.
+**O exemplo do Compose.** O `docker compose up -d` sobe o cluster com os dois gateways **ligados** (porta `9324` no HAProxy, para o SQS e o SNS) e uma chave de acesso de demonstração: o serviço `init` grava o `aws-credentials.json` no volume `secrets` com a chave `taba` / segredo `taba-secret`, que age com o **token raiz**. Serve só para experimentar o Taba; para qualquer uso real troque o arquivo pelas chaves das suas aplicações, cada uma ligada a um token próprio. `TABA_GATEWAY_SQS_ENABLED=false` e `TABA_GATEWAY_SNS_ENABLED=false` desligam. O padrão do nó não muda: desligado.
 
 ## Como uma fila é guardada
 
@@ -161,5 +162,5 @@ Os SDKs nativos da AWS de seis linguagens (C#, Java v1 e v2, Rust, Go, Python, N
 ## Fontes e provas
 
 - `crates/taba-node/src/gateway/` (o mapa de módulos está em [04-arquitetura.md](04-arquitetura.md)), `config/params/mod.rs` (as chaves).
-- Casos de uso `UC-GTW-001` a `UC-GTW-029` em [26a](26a-casos-de-uso-implementados.md); testes em `crates/taba-node/src/gateway/**/tests.rs`, `crates/taba-node/tests/gateway_sqs.rs` e `crates/taba-node/tests/gateway_sns.rs`.
+- Casos de uso `UC-GTW-001` a `UC-GTW-030` em [26a](26a-casos-de-uso-implementados.md); testes em `crates/taba-node/src/gateway/**/tests.rs`, `crates/taba-node/tests/gateway_sqs.rs` e `crates/taba-node/tests/gateway_sns.rs`.
 - A suíte de contrato dos SDKs nativos: `connectors/gateway-contract/`.

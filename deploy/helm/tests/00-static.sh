@@ -39,27 +39,26 @@ check "UC-01 sem Ingress por padrão"            hasnt 'kind: Ingress' <<<"$DEF"
 check "UC-01 sem backup por padrão"             hasnt 'TABA_BACKUP_S3|bucket:' <<<"$DEF"
 check "UC-01 primeiro nó só no ordinal 0"       has 'HOSTNAME##\*-.*= "0"' <<<"$DEF"
 
-# --- Gateway SQS (doc 39) -----------------------------------------------------------------------
+# --- Gateway SQS e SNS (doc 39): uma porta, cada protocolo liga sozinho ---------------------------
 GW=$(render_ci gateway-sqs.yaml)
-check "gateway: porta sqs no container"          has 'name: sqs, containerPort: 9324' <<<"$GW"
+check "gateway: porta gateway no container"      has 'name: gateway, containerPort: 9324' <<<"$GW"
+check "gateway: porta do nó"                     has 'TABA_GATEWAY_AWS_PORT, value: "9324"' <<<"$GW"
 check "gateway: variáveis do nó"                 has 'TABA_GATEWAY_SQS_ENABLED' <<<"$GW"
 check "gateway: URL pública repassada"           has 'TABA_GATEWAY_SQS_PUBLIC_URL, value: "http://queues.example.com:9324"' <<<"$GW"
 check "gateway: arquivo de chaves montado do Secret" has 'secretName: taba-aws-keys' <<<"$GW"
-check "gateway: Service -sqs"                    has 'name: t-taba-sqs' <<<"$GW"
+check "gateway: Service -gateway"                has 'name: t-taba-gateway' <<<"$GW"
 check "gateway: NetworkPolicy libera a porta"    has 'port: 9324, protocol: TCP' <<<"$GW"
-check "gateway desligado por padrão: sem porta sqs" hasnt 'name: sqs|TABA_GATEWAY' <<<"$DEF"
-check "gateway sqs ligado: sem porta sns"        hasnt 'name: sns|TABA_GATEWAY_SNS' <<<"$GW"
+check "gateway desligado por padrão: sem porta"  hasnt 'name: gateway|TABA_GATEWAY' <<<"$DEF"
+check "gateway sqs ligado: sem SNS"              hasnt 'TABA_GATEWAY_SNS' <<<"$GW"
 
-# --- Gateway SNS (doc 39): cada protocolo liga sozinho -----------------------------------------
 SNS=$(render_ci gateway-sns.yaml)
-check "gateway sns: porta sns no container"      has 'name: sns, containerPort: 9325' <<<"$SNS"
+check "gateway sns: porta gateway no container"  has 'name: gateway, containerPort: 9324' <<<"$SNS"
 check "gateway sns: variáveis do nó"             has 'TABA_GATEWAY_SNS_ENABLED' <<<"$SNS"
 check "gateway sns: arquivo de chaves montado do Secret" has 'secretName: taba-aws-keys' <<<"$SNS"
 check "gateway sns: arquivo de chaves no nó"     has 'TABA_GATEWAY_AWS_CREDENTIALS_FILE' <<<"$SNS"
-check "gateway sns: Service -sns"                has 'name: t-taba-sns' <<<"$SNS"
-check "gateway sns: NetworkPolicy libera a porta" has 'port: 9325, protocol: TCP' <<<"$SNS"
-check "gateway sns ligado: sem porta sqs"        hasnt 'name: sqs|TABA_GATEWAY_SQS' <<<"$SNS"
-check "gateway desligado por padrão: sem porta sns" hasnt 'name: sns|TABA_GATEWAY_SNS' <<<"$DEF"
+check "gateway sns: Service -gateway"            has 'name: t-taba-gateway' <<<"$SNS"
+check "gateway sns: NetworkPolicy libera a porta" has 'port: 9324, protocol: TCP' <<<"$SNS"
+check "gateway sns ligado: sem SQS"              hasnt 'TABA_GATEWAY_SQS' <<<"$SNS"
 
 # --- UC-02: desenvolvimento ---------------------------------------------------------------------
 DEV=$(render_ci uc-02-desenvolvimento.yaml)

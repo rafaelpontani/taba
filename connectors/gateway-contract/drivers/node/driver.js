@@ -2,7 +2,7 @@
 // runs each line through @aws-sdk/client-sqs and client-sns, the way an application would. Prints one `RESULT` line per
 // scenario line.
 //
-//   node driver.js --sqs-endpoint http://host:9324 --sns-endpoint http://host:9325 --endpoint-mode env|code \
+//   node driver.js --sqs-endpoint http://host:9324 --sns-endpoint http://host:9324 --endpoint-mode env|code \
 //       --prefix gw-node-0101 --lang node --variant current --scenario file.scn ...
 'use strict';
 

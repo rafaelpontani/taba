@@ -1,4 +1,4 @@
-# Gateway SQS (doc 39): porta própria, Service próprio e o arquivo de chaves montado de um Secret.
+# Gateway SQS (doc 39): a porta do gateway, o Service -gateway e o arquivo de chaves montado de um Secret.
 gateway:
   sqs:
     enabled: true

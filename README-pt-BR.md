@@ -310,7 +310,7 @@ As outras linguagens usam o próprio cliente HTTP ou a biblioteca C. O desenho e
 
 ## Use o AWS SDK sem mudar o seu código
 
-Uma aplicação que já envia para o **Amazon SQS** ou publica em tópicos do **Amazon SNS** que alimentam filas SQS pode rodar no Taba **mudando só o endpoint**. O nó tem um gateway que fala os protocolos do SQS e do SNS (JSON e Query, SigV4) e transforma cada chamada numa chamada da API de cliente; então as filas são filas comuns do Taba: replicadas por quórum, com backup no S3 e acessíveis também pela API nativa e pelos conectores. Ele faz parte do nó e da imagem, vem **desligado por padrão**, e cada protocolo tem a sua porta (SQS `9324`, SNS `9325`).
+Uma aplicação que já envia para o **Amazon SQS** ou publica em tópicos do **Amazon SNS** que alimentam filas SQS pode rodar no Taba **mudando só o endpoint**. O nó tem um gateway que fala os protocolos do SQS e do SNS (JSON e Query, SigV4) e transforma cada chamada numa chamada da API de cliente; então as filas são filas comuns do Taba: replicadas por quórum, com backup no S3 e acessíveis também pela API nativa e pelos conectores. Ele faz parte do nó e da imagem, vem **desligado por padrão**, e o SQS e o SNS são atendidos em **uma porta só**, a `9324`.
 
 **Vantagens**
 - **Sem mudar código, sem cliente novo:** o SDK que você já usa (C#, Java, Rust, Go, Python, Node.js, nas versões atuais e nas antigas) continua funcionando. Os mesmos cenários rodam com o SDK nativo de cada linguagem nos [testes de contrato do gateway](connectors/gateway-contract/README.md), e também no ElasticMQ e no moto, para mostrar que os testes estão certos.
@@ -327,18 +327,18 @@ Uma aplicação que já envia para o **Amazon SQS** ou publica em tópicos do **
 
 ### Rode
 
-Com o [cluster do Docker Compose](#experimente-em-um-minuto) o gateway já vem **ligado** (SQS em `localhost:9324`, SNS em `localhost:9325`), com uma chave de acesso de demonstração que você usa na hora:
+Com o [cluster do Docker Compose](#experimente-em-um-minuto) o gateway já vem **ligado** (SQS e SNS em `localhost:9324`), com uma chave de acesso de demonstração que você usa na hora:
 
 ```bash
 docker compose up -d
-export AWS_ENDPOINT_URL_SQS=http://localhost:9324 AWS_ENDPOINT_URL_SNS=http://localhost:9325
+export AWS_ENDPOINT_URL_SQS=http://localhost:9324 AWS_ENDPOINT_URL_SNS=http://localhost:9324
 export AWS_ACCESS_KEY_ID=taba AWS_SECRET_ACCESS_KEY=taba-secret AWS_REGION=us-east-1
 ```
 
 Essa chave age com o token raiz e serve só para experimentar o Taba (veja [as chaves de acesso](doc/pt-BR/39-gateway.md#as-chaves-de-acesso)). Ou um nó para desenvolvimento (sem autenticação, então qualquer chave de acesso é aceita; nunca deve ficar numa rede):
 
 ```bash
-docker run -d --name taba-dev -p 8080:8080 -p 9324:9324 -p 9325:9325 \
+docker run -d --name taba-dev -p 8080:8080 -p 9324:9324 \
   -e TABA_REPLICATION_FACTOR=1 -e TABA_GATEWAY_SQS_ENABLED=true -e TABA_GATEWAY_SNS_ENABLED=true \
   rafaelpontani/taba
 ```
@@ -347,7 +347,7 @@ Aponte o SDK para ele. Os SDKs atuais leem o endpoint do ambiente, então **o c�
 
 ```bash
 export AWS_ENDPOINT_URL_SQS=http://localhost:9324
-export AWS_ENDPOINT_URL_SNS=http://localhost:9325
+export AWS_ENDPOINT_URL_SNS=http://localhost:9324
 export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_REGION=us-east-1   # qualquer valor enquanto a autenticação está desligada
 ```
 
@@ -372,7 +372,7 @@ for m in sqs.receive_message(QueueUrl=url, WaitTimeSeconds=5).get("Messages", []
 O SNS publicando na mesma fila:
 
 ```python
-sns = boto3.client("sns", region_name="us-east-1", endpoint_url="http://localhost:9325")
+sns = boto3.client("sns", region_name="us-east-1", endpoint_url="http://localhost:9324")
 topic = sns.create_topic(Name="events")["TopicArn"]
 queue_arn = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]   # arn:aws:sqs:us-east-1:000000000000:orders
 sns.subscribe(TopicArn=topic, Protocol="sqs", Endpoint=queue_arn)   # a fila "orders" passa a receber toda publicação

@@ -18,19 +18,10 @@ spec:
       from:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-    {{- if .Values.gateway.sqs.enabled }}
-    # Gateway SQS: o mesmo conjunto de origens da API do cliente
+    {{- if (or .Values.gateway.sqs.enabled .Values.gateway.sns.enabled) }}
+    # Gateway para os SDKs da AWS (SQS e SNS, uma porta): o mesmo conjunto de origens da API do cliente
     - ports:
-        - { port: {{ .Values.gateway.sqs.port }}, protocol: TCP }
-      {{- with .Values.networkPolicy.apiFrom }}
-      from:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-    {{- end }}
-    {{- if .Values.gateway.sns.enabled }}
-    # Gateway SNS: o mesmo conjunto de origens da API do cliente
-    - ports:
-        - { port: {{ .Values.gateway.sns.port }}, protocol: TCP }
+        - { port: {{ .Values.gateway.port }}, protocol: TCP }
       {{- with .Values.networkPolicy.apiFrom }}
       from:
         {{- toYaml . | nindent 8 }}

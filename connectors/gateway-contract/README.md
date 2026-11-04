@@ -88,8 +88,8 @@ gateway is really not there.
 
 ## Targets
 
-- **Taba**: one node (`TABA_IMAGE`, default `taba:local`) with `gateway.sqs.enabled`, `gateway.sns.enabled`, their ports
-  (9324 and 9325), `gateway.sqs.public-url` and `gateway.aws.credentials-file` set through `TABA_GATEWAY_*` variables. Today
+- **Taba**: one node (`TABA_IMAGE`, default `taba:local`) with `gateway.sqs.enabled`, `gateway.sns.enabled`, the port
+  of the gateway (9324, SQS and SNS), `gateway.sqs.public-url` and `gateway.aws.credentials-file` set through `TABA_GATEWAY_*` variables. Today
   the node only warns about variables it does not know and starts, so the red run and the green run use the same command. The
   credentials file (a JSON with `accessKeyId -> {secret, token}`) holds the keys of the `ok`,
   `consumeonly` and `prefixed` tokens of `scenarios/taba/auth.scn`.

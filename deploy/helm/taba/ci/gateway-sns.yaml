@@ -1,4 +1,4 @@
-# Gateway SNS (doc 39): porta própria, Service próprio e o arquivo de chaves (o mesmo do SQS) montado de um Secret.
+# Gateway SNS (doc 39): a porta do gateway, o Service -gateway e o arquivo de chaves (o mesmo do SQS) montado de um Secret.
 gateway:
   sns:
     enabled: true

@@ -2,7 +2,7 @@
 The Python driver of the gateway contract tests (connectors/gateway-contract/README.md): reads the scenario files and
 runs each line through boto3, the way an application would. Prints one `RESULT` line per scenario line.
 
-    python driver.py --sqs-endpoint http://host:9324 --sns-endpoint http://host:9325 --endpoint-mode env|code \
+    python driver.py --sqs-endpoint http://host:9324 --sns-endpoint http://host:9324 --endpoint-mode env|code \
         --prefix gw-python-0101 --lang python --variant current --scenario file.scn ...
 """
 
