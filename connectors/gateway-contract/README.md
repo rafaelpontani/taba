@@ -120,5 +120,5 @@ connectors/gateway-contract/run.sh python --target emulator   # one language
 ```
 
 Logs go to `.out/<run>/<driver>.log` (not versioned). The first run downloads the toolchain images and builds the drivers
-(the Rust one takes minutes); the package caches live in Docker volumes (`gwpip`, `gwnpm`, `gwgocache`, `gwnuget`, `gwm2`,
+(the Rust one takes minutes); the package caches live in Docker volumes (`gwpip`, `gwnpm`, `gwgocache`, `gwm2`,
 `gwcargo`, `gwrusttarget`).

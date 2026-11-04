@@ -34,7 +34,8 @@ case "$lang" in
   python) volumes=(-v gwpip:/root/.cache/pip) ;;
   node) volumes=(-v gwnpm:/root/.npm) ;;
   go) volumes=(-v gwgocache:/go/pkg/mod) ;;
-  csharp) volumes=(-v gwnuget:/root/.nuget/packages -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1) ;;
+  # NuGet: cache de cada contêiner (volume anônimo); drivers em paralelo que dividiam o mesmo volume quebravam o restore
+  csharp) volumes=(-v /root/.nuget/packages -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1) ;;
   java) volumes=(-v gwm2:/root/.m2) ;;
   rust) volumes=(-v gwcargo:/usr/local/cargo/registry -v gwrusttarget:/cache) ;;
 esac
