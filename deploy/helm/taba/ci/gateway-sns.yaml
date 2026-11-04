@@ -1,0 +1,10 @@
+# Gateway SNS (doc 39): a porta do gateway, o Service -gateway e o arquivo de chaves (o mesmo do SQS) montado de um Secret.
+gateway:
+  sns:
+    enabled: true
+  credentialsSecret:
+    name: taba-aws-keys
+networkPolicy:
+  enabled: true
+persistence:
+  size: 1Gi

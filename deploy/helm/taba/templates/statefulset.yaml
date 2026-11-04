@@ -75,6 +75,9 @@ spec:
             - { name: cluster, containerPort: {{ .Values.ports.cluster }} }
             {{- end }}
             - { name: ops, containerPort: {{ .Values.ports.operations }} }
+            {{- if (or .Values.gateway.sqs.enabled .Values.gateway.sns.enabled) }}
+            - { name: gateway, containerPort: {{ .Values.gateway.port }} }
+            {{- end }}
           env:
             {{- if not $dev }}
             # O nó descobre o próprio IP pelo entry-address; aqui ele é informado direto (o entry-address só
@@ -96,6 +99,21 @@ spec:
                   name: {{ include "taba.s3SecretName" . }}
                   key: secretKey
             {{- end }}
+            {{- end }}
+            {{- if (or .Values.gateway.sqs.enabled .Values.gateway.sns.enabled) }}
+            - { name: TABA_GATEWAY_AWS_PORT, value: {{ .Values.gateway.port | quote }} }
+            {{- end }}
+            {{- if .Values.gateway.sqs.enabled }}
+            - { name: TABA_GATEWAY_SQS_ENABLED, value: "true" }
+            {{- with .Values.gateway.sqs.publicUrl }}
+            - { name: TABA_GATEWAY_SQS_PUBLIC_URL, value: {{ . | quote }} }
+            {{- end }}
+            {{- end }}
+            {{- if .Values.gateway.sns.enabled }}
+            - { name: TABA_GATEWAY_SNS_ENABLED, value: "true" }
+            {{- end }}
+            {{- if and (or .Values.gateway.sqs.enabled .Values.gateway.sns.enabled) .Values.gateway.credentialsSecret.name }}
+            - { name: TABA_GATEWAY_AWS_CREDENTIALS_FILE, value: /etc/taba/gateway/{{ .Values.gateway.credentialsSecret.key }} }
             {{- end }}
             {{- with .Values.otel.endpoint }}
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ . | quote }} }
@@ -164,6 +182,9 @@ spec:
             {{- if .Values.otel.certificateConfigMap.name }}
             - { name: otel-ca, mountPath: /etc/taba/otel, readOnly: true }
             {{- end }}
+            {{- if and (or .Values.gateway.sqs.enabled .Values.gateway.sns.enabled) .Values.gateway.credentialsSecret.name }}
+            - { name: gateway-credentials, mountPath: /etc/taba/gateway, readOnly: true }
+            {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -185,6 +206,12 @@ spec:
         - name: otel-ca
           configMap:
             name: {{ .Values.otel.certificateConfigMap.name }}
+        {{- end }}
+        {{- if and (or .Values.gateway.sqs.enabled .Values.gateway.sns.enabled) .Values.gateway.credentialsSecret.name }}
+        - name: gateway-credentials
+          secret:
+            secretName: {{ .Values.gateway.credentialsSecret.name }}
+            defaultMode: 0440
         {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}

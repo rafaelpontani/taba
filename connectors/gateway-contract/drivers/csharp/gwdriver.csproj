@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <NoWarn>CS8600;CS8601;CS8602;CS8604;CS8618;CS0618</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.SQS" Version="$(SqsVersion)" />
+    <PackageReference Include="AWSSDK.SimpleNotificationService" Version="$(SnsVersion)" />
+  </ItemGroup>
+</Project>

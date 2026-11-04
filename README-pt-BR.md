@@ -35,7 +35,7 @@ Por isso o Taba é medido [contra brokers da mesma classe](doc/pt-BR/38-benchmar
 | **Durabilidade** | Cada mensagem é confirmada por um **quorum** de nós (3 cópias por padrão) e copiada **continuamente para o S3** (AWS, SeaweedFS, MinIO, Ceph...) |
 | **Implantação** | Uma imagem Docker (58 MB), Docker Compose ou o **Helm chart** em `oci://ghcr.io/rafaelpontani/charts/taba` |
 | **Operação** | `taba-cli`, uma linha de comando com **interface de terminal em tela cheia** (saúde do cluster, tópicos, gráficos das filas), além de métricas Prometheus e OpenTelemetry |
-| **Clientes** | HTTP simples, de qualquer linguagem; conectores prontos para **Java, C#/.NET, Python, Node.js e Rust** (Rust no crates.io, C# no nuget.org), todos sem dependências, além de um driver para o [OpenMessaging Benchmark](connectors/omb/README.md) |
+| **Clientes** | HTTP simples, de qualquer linguagem; conectores prontos para **Java, C#/.NET, Python, Node.js e Rust** (Rust no crates.io, C# no nuget.org), todos sem dependências, além de um driver para o [OpenMessaging Benchmark](connectors/omb/README.md). Aplicações que usam o **AWS SDK (SQS e SNS)** se conectam sem mudar o código ([gateway](#use-o-aws-sdk-sem-mudar-o-seu-código)) |
 | **Licença** | Servidor AGPLv3, conectores Apache-2.0 |
 
 ## Por que o Taba
@@ -136,6 +136,8 @@ Sistemas da mesma classe, os brokers de mensagens ([por que as plataformas de st
 
 **Tem interface de usuário?** Sim, no terminal: `taba-cli tui` ([Veja funcionando](#veja-funcionando)). Não há painel web; para gráficos de longo prazo, use as métricas do Prometheus.
 
+**Minha aplicação que usa o Amazon SQS ou SNS pode usar o Taba?** Pode, com o gateway do nó: você troca o endpoint do SDK e mantém o código ([como, com exemplos em seis linguagens](#use-o-aws-sdk-sem-mudar-o-seu-código)). Cobre o SQS (padrão e FIFO) e tópicos do SNS que publicam nessas filas; o que não é coberto está listado ali.
+
 **Está em produção?** Sim. Toda versão é publicada no Docker Hub, GHCR, crates.io, nuget.org e GitHub Releases, assinada e com proveniência ([Verificando um release](#verificando-um-release)).
 
 ## Limites
@@ -149,7 +151,7 @@ O que limita um cluster Taba é o hardware que você dá a ele, não um número 
 
 O que o Taba não faz:
 
-- **Não substitui um protocolo:** o Taba fala HTTP. Não há compatibilidade com os protocolos AMQP ou MQTT, então trocar de broker significa trocar o cliente.
+- **Não substitui um protocolo, exceto o da AWS:** o Taba fala HTTP, e um gateway opcional fala os protocolos do **SQS e do SNS** ([acima](#use-o-aws-sdk-sem-mudar-o-seu-código), com os seus limites). Ainda não há compatibilidade com AMQP ou MQTT, então vir do RabbitMQ significa trocar o cliente.
 - **Não é uma plataforma de streaming:** processamento de streams e reprodução do histórico de mensagens estão fora do escopo ([Mensageria, não streaming](#mensageria-não-streaming)). Para filas e pub/sub, sim; para reler o passado, não.
 - **Fora do escopo por enquanto:** interface web, autenticação avançada (OAuth/OIDC) e multirregião.
 - **Ainda por vir:** os conectores de PHP, Ruby, Go, C e C++, e os pacotes dos conectores Java, Node.js e Python (hoje eles são usados a partir do código-fonte). Veja o [roadmap](doc/pt-BR/32-roadmap.md) e os [problemas conhecidos](doc/pt-BR/36-problemas-conhecidos.md).
@@ -305,6 +307,127 @@ O `taba-cli`, a linha de comando de cliente ([connectors/rust/cli](connectors/ru
 As outras linguagens usam o próprio cliente HTTP ou a biblioteca C. O desenho está no [guia dos conectores](doc/pt-BR/21-conectores.md).
 
 > As versões base são propostas e podem mudar até serem confirmadas (pendência D68, veja as [pendências](doc/pt-BR/31-pendencias.md)).
+
+## Use o AWS SDK sem mudar o seu código
+
+Uma aplicação que já envia para o **Amazon SQS** ou publica em tópicos do **Amazon SNS** que alimentam filas SQS pode rodar no Taba **mudando só o endpoint**. O nó tem um gateway que fala os protocolos do SQS e do SNS (JSON e Query, SigV4) e transforma cada chamada numa chamada da API de cliente; então as filas são filas comuns do Taba: replicadas por quórum, com backup no S3 e acessíveis também pela API nativa e pelos conectores. Ele faz parte do nó e da imagem, vem **desligado por padrão**, e o SQS e o SNS são atendidos em **uma porta só**, a `9324`.
+
+**Vantagens**
+- **Sem mudar código, sem cliente novo:** o SDK que você já usa (C#, Java, Rust, Go, Python, Node.js, nas versões atuais e nas antigas) continua funcionando. Os mesmos cenários rodam com o SDK nativo de cada linguagem nos [testes de contrato do gateway](connectors/gateway-contract/README.md), e também no ElasticMQ e no moto, para mostrar que os testes estão certos.
+- **Saia da AWS sem reescrever:** sem cobrança por requisição, e as mesmas filas rodam na sua máquina, numa VM ou no Kubernetes. O desenvolvimento local usa a mesma imagem da produção, sem emulador.
+- **Nada a mais para operar:** o gateway está dentro de cada nó. Não há serviço extra nem estado próprio, e qualquer nó atende qualquer chamada.
+- **Um sistema, duas portas:** uma mensagem enviada pelo SDK é lida por um conector nativo, e o contrário também. Há filas padrão e **FIFO**, atraso, dead-letter, atributos de mensagem, long polling e os códigos de erro da AWS ([a lista completa](doc/pt-BR/39-gateway.md)).
+
+**Limitações** (cada uma é um erro explícito, nunca ignorada em silêncio; todas no [doc 39](doc/pt-BR/39-gateway.md))
+- Só SQS e SNS. O SNS entrega **só para filas SQS**: sem assinantes HTTP, e-mail, SMS ou Lambda.
+- `RawMessageDelivery=true` e `FilterPolicy` numa assinatura são **recusados**, **tópicos** FIFO são recusados, e um tópico tem no máximo 20 assinaturas. A notificação não é assinada, então uma aplicação que verifica a assinatura do SNS falha.
+- A assinatura é um **prefixo** do nome: assinar `orders` também copia para `orders-eu`, e um tópico e uma fila não podem ter o mesmo nome.
+- As chaves de acesso são estáticas e ficam num arquivo (`gateway.aws.credentials-file`); credenciais temporárias de um papel IAM não são aceitas.
+- Sair da AWS é ficar sem IAM, KMS e CloudWatch: a política da fila e os atributos de criptografia são aceitos e ignorados.
+
+### Rode
+
+Com o [cluster do Docker Compose](#experimente-em-um-minuto) o gateway já vem **ligado** (SQS e SNS em `localhost:9324`), com uma chave de acesso de demonstração que você usa na hora:
+
+```bash
+docker compose up -d
+export AWS_ENDPOINT_URL_SQS=http://localhost:9324 AWS_ENDPOINT_URL_SNS=http://localhost:9324
+export AWS_ACCESS_KEY_ID=taba AWS_SECRET_ACCESS_KEY=taba-secret AWS_REGION=us-east-1
+```
+
+Essa chave age com o token raiz e serve só para experimentar o Taba (veja [as chaves de acesso](doc/pt-BR/39-gateway.md#as-chaves-de-acesso)). Ou um nó para desenvolvimento (sem autenticação, então qualquer chave de acesso é aceita; nunca deve ficar numa rede):
+
+```bash
+docker run -d --name taba-dev -p 8080:8080 -p 9324:9324 \
+  -e TABA_REPLICATION_FACTOR=1 -e TABA_GATEWAY_SQS_ENABLED=true -e TABA_GATEWAY_SNS_ENABLED=true \
+  rafaelpontani/taba
+```
+
+Aponte o SDK para ele. Os SDKs atuais leem o endpoint do ambiente, então **o código não muda em nada**:
+
+```bash
+export AWS_ENDPOINT_URL_SQS=http://localhost:9324
+export AWS_ENDPOINT_URL_SNS=http://localhost:9324
+export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_REGION=us-east-1   # qualquer valor enquanto a autenticação está desligada
+```
+
+As versões antigas dos SDKs (anteriores à variável de endpoint) recebem o endereço no código, como em todos os exemplos abaixo. Num cluster a autenticação está ligada: cada aplicação recebe uma chave de acesso ligada a um token do Taba (suas permissões e prefixos de tópico) num arquivo de credenciais montado nos nós. Com o [chart Helm](#rode-no-kubernetes-helm): `kubectl create secret generic aws-keys --from-file=credentials.json` e `helm install taba oci://ghcr.io/rafaelpontani/charts/taba --set gateway.sqs.enabled=true --set gateway.sns.enabled=true --set gateway.credentialsSecret.name=aws-keys --set gateway.sqs.publicUrl=https://queues.example.com`. O formato do arquivo, as permissões e as configurações estão no [guia do gateway](doc/pt-BR/39-gateway.md) e na [configuração](doc/pt-BR/22-configuracao.md).
+
+### Conecte
+
+Em todos os exemplos a fila se chama `orders`: é o nome da fila SQS e também o nome do tópico (fila) do Taba, então `taba-cli consume orders` lê as mesmas mensagens. O SQS não usa o nome nas chamadas de mensagem, e sim a **URL da fila** (`QueueUrl`). Você a obtém pelo nome: `CreateQueue` (cria a fila ou devolve a que já existe) ou `GetQueueUrl` devolvem `http://localhost:9324/000000000000/orders`, e é essa URL que vai em `SendMessage`, `ReceiveMessage` e `DeleteMessage`. A `QueueArn` (`arn:aws:sqs:us-east-1:000000000000:orders`) é a identificação da fila que o SNS usa na assinatura.
+
+```python
+# Python (boto3): criar uma fila, enviar, receber e apagar
+import boto3
+
+sqs = boto3.client("sqs", region_name="us-east-1", endpoint_url="http://localhost:9324")
+url = sqs.create_queue(QueueName="orders")["QueueUrl"]   # CreateQueue recebe o NOME e devolve a URL; as outras chamadas usam a URL
+sqs.send_message(QueueUrl=url, MessageBody='{"order": 9001}')
+for m in sqs.receive_message(QueueUrl=url, WaitTimeSeconds=5).get("Messages", []):
+    print(m["Body"])
+    sqs.delete_message(QueueUrl=url, ReceiptHandle=m["ReceiptHandle"])
+```
+
+O SNS publicando na mesma fila:
+
+```python
+sns = boto3.client("sns", region_name="us-east-1", endpoint_url="http://localhost:9324")
+topic = sns.create_topic(Name="events")["TopicArn"]
+queue_arn = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]   # arn:aws:sqs:us-east-1:000000000000:orders
+sns.subscribe(TopicArn=topic, Protocol="sqs", Endpoint=queue_arn)   # a fila "orders" passa a receber toda publicação
+sns.publish(TopicArn=topic, Message="hello", Subject="greeting")
+```
+
+```js
+// Node.js (AWS SDK v3)
+import { SQSClient, CreateQueueCommand, SendMessageCommand, ReceiveMessageCommand } from "@aws-sdk/client-sqs";
+
+const sqs = new SQSClient({ region: "us-east-1", endpoint: "http://localhost:9324" });
+const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: "orders" }));   // o nome entra, a URL sai
+await sqs.send(new SendMessageCommand({ QueueUrl, MessageBody: "hello" }));
+const { Messages } = await sqs.send(new ReceiveMessageCommand({ QueueUrl, WaitTimeSeconds: 5 }));
+```
+
+```java
+// Java (AWS SDK v2)
+SqsClient sqs = SqsClient.builder()
+    .region(Region.US_EAST_1)
+    .endpointOverride(URI.create("http://localhost:9324"))
+    .build();
+String url = sqs.createQueue(r -> r.queueName("orders")).queueUrl();   // o nome entra, a URL sai
+sqs.sendMessage(r -> r.queueUrl(url).messageBody("hello"));
+```
+
+```csharp
+// C# (AWSSDK.SQS)
+var sqs = new AmazonSQSClient(new AmazonSQSConfig { ServiceURL = "http://localhost:9324", AuthenticationRegion = "us-east-1" });
+var url = (await sqs.CreateQueueAsync("orders")).QueueUrl;   // o nome entra, a URL sai
+await sqs.SendMessageAsync(new SendMessageRequest { QueueUrl = url, MessageBody = "hello" });
+```
+
+```go
+// Go (aws-sdk-go-v2)
+cfg, _ := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+client := sqs.NewFromConfig(cfg, func(o *sqs.Options) { o.BaseEndpoint = aws.String("http://localhost:9324") })
+created, _ := client.CreateQueue(ctx, &sqs.CreateQueueInput{QueueName: aws.String("orders")})   // o nome entra, a URL sai
+client.SendMessage(ctx, &sqs.SendMessageInput{QueueUrl: created.QueueUrl, MessageBody: aws.String("hello")})
+```
+
+```rust
+// Rust (aws-sdk-sqs)
+let shared = aws_config::defaults(BehaviorVersion::latest()).region("us-east-1").load().await;
+let conf = aws_sdk_sqs::config::Builder::from(&shared).endpoint_url("http://localhost:9324").build();
+let client = aws_sdk_sqs::Client::from_conf(conf);
+let url = client.create_queue().queue_name("orders").send().await?.queue_url().unwrap().to_string();   // o nome entra, a URL sai
+client.send_message().queue_url(&url).message_body("hello").send().await?;
+```
+
+E a mesma mensagem sem SDK nenhum, pela API nativa (o corpo de uma mensagem enviada sem atributos é guardado como veio):
+
+```bash
+taba-cli consume orders --wait 5 --ack
+```
 
 ## Como funciona por dentro
 

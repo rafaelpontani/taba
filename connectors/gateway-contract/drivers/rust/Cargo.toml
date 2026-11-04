@@ -1,0 +1,16 @@
+[package]
+name = "gwdriver"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# The SDK versions come from run.sh (the "current" variant takes whatever is newest at the time of the run and
+# prints it in the SUMMARY line).
+[dependencies]
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-sqs = "1"
+aws-sdk-sns = "1"
+base64 = "0.22"
+md-5 = "0.10"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

@@ -68,7 +68,6 @@ The node **does not start** (message in Portuguese, one per problem) when:
 - `operations.allowed-ips` or `client-ip.trusted-proxies` have an invalid entry;
 - `backup.s3.access-key` without `backup.s3.secret-key` (or the reverse); `backup.segment.max-bytes` or `backup.segment.max-messages` equal to zero; the rule `backup.disk.evict-to` < `backup.disk.evict-above` < `backup.disk.pause-at` ≤ 100 violated; `backup.dead-after` that does not exceed `backup.heartbeat.interval` (every node would look dead).
 
-
 `mode` and `development.resume-on-start` **no longer exist** (the development mode went away, [07-cluster.md](07-cluster.md), section 8): a file or a variable that still sets them keeps starting, with a warning in the log, and they do nothing. To run a single node, use the one-node profile (`replication.factor=1`, and if you want `cluster.tls.enabled=false` and `auth.dev-token`).
 
 ## How to read the tables
@@ -274,7 +273,6 @@ The node **does not start** (message in Portuguese, one per problem) when:
 | `client-ip.headers` | `TABA_CLIENT_IP_HEADERS` | **X-Forwarded-For** | List, in order, of headers consulted; the first present applies and, in it, the first address. |
 | `client-ip.trusted-proxies` | `TABA_CLIENT_IP_TRUSTED_PROXIES` | empty (header accepted from any origin) | List of IPs/CIDR of the load balancers or proxies whose IP headers are accepted. Empty: accepts from any origin (the service must stay in a secure layer). Applies to the rate limit and to `operations.allowed-ips`. |
 
-
 ## Optional S3 backup
 
 The feature turns on with `backup.s3.bucket`; without it none of this exists. How it works: [33-s3-backup.md](33-s3-backup.md).
@@ -301,6 +299,18 @@ The feature turns on with `backup.s3.bucket`; without it none of this exists. Ho
 | `backup.disk.pause-at` | `TABA_BACKUP_DISK_PAUSE_AT` | **90** | During flush and drain, the move from memory to disk pauses at this use (%) until eviction frees space. |
 | `backup.reconcile.interval` | `TABA_BACKUP_RECONCILE_INTERVAL` | **60s** | How often the manager rewrites the definitions that diverge from the bucket, deletes segments expired by `ttl` and the node cleans dead heartbeats. |
 | `backup.restore.lock-ttl` | `TABA_BACKUP_RESTORE_LOCK_TTL` | **60s** | Validity of the restore lock: the holder renews it; stopped for this long, another node takes it. |
+
+## Gateway for the AWS SDKs
+
+The SQS and the SNS protocols are served on **one port**, and each is **off by default**; with both keys off the port does not open. How it works and what is supported: [39-gateway.md](39-gateway.md).
+
+| Key | Variable | Default | What it does |
+|---|---|---|---|
+| `gateway.sqs.enabled` | `TABA_GATEWAY_SQS_ENABLED` | **false** | Turns on the SQS protocol and, with it, the port of the gateway. |
+| `gateway.aws.port` | `TABA_GATEWAY_AWS_PORT` | **9324** | The port of the gateway, for SQS and SNS. It must differ from `api.port`, `cluster.port` and `operations.port` (checked when SQS or SNS is on). A call for the protocol that is off answers `404` with the key that turns it on. |
+| `gateway.sqs.public-url` | `TABA_GATEWAY_SQS_PUBLIC_URL` | no value (the `Host` of the request) | The address written in the `QueueUrl` the gateway returns, such as `https://queues.example.com`. The node does not know the load balancer, and some SDKs use the `QueueUrl` as the endpoint of the next call, so behind a balancer set it. Must start with `http://` or `https://`. |
+| `gateway.sns.enabled` | `TABA_GATEWAY_SNS_ENABLED` | **false** | Turns on the SNS protocol and, with it, the port of the gateway. It is independent of SQS, but the queues a topic publishes to are SQS queues of the gateway (or Taba queues). |
+| `gateway.aws.credentials-file` | `TABA_GATEWAY_AWS_CREDENTIALS_FILE` | no value | JSON file with the access keys of the applications: `{"<accessKeyId>": {"secret": "...", "token": "tb_..."}}`. The same file serves the SQS and the SNS gateways. The gateway checks the SigV4 signature with the `secret` and acts with the permissions and prefixes of the Taba `token`. It is read again every `auth.reload-interval`; a file that cannot be read when the node starts stops the start. With the Taba authentication off, no file is needed and no signature is checked. |
 
 ## Fixed limits (not configuration)
 

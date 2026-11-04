@@ -1,0 +1,33 @@
+# Credentials against the Taba gateway (only Taba: the emulators accept anything). run.sh makes the credentials:
+#   ok            the key of a token with every permission
+#   badsecret     a key that exists, with the wrong secret
+#   unknown       a key that is not in the credentials file
+#   consumeonly   the key of a token with the consume permission only
+#   prefixed      the key of a token restricted to topics that start with the prefix of the run (gw<run>): {p}-... is inside, other-{p} is outside
+useCredentials name=ok
+createQueue name={p}-ok-q as=q => url~{p}-ok-q
+send queue=$q.url body=signed => md5Ok=true
+receive queue=$q.url max=1 wait=2 visibility=30 as=r => count=1 body=signed
+deleteMessage queue=$q.url handle=$r.handle
+
+useCredentials name=badsecret
+listQueues prefix={p}- => error=SignatureDoesNotMatch
+send queue=$q.url body=x => error=SignatureDoesNotMatch
+
+useCredentials name=unknown
+listQueues prefix={p}- => error=InvalidClientTokenId|UnrecognizedClientException
+send queue=$q.url body=x => error=InvalidClientTokenId|UnrecognizedClientException
+
+useCredentials name=consumeonly
+send queue=$q.url body=x => error=AccessDenied|AccessDeniedException|AWS.SimpleQueueService.AccessDenied
+createQueue name={p}-ok-denied => error=AccessDenied|AccessDeniedException|AWS.SimpleQueueService.AccessDenied
+receive queue=$q.url max=1 wait=0 visibility=30 => count=0
+
+useCredentials name=prefixed
+createQueue name={p}-ok-mine as=mine => url~{p}-ok-mine
+createQueue name=other-{p} => error=AccessDenied|AccessDeniedException|AWS.SimpleQueueService.AccessDenied
+send queue=$mine.url body=allowed => id=*
+
+useCredentials name=ok
+deleteQueue queue=$q.url
+deleteQueue queue=$mine.url

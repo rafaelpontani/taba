@@ -1,0 +1,3 @@
+# name mode   (mode: env = the SDK reads AWS_ENDPOINT_URL_SQS/SNS; code = the endpoint goes in the code)
+current env
+old code

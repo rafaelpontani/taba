@@ -127,6 +127,10 @@ impl Parse for DbSynchronous {
 pub struct Secret(String);
 
 impl Secret {
+    pub fn new(value: String) -> Self {
+        Self(value)
+    }
+
     pub fn expose(&self) -> &str {
         &self.0
     }
@@ -468,6 +472,29 @@ pub struct ClientIp {
     pub trusted_proxies: Vec<IpNet>,
 }
 
+/// The gateway for the AWS SDKs (`gateway.*`, doc 39): one port for the SQS and the SNS protocols, each off by default.
+#[derive(Debug, Clone)]
+pub struct Gateway {
+    /// `gateway.aws.port`: opens when `sqs` or `sns` is enabled.
+    pub port: u16,
+    pub sqs: GatewaySqs,
+    pub sns: GatewaySns,
+    /// `gateway.aws.credentials-file`: `accessKeyId -> {secret, token}`, shared by the AWS protocols.
+    pub credentials_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GatewaySns {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct GatewaySqs {
+    pub enabled: bool,
+    /// The address in the `QueueUrl` the gateway returns; without it, the `Host` of the request.
+    pub public_url: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub ports: Ports,
@@ -492,6 +519,7 @@ pub struct Config {
     pub operations_allowed_ips: Vec<IpNet>,
     pub rate_limit: RateLimit,
     pub client_ip: ClientIp,
+    pub gateway: Gateway,
     /// Warnings from reading (ignored parameters, unknown variables). The node
     /// logs them on startup.
     pub warnings: Vec<String>,
@@ -854,6 +882,41 @@ impl Config {
                 .unwrap_or_default(),
         };
 
+        let gateway = Gateway {
+            port: s.get("gateway.aws.port")?,
+            sqs: GatewaySqs {
+                enabled: s.get("gateway.sqs.enabled")?,
+                public_url: s
+                    .opt::<String>("gateway.sqs.public-url")?
+                    .map(|url| url.trim().trim_end_matches('/').to_owned())
+                    .filter(|url| !url.is_empty()),
+            },
+            sns: GatewaySns {
+                enabled: s.get("gateway.sns.enabled")?,
+            },
+            credentials_file: s
+                .opt::<String>("gateway.aws.credentials-file")?
+                .filter(|path| !path.trim().is_empty())
+                .map(PathBuf::from),
+        };
+        if gateway.sqs.enabled || gateway.sns.enabled {
+            // `0` (any free port) is only for the tests and never repeats another port.
+            if gateway.port != 0
+                && [ports.api, ports.cluster, ports.operations].contains(&gateway.port)
+            {
+                problems.push(format!(
+                    "gateway.aws.port ({}) repeats api.port, cluster.port or operations.port",
+                    gateway.port
+                ));
+            }
+        }
+        if gateway.sqs.enabled
+            && let Some(url) = &gateway.sqs.public_url
+            && !(url.starts_with("http://") || url.starts_with("https://"))
+        {
+            problems.push("gateway.sqs.public-url must start with http:// or https://".into());
+        }
+
         if let Some(level) = &telemetry.logs_level
             && !["trace", "debug", "info", "warn", "error"].contains(&level.as_str())
         {
@@ -891,6 +954,7 @@ impl Config {
             operations_allowed_ips,
             rate_limit,
             client_ip,
+            gateway,
             warnings: Vec::new(),
         })
     }

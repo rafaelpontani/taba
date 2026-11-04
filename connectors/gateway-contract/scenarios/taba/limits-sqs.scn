@@ -1,0 +1,17 @@
+# What differs from SQS on purpose or by a known limit, SQS part (doc 39 and the plan, section 5.1). Only Taba: a line here is
+# written against the table of the plan, not against an emulator.
+
+createQueue name={p}-lim-q as=q
+getQueueAttributes queue=$q.url names=QueueArn as=qa
+
+# --- the queue policy an SNS subscription needs is accepted (and has no effect) ----------------------------------
+allowSnsToSend queue=$q.url queueArn=$qa.attr_QueueArn topic=arn:aws:sns:us-east-1:000000000000:{p}-lim
+getQueueAttributes queue=$q.url names=QueueArn => attr_QueueArn=$qa.attr_QueueArn
+
+# --- the delayed messages are counted as in processing while PRB-093 is open -----------------------------------------
+send queue=$q.url body=delayed-count delay=60
+getQueueAttributes queue=$q.url names=ApproximateNumberOfMessagesDelayed => attr_ApproximateNumberOfMessagesDelayed=0
+purgeQueue queue=$q.url
+
+# --- cleanup --------------------------------------------------------------------------------------------------------------
+deleteQueue queue=$q.url

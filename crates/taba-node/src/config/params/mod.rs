@@ -182,6 +182,12 @@ pub static PARAMS: &[Param] = &[
     p("backup.disk.pause-at", Some("90")),
     p("backup.reconcile.interval", Some("60s")),
     p("backup.restore.lock-ttl", Some("60s")),
+    // Gateway for the AWS SDKs (doc 39): one port per protocol, each off by default
+    p("gateway.sqs.enabled", Some("false")),
+    p("gateway.sqs.public-url", None),
+    p("gateway.sns.enabled", Some("false")),
+    p("gateway.aws.port", Some("9324")),
+    p("gateway.aws.credentials-file", None),
 ];
 
 #[cfg(test)]

@@ -10,6 +10,32 @@
       "required": ["repository"],
       "properties": { "repository": { "type": "string", "minLength": 1 } }
     },
+    "gateway": {
+      "type": "object",
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "sqs": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "publicUrl": { "type": "string" }
+          }
+        },
+        "sns": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        },
+        "credentialsSecret": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "key": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
     "ports": {
       "type": "object",
       "properties": {

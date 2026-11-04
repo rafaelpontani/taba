@@ -1,0 +1,6 @@
+# Cross-language, step 2 (every language): sends to its own queue, a text, an accented text, a JSON and a message with attributes.
+getQueueUrl name={p}-x-{lang} as=q => url~{p}-x-{lang}
+send queue=$q.url body=text-from-{lang}
+send queue=$q.url body=caf%C3%A9-%E2%82%AC-{lang}
+send queue=$q.url body=%7B%22from%22%3A%22{lang}%22%7D
+send queue=$q.url body=attrs-from-{lang} msgattrs=origin:String:{lang},n:Number:7

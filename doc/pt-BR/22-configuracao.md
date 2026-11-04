@@ -68,7 +68,6 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 - `operations.allowed-ips` ou `client-ip.trusted-proxies` têm uma entrada inválida;
 - `backup.s3.access-key` sem `backup.s3.secret-key` (ou o contrário); `backup.segment.max-bytes` ou `backup.segment.max-messages` iguais a zero; a regra `backup.disk.evict-to` < `backup.disk.evict-above` < `backup.disk.pause-at` ≤ 100 desrespeitada; `backup.dead-after` que não passa de `backup.heartbeat.interval` (todo nó pareceria morto).
 
-
 `mode` e `development.resume-on-start` **deixaram de existir** (o modo desenvolvimento saiu, [07-cluster.md](07-cluster.md), seção 8): um arquivo ou uma variável que ainda os defina continua subindo, com um aviso no log, e eles não fazem nada. Para rodar um nó só, use o perfil de um nó (`replication.factor=1`, e se quiser `cluster.tls.enabled=false` e `auth.dev-token`).
 
 ## Como ler as tabelas
@@ -274,7 +273,6 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 | `client-ip.headers` | `TABA_CLIENT_IP_HEADERS` | **X-Forwarded-For** | Lista, em ordem, de cabeçalhos consultados; vale o primeiro presente e, nele, o primeiro endereço. |
 | `client-ip.trusted-proxies` | `TABA_CLIENT_IP_TRUSTED_PROXIES` | vazia (cabeçalho aceito de qualquer origem) | Lista de IPs/CIDR dos balanceadores ou proxies cujos cabeçalhos de IP são aceitos. Vazia: aceita de qualquer origem (o serviço deve ficar em camada segura). Vale para o rate limit e para `operations.allowed-ips`. |
 
-
 ## Backup opcional em S3
 
 O recurso liga com `backup.s3.bucket`; sem ele nada disto existe. Como funciona: [33-backup-s3.md](33-backup-s3.md).
@@ -301,6 +299,20 @@ O recurso liga com `backup.s3.bucket`; sem ele nada disto existe. Como funciona:
 | `backup.disk.pause-at` | `TABA_BACKUP_DISK_PAUSE_AT` | **90** | Durante o flush e o drain, a passagem da memória para o disco pausa a este uso (%) até a evicção liberar espaço. |
 | `backup.reconcile.interval` | `TABA_BACKUP_RECONCILE_INTERVAL` | **60s** | De quanto em quanto tempo o gestor regrava as definições que divergem do bucket, apaga segmentos vencidos pelo `ttl` e o nó limpa batimentos mortos. |
 | `backup.restore.lock-ttl` | `TABA_BACKUP_RESTORE_LOCK_TTL` | **60s** | A validade da trava de restauração: o titular a renova; parada por este tempo, outro nó a toma. |
+
+## Gateway para os SDKs da AWS
+
+Os protocolos SQS e SNS são atendidos em **uma porta só**, e cada um vem **desligado**; com as duas chaves desligadas a porta não abre. Como funciona e o que é suportado: [39-gateway.md](39-gateway.md).
+
+| Chave | Variável | Padrão | O que faz |
+|---|---|---|---|
+| `gateway.sqs.enabled` | `TABA_GATEWAY_SQS_ENABLED` | **false** | Liga o protocolo SQS e, com ele, a porta do gateway. |
+| `gateway.aws.port` | `TABA_GATEWAY_AWS_PORT` | **9324** | A porta do gateway, para o SQS e o SNS. Precisa ser diferente de `api.port`, `cluster.port` e `operations.port` (conferido com o SQS ou o SNS ligado). Uma chamada para o protocolo desligado recebe `404` com a chave que o liga. |
+
+| `gateway.sqs.public-url` | `TABA_GATEWAY_SQS_PUBLIC_URL` | sem valor (o `Host` do pedido) | Endereço escrito na `QueueUrl` que o gateway devolve, como `https://filas.exemplo.com`. O nó não conhece o balanceador, e alguns SDKs usam a `QueueUrl` como endpoint da chamada seguinte; atrás de um balanceador, defina. Começa com `http://` ou `https://`. |
+| `gateway.sns.enabled` | `TABA_GATEWAY_SNS_ENABLED` | **false** | Liga o protocolo SNS e, com ele, a porta do gateway. É independente do SQS, mas as filas em que um tópico publica são filas SQS do gateway (ou filas do Taba). |
+
+| `gateway.aws.credentials-file` | `TABA_GATEWAY_AWS_CREDENTIALS_FILE` | sem valor | Arquivo JSON com as chaves de acesso das aplicações: `{"<accessKeyId>": {"secret": "...", "token": "tb_..."}}`. O mesmo arquivo serve aos gateways SQS e SNS. O gateway confere a assinatura SigV4 com o `secret` e age com as permissões e prefixos do `token` do Taba. É lido de novo a cada `auth.reload-interval`; um arquivo que não pode ser lido na partida impede o nó de subir. Com a autenticação do Taba desligada, não precisa de arquivo e nenhuma assinatura é conferida. |
 
 ## Limites fixos (não são configuração)
 

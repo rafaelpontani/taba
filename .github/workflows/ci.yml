@@ -54,6 +54,12 @@ jobs:
     if: github.base_ref == 'release' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/contract-connectors.yml
 
+  # The native AWS SDKs of six languages against the SQS and SNS gateway of a node, and the same scenarios on emulators.
+  gateway-contract:
+    name: Gateway contract tests
+    if: github.base_ref == 'release' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/contract-gateway.yml
+
   # The local comparative benchmark (bench/): only the execution plan and the report test. Running benchmarks on a
   # GitHub runner produces no useful number, so none is run.
   bench:

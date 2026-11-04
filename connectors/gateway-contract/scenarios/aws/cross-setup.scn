@@ -1,0 +1,7 @@
+# Cross-language, step 1 (one language): one queue per language. Language of the file: see sqs-standard.scn.
+createQueue name={p}-x-csharp
+createQueue name={p}-x-java
+createQueue name={p}-x-rust
+createQueue name={p}-x-go
+createQueue name={p}-x-python
+createQueue name={p}-x-node
