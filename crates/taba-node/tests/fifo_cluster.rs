@@ -407,6 +407,7 @@ fn draft(
                 content_type: Some("application/json".into()),
                 group_id: Some(group.to_owned()),
                 deduplication_id: Some(key.to_owned()),
+                ..Default::default()
             },
         )
         .expect("rascunho")

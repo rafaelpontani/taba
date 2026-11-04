@@ -3,7 +3,7 @@ title: Implemented use cases
 summary: The catalogue of Taba use cases that have at least one test citing them, by area, with the case, the level and the tests that prove it.
 type: reference
 status: stable
-verified-on: 2026-10-29 @ 6e8cdf6
+verified-on: 2026-11-03 @ cc4da15
 sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp]
 ---
 
@@ -781,6 +781,52 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `src/cluster/replication/replica/tests.rs::the_hold_of_the_node_alone_excludes_a_pending_operation_on_the_same_message`
 
 ---
+
+### UC-MSG-025
+
+**Case:** A message is published with `delaySeconds` (a plain queue, one node): other messages, one with `delaySeconds` 0, a delayed message that is acked before its first delivery, and a delay longer than the queue's `ttl`  
+**Then:** the delayed message is not delivered until the delay passes, and the others are; at the deadline it is delivered with `deliveryCount` 1 (the delay is not a delivery); `0` or no field is ready at once; an ack with a made-up receipt before the first delivery is `409 message.stale-receipt` and changes nothing; a message delayed past its `ttl` expires without being delivered ([D200](30-decisions.md))  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/tests.rs::a_delayed_message_is_invisible_until_the_delay_passes_and_then_is_a_first_delivery`
+  - `src/engine/messages/tests.rs::a_delay_of_zero_or_none_is_ready_at_once_and_a_delayed_message_cannot_be_acked_before_delivery`
+  - `src/engine/messages/tests.rs::a_message_delayed_longer_than_the_ttl_expires_without_being_delivered`
+
+---
+
+### UC-MSG-026
+
+**Case:** `delaySeconds` on a FIFO queue, above `delivery.visibility-timeout.max`, negative or not a number, on a distributor with a plain and a FIFO queue, and in an item of a batch  
+**Then:** a FIFO queue refuses it (`400 validation.not-applicable`), also through another node; a value above the ceiling is `400 validation.out-of-range` and the ceiling itself is accepted; a negative value is `400 validation.out-of-range` and text is `400 validation.failed`; on a distributor every copy is delayed and the copy to the FIFO queue fails alone; an item of the batch with a delay is published and delayed, the others are not, and an item of the wrong type refuses the request  
+**Level:** U, C  
+**Tests:**
+  - `src/engine/messages/tests.rs::delay_seconds_is_refused_on_a_fifo_queue_and_above_the_visibility_ceiling`
+  - `src/engine/messages/tests.rs::a_delayed_publication_to_a_distributor_delays_every_copy_and_a_fifo_copy_fails_alone`
+  - `tests/replication.rs::delay_seconds_is_checked_on_the_api_before_anything_is_stored`
+
+---
+
+### UC-MSG-027
+
+**Case:** A message is published with `delaySeconds=60` through one node of a three-node cluster, and consumed through each node before and after the delay  
+**Then:** every responsible node stores the same `invisibleUntil` (the publication plus 60 s) with `deliveryCount` 0; no node delivers it before the deadline, even with long polling; after the deadline it is delivered with `deliveryCount` 1 ([D200](30-decisions.md))  
+**Level:** C  
+**Tests:**
+  - `tests/replication.rs::a_delayed_message_is_invisible_on_every_copy_until_the_delay_passes`
+
+---
+
+### UC-MSG-028
+
+**Case:** A node that is the only responsible node of its messages (`replication.factor=1`) receives a delayed publication in a single call and another in a batch, next to a batch item without delay  
+**Then:** the engine applies them straight (no two phases) and keeps the deadline: only the item without delay is delivered; 29 s later still nothing; at 30 s both delayed messages are delivered ([D200](30-decisions.md), [D191](30-decisions.md))  
+**Level:** C  
+**Tests:**
+  - `tests/single_node.rs::alone_a_delayed_publication_in_a_batch_and_in_a_single_call_waits_for_the_deadline`
+
+---
+
+
 
 
 ## CNS: Consumption (`GET`), long polling and `autoCreate`

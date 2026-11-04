@@ -602,6 +602,7 @@ async fn cost_of_the_cluster_path() {
         content_type: Some("application/octet-stream".to_owned()),
         group_id: None,
         deduplication_id: None,
+        ..Default::default()
     };
     for (round, at_once) in [(0, 1usize), (1, 128)] {
         let topic = format!("p{round}");

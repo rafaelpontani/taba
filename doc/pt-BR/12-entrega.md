@@ -3,7 +3,7 @@ título: Entrega de mensagens
 resumo: Como o Taba entrega, confirma e reentrega mensagens — invisibilidade, lista de prontos, dono da entrega, long polling, canal entre nós, ack, limite de entregas, dead-letter e entrega justa entre grupos.
 tipo: explicação
 status: estável
-verificado-em: 2026-11-02 @ ccbb961
+verificado-em: 2026-11-03 @ cc4da15
 fontes: [crates/taba-node/src/engine/messages, crates/taba-node/src/engine/messages/index, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/cluster/replication/signals.rs, crates/taba-node/src/cluster/channel, crates/taba-node/src/http/messages]
 ---
 
@@ -97,6 +97,18 @@ curl -s -X PUT "localhost:8080/topics/pedidos/messages/<id>/visibility?receiptTo
 - O valor é o **novo tempo a partir de agora** (`agora + visibilityTimeout`), **não** um acréscimo; respeita `delivery.visibility-timeout.max`.
 - **`0` libera a mensagem na hora**: o dono a recoloca na lista de prontos como num vencimento. Se `deliveryCount ≥ maxDeliveries`, ela vai para a dead-letter.
 - `409 message.stale-receipt` se o token está obsoleto.
+
+## Publicação com atraso
+
+`POST /topics/{topic}/messages?delaySeconds=N` (ou `delaySeconds` num item do lote) publica uma mensagem que **nasce invisível**: `invisibleUntil` é o instante da publicação mais `N` segundos, como se uma entrega o tivesse definido, mas **sem entrega** (D200).
+
+- **O prazo é um instante absoluto.** O nó que coordena a publicação o calcula e todo nó responsável guarda o mesmo valor; o dono o compara com o próprio relógio, como em qualquer outra invisibilidade ([Vencimento da invisibilidade](#vencimento-da-invisibilidade)).
+- **Quando passa**, a mensagem é liberada como uma invisibilidade vencida: entra na lista de prontos e um consumidor em long polling é atendido como de costume. A primeira entrega faz o `deliveryCount` valer 1.
+- **Sem `receiptToken` antes disso.** Um ack ou uma troca de invisibilidade numa mensagem ainda não entregue responde `409 message.stale-receipt`.
+- **O `ttl` conta da publicação**, então um atraso maior que o `ttl` faz a mensagem expirar sem nunca ser entregue (e sem ir para a dead-letter).
+- **Faixa:** 0 (sem atraso) a `delivery.visibility-timeout.max` (sem teto por padrão). **Não numa fila FIFO** (`400 validation.not-applicable`): uma mensagem esperando na cabeça seguraria o grupo inteiro. Num distribuidor o atraso vale para todas as cópias, e a cópia para uma fila FIFO falha sozinha.
+- **Reinício e troca de dono.** Nada de especial: o novo dono lê `invisibleUntil` dos metadados, e uma mensagem com prazo no futuro entra como invisível.
+- **Limite conhecido:** até ser liberada, o dono conta a mensagem como *em processamento*, não como pronta ([PRB-093](31-pendencias.md)).
 
 ## Confirmar (ack)
 

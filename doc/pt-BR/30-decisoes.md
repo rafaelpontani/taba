@@ -3,7 +3,7 @@ título: Decisões
 resumo: O registro das decisões já tomadas, por tema, com o código estável de cada dúvida (D…) e onde está descrita, e os problemas já resolvidos (PRB-…) — o "porquê" por trás do que os outros documentos descrevem.
 tipo: referência
 status: estável
-verificado-em: 2026-10-29 @ 6e8cdf6
+verificado-em: 2026-11-03 @ cc4da15
 fontes: [crates/taba-node/src, connectors, .github/workflows, doc/pt-BR/31-pendencias.md]
 ---
 
@@ -75,6 +75,7 @@ fontes: [crates/taba-node/src, connectors, .github/workflows, doc/pt-BR/31-pende
 | D28 | Não há disputa pelo `GET`, pois só o primário entrega os IDs prontos. Falha do registro passa ao próximo ID e, esgotadas as tentativas, `503`. | [12-entrega.md](12-entrega.md) 12.2 |
 | D31 | `maxMessages` com padrão 10, configurável; os streams de sincronização entre nós têm tetos próprios. | [12-entrega.md](12-entrega.md) 12.2 |
 | D5, D26 | Propagação e remoção de tópicos (inclusive mensagens pendentes); ack por registro + commit, sem tombstone, e a verificação final da sincronização cobre a janela residual. | [04-arquitetura.md](04-arquitetura.md) 3.3, [12-entrega.md](12-entrega.md) 12.4 |
+| D200 | **Uma mensagem pode ser publicada com atraso (`delaySeconds`) e nasce com `invisibleUntil` definido.** Ela reaproveita o que uma entrega já define, em vez de um estado novo: o registro de uma publicação leva `invisibleUntil` entre os nós, toda cópia o guarda, o dono mantém a mensagem na lista de invisíveis e a libera como uma invisibilidade vencida, e um reinício ou uma troca de dono a reconstrói a partir dos metadados. O nó coordenador conta o atraso e todos guardam o instante absoluto. A faixa vai de 0 a `delivery.visibility-timeout.max`; numa fila FIFO é `400 validation.not-applicable` (uma mensagem esperando na cabeça seguraria o grupo, e a fila FIFO do SQS também não tem atraso por mensagem) e a cópia de um distribuidor para uma fila FIFO falha sozinha. A mensagem atrasada conta como *em processamento* até ser liberada ([PRB-093](31-pendencias.md)). | [12-entrega.md](12-entrega.md#publicação-com-atraso), [16-api-cliente.md](16-api-cliente.md) |
 
 
 ## Armazenamento e memória

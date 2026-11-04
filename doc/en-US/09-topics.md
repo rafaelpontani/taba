@@ -3,7 +3,7 @@ title: Topic types
 summary: Queue, distributor, volatile queue and FIFO queue — what each one does, how it is created, how it behaves, what changes on the ring, and how to choose.
 type: explanation
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-11-03 @ cc4da15
 sources: [crates/taba-node/src/core/topic, crates/taba-node/src/engine/topics, crates/taba-node/src/engine/messages, crates/taba-node/src/cluster/volatile, crates/taba-node/src/http/topics]
 ---
 
@@ -164,6 +164,7 @@ curl -s -X POST localhost:8080/topics/ordens/messages -d '{"n":3}'
 
 - `groupId` is **required** (1 to 128 characters, `A-Za-z0-9_-.:`). `deduplicationId` is optional (same characters); on a queue that is **not** FIFO the parameter is refused with `400`.
 - The delivered message carries `groupId` and `deduplicationId`.
+- `delaySeconds` does not apply to a FIFO queue: it is refused with `400 validation.not-applicable`, because a message waiting at the head of a group would hold the whole group ([12-delivery.md](12-delivery.md#delayed-publication)).
 - It accepts any `replication.factor`: the FIFO quorum is `min(2, factor)` (primary and secondary; with factor 1, only the primary).
 
 ### Where the group lives

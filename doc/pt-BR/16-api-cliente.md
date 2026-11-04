@@ -3,7 +3,7 @@ título: API de cliente
 resumo: Manual rota a rota da API que as aplicações usam — tópicos, mensagens (publicar, consumir, invisibilidade, ack, prune), tokens, quem é o token, os nós e as estatísticas, e as operações de cluster e de nó para o token raiz — com parâmetros, DTOs, status e exemplos.
 tipo: referência
 status: estável
-verificado-em: 2026-10-29 @ 6e8cdf6
+verificado-em: 2026-11-03 @ cc4da15
 fontes: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, crates/taba-node/src/http/tokens, crates/taba-node/src/http/auth, crates/taba-node/src/http/nodes, crates/taba-node/src/http/topic_stats, crates/taba-node/src/core/topic, crates/taba-node/src/core/validation, crates/taba-node/src/core/content]
 ---
 
@@ -181,6 +181,7 @@ O nó que recebe é o **coordenador**: gera o `id`, faz o registro + commit e re
 |---|---|---|
 | `groupId` | só na FIFO | Grupo (1 a 128, `A-Za-z0-9_-.:`). Fora da FIFO, orienta a entrega justa |
 | `deduplicationId` | não, **só na FIFO** | Chave de deduplicação no grupo; sem ela, o SHA-256 do corpo. Fora da FIFO: `400 validation.not-applicable` |
+| `delaySeconds` | não, **não na FIFO** | Segundos em que a mensagem fica invisível a partir da publicação, de 0 a `delivery.visibility-timeout.max`. A mensagem nasce invisível (`invisibleUntil` é a publicação mais o atraso) e a primeira entrega vem depois disso; o `deliveryCount` fica em 0 até lá. Na FIFO: `400 validation.not-applicable`. Num distribuidor vale para todas as cópias ([12-entrega.md](12-entrega.md#publicação-com-atraso)) |
 
 **Resposta numa fila — `PublishResponse`:**
 
@@ -209,7 +210,7 @@ curl -s -X POST "localhost:8080/topics/ordens/messages?groupId=g1&deduplicationI
 
 | Status | Códigos | Quando |
 |---|---|---|
-| `400` | `validation.group-id-required`, `invalid-body`, `invalid-content-type`, `not-applicable`, `failed` | `groupId` ausente na FIFO, corpo que não confere com o `Content-Type`, `deduplicationId` fora da FIFO |
+| `400` | `validation.group-id-required`, `invalid-body`, `invalid-content-type`, `not-applicable`, `out-of-range`, `failed` | `groupId` ausente na FIFO, corpo que não confere com o `Content-Type`, `deduplicationId` ou `delaySeconds` fora dos casos em que valem, `delaySeconds` negativo ou acima do teto |
 | `401`/`403` | `auth.*` | Exige `publish`. Num distribuidor só ele é conferido, não as filas destino |
 | `404` | `topic.not-found` | — |
 | `413` | `message.too-large` | Acima do limite do tópico |
@@ -305,12 +306,13 @@ Três rotas fazem as operações acima para **muitas mensagens numa requisição
 
 | Rota | Permissão | Item | Resultado de um item |
 |---|---|---|---|
-| `POST /topics/{topic}/messages/batch` | `publish` | `{ body, contentType?, bodyEncoding?, groupId?, deduplicationId? }` | `201` com `id`; `200` com `duplicate: true` (FIFO) ou com `matched` e `deliveries` (distribuidor); ou o erro |
+| `POST /topics/{topic}/messages/batch` | `publish` | `{ body, contentType?, bodyEncoding?, groupId?, deduplicationId?, delaySeconds? }` | `201` com `id`; `200` com `duplicate: true` (FIFO) ou com `matched` e `deliveries` (distribuidor); ou o erro |
 | `POST /topics/{topic}/messages/ack` | `consume` | `{ id, receiptToken }` | `204` com `id`; ou o erro (`404 message.not-found`, `409 message.stale-receipt`, `400 validation.required`) |
 | `POST /topics/{topic}/messages/visibility` | `consume` | `{ id, receiptToken, visibilityTimeout }` | `200` com `id` e `invisibleUntil`; ou o erro |
 
 - **O corpo de uma publicação** vem na forma em que o `GET` o entrega: para `application/json` (ou `*/*+json`), o próprio JSON, guardado byte a byte; para `text/*` em UTF-8, uma string; para qualquer outro tipo, uma string em base64 com `bodyEncoding: "base64"` (que também serve para JSON e texto). Sem `contentType`, `application/json`. O que não se encaixa é `400 validation.invalid-body` **naquele item**; um corpo acima do `maxMessageBytes` do tópico é `413 message.too-large` naquele item.
 - **Fila FIFO:** os itens de um grupo são publicados **na ordem da lista**, um depois do outro; grupos e itens de outras filas vão ao mesmo tempo. A deduplicação vale por item, então um item repetido responde `200` com `duplicate: true` e o `id` do primeiro.
+- **Atraso:** `delaySeconds` é por item, como na chamada avulsa. Um valor acima do teto, ou numa fila FIFO, é o erro **daquele item** (`400`); um valor que não é um inteiro não negativo recusa a requisição inteira.
 - **Limites:** de 1 a `api.batch.max-messages` itens (padrão **1000**; fora disso, `400 validation.out-of-range`) e `api.batch.max-bytes` de requisição (padrão **16 MB**; acima, `413 message.too-large`, sem ler o resto). A requisição inteira é recusada, antes de aplicar qualquer item, para um tópico que não existe (`404`), um distribuidor em `/ack` e `/visibility` (`409 topic.wrong-type`), um corpo que não é `application/json` (`415`) ou um campo que não existe (`400 validation.unknown-field`).
 - **Limite de taxa:** um lote conta como **uma** chamada da categoria dele, como um `GET` que entrega várias mensagens ([14](14-seguranca.md#rate-limit)).
 

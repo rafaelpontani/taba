@@ -3,7 +3,7 @@ title: Decisions
 summary: The record of decisions already made, by theme, with the stable code of each question (D…) and where it is described, and the problems already resolved (PRB-…) — the "why" behind what the other documents describe.
 type: reference
 status: stable
-verified-on: 2026-10-29 @ 6e8cdf6
+verified-on: 2026-11-03 @ cc4da15
 sources: [crates/taba-node/src, connectors, .github/workflows, doc/en-US/31-pending-items.md]
 ---
 
@@ -75,6 +75,7 @@ sources: [crates/taba-node/src, connectors, .github/workflows, doc/en-US/31-pend
 | D28 | There is no competition for the `GET`, since only the primary delivers the ready IDs. A register failure moves to the next ID and, when the attempts run out, `503`. | [12-delivery.md](12-delivery.md) 12.2 |
 | D31 | `maxMessages` with default 10, configurable; the synchronization streams between nodes have their own ceilings. | [12-delivery.md](12-delivery.md) 12.2 |
 | D5, D26 | Propagation and removal of topics (including pending messages); ack by register + commit, with no tombstone, and the final check of synchronization covers the residual window. | [04-architecture.md](04-architecture.md) 3.3, [12-delivery.md](12-delivery.md) 12.4 |
+| D200 | **A message can be published with a delay (`delaySeconds`), and it is born with `invisibleUntil` set.** It reuses what a delivery already sets instead of a new state: the register of a publication carries `invisibleUntil` between the nodes, every copy stores it, the owner keeps the message in the invisible list and releases it as an expired invisibility, and a restart or a change of owner rebuilds it from the metadata. The coordinating node counts the delay and everyone stores the absolute instant. The range is 0 to `delivery.visibility-timeout.max`; it is `400 validation.not-applicable` on a FIFO queue (a message waiting at the head would hold its group, and the SQS FIFO queue has no per-message delay either) and the copy of a distributor to a FIFO queue fails alone. The delayed message counts as *in processing* until released ([PRB-093](31-pending-items.md)). | [12-delivery.md](12-delivery.md#delayed-publication), [16-client-api.md](16-client-api.md) |
 
 
 ## Storage and memory
