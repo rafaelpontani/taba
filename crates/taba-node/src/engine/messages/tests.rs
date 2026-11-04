@@ -347,6 +347,141 @@ async fn a_delivered_message_is_invisible_until_the_timeout_and_then_comes_back(
     assert_eq!(again[0].invisible_until_ms, h.clock.now_millis() + 120_000);
 }
 
+fn delayed(body: &str, secs: u64) -> PublishRequest {
+    PublishRequest {
+        delay_secs: Some(secs),
+        ..json_body(body)
+    }
+}
+
+/// UC: UC-MSG-025
+#[tokio::test]
+async fn a_delayed_message_is_invisible_until_the_delay_passes_and_then_is_a_first_delivery() {
+    let h = harness();
+    h.topics.create(queue("orders")).await.unwrap();
+    let id = published_id(h.messages.publish("orders", delayed("1", 30)).unwrap());
+    publish_ok(&h, "orders", "2");
+
+    // Only the message without a delay is there, and the delayed one is not a delivery that failed.
+    let first = consume(&h, "orders", q(Some("10"), None, None)).await;
+    assert_eq!(first.len(), 1);
+    assert_ne!(first[0].id, id);
+
+    h.clock.advance(Duration::from_secs(29));
+    assert!(
+        consume(&h, "orders", q(Some("10"), None, None))
+            .await
+            .is_empty()
+    );
+
+    h.clock.advance(Duration::from_secs(1));
+    let got = consume(&h, "orders", q(Some("10"), None, None)).await;
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].id, id);
+    assert_eq!(got[0].delivery_count, 1, "the delay is not a delivery");
+    ack(&h, "orders", &got[0]);
+}
+
+/// UC: UC-MSG-025
+#[tokio::test]
+async fn a_delay_of_zero_or_none_is_ready_at_once_and_a_delayed_message_cannot_be_acked_before_delivery()
+ {
+    let h = harness();
+    h.topics.create(queue("orders")).await.unwrap();
+    publish_ok(&h, "orders", "1");
+    h.messages.publish("orders", delayed("2", 0)).unwrap();
+    assert_eq!(
+        consume(&h, "orders", q(Some("10"), None, None)).await.len(),
+        2
+    );
+
+    let id = published_id(h.messages.publish("orders", delayed("3", 60)).unwrap());
+    let err = h.messages.ack("orders", &id, Some("made-up")).unwrap_err();
+    assert_eq!(err.code, ErrorCode::MessageStaleReceipt);
+    h.clock.advance(Duration::from_secs(60));
+    assert_eq!(
+        consume(&h, "orders", q(Some("10"), None, None)).await.len(),
+        1,
+        "the failed ack changed nothing"
+    );
+}
+
+/// UC: UC-MSG-025
+#[tokio::test]
+async fn a_message_delayed_longer_than_the_ttl_expires_without_being_delivered() {
+    let h = harness();
+    let mut short = queue("short");
+    short.ttl = Some(60);
+    h.topics.create(short).await.unwrap();
+    h.messages.publish("short", delayed("1", 120)).unwrap();
+    h.clock.advance(Duration::from_secs(121));
+    assert!(
+        consume(&h, "short", q(Some("10"), None, None))
+            .await
+            .is_empty()
+    );
+}
+
+/// UC: UC-MSG-026
+#[tokio::test]
+async fn delay_seconds_is_refused_on_a_fifo_queue_and_above_the_visibility_ceiling() {
+    let h = harness_with(&[("TABA_DELIVERY_VISIBILITY_TIMEOUT_MAX", "300s")]);
+    h.topics.create(fifo("ordered")).await.unwrap();
+    h.topics.create(queue("orders")).await.unwrap();
+    let on_fifo = PublishRequest {
+        group_id: Some("g".into()),
+        ..delayed("1", 5)
+    };
+    assert_eq!(
+        publish_err(&h, "ordered", on_fifo),
+        ErrorCode::ValidationNotApplicable
+    );
+    assert_eq!(
+        publish_err(&h, "orders", delayed("1", 301)),
+        ErrorCode::ValidationOutOfRange
+    );
+    assert!(h.messages.publish("orders", delayed("1", 300)).is_ok());
+}
+
+/// UC: UC-MSG-026
+#[tokio::test]
+async fn a_delayed_publication_to_a_distributor_delays_every_copy_and_a_fifo_copy_fails_alone() {
+    let h = harness();
+    h.topics.create(queue("pedidos-eu")).await.unwrap();
+    h.topics.create(fifo("pedidos-fifo")).await.unwrap();
+    h.topics
+        .create(distributor("dist", &["pedidos"]))
+        .await
+        .unwrap();
+    let request = PublishRequest {
+        group_id: Some("g".into()),
+        ..delayed("1", 30)
+    };
+    let Published::Distributor { deliveries } = h.messages.publish("dist", request).unwrap() else {
+        panic!("expected a distributor");
+    };
+    assert_eq!(deliveries.len(), 2);
+    let outcome = |name: &str| deliveries.iter().find(|d| d.topic == name).unwrap();
+    assert!(outcome("pedidos-eu").result.is_ok());
+    assert_eq!(
+        outcome("pedidos-fifo").result.as_ref().unwrap_err().code,
+        ErrorCode::ValidationNotApplicable
+    );
+
+    assert!(
+        consume(&h, "pedidos-eu", q(Some("10"), None, None))
+            .await
+            .is_empty()
+    );
+    h.clock.advance(Duration::from_secs(30));
+    assert_eq!(
+        consume(&h, "pedidos-eu", q(Some("10"), None, None))
+            .await
+            .len(),
+        1
+    );
+}
+
 /// UC: UC-CNS-005
 #[tokio::test]
 async fn visibility_timeout_zero_makes_the_message_deliverable_again_at_once() {

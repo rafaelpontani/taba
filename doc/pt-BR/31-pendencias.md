@@ -3,7 +3,7 @@ título: Pendências
 resumo: Tudo o que continua em aberto no projeto — dúvidas de design (D…), problemas de lógica, risco ou limite (PRB-…) e os limites conhecidos, cada um com a evidência.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-29 @ 6e8cdf6
+verificado-em: 2026-11-03 @ cc4da15
 fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 ---
 
@@ -85,6 +85,14 @@ Achados pela rodada de caos ([37-garantias.md](37-garantias.md)).
 |---|---|---|
 
 **Padrão de `cluster.vote.min-voters` em clusters de 4 nós ou mais (D182).** O padrão (2) deixa cada metade de um cluster de 4 nós excluir a outra numa partição 2 + 2; as duas metades aceitam escritas e o perdedor se reagrupa quando elas se encontram (D181, nenhuma mensagem se perde). Uma maioria da tabela como padrão evitaria a divisão, ao custo de nenhuma escrita numa partição 2 + 2 (nenhuma metade tem maioria). Proposta: manter 2 (disponibilidade) e documentar a maioria para quem prefere consistência; a alternativa é uma maioria por padrão.
+
+## Publicação com atraso (problemas e limites novos)
+
+Achados ao acrescentar o `delaySeconds` ([12-entrega.md](12-entrega.md#publicação-com-atraso), D200).
+
+| Código | Efeito | Proposta |
+|---|---|---|
+| **PRB-093** | **Uma mensagem atrasada é contada como *em processamento* até ser liberada.** O índice de entrega dá a uma mensagem com prazo no futuro o mesmo estado de uma entregue (`counts` a devolve como em processamento). Então as estatísticas do tópico (`invisibleMessages`) e os contadores por grupo do dono a incluem: um grupo que publica muitas mensagens atrasadas pesa mais na entrega justa (uma mensagem em processamento pesa 1, uma pronta `delivery.fair.ready-weight`, 0,1), e um consumidor que escala por `visibleMessages` vê menos mensagens do que haverá. O SQS tem um contador próprio para elas (`ApproximateNumberOfMessagesDelayed`) | Contar à parte, no índice e nas estatísticas, as mensagens com `deliveryCount` 0 e prazo no futuro, e deixá-las fora do tamanho do grupo. Só vale a pena se uma carga real publicar muitas mensagens atrasadas |
 
 ## 1. Sem bloqueio
 

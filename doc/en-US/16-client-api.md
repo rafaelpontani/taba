@@ -3,7 +3,7 @@ title: Client API
 summary: Route-by-route manual of the API that applications use — topics, messages (publish, consume, invisibility, ack, prune), tokens, who the token is, the nodes and the statistics, and the cluster and node operations for the root token — with parameters, DTOs, statuses and examples.
 type: reference
 status: stable
-verified-on: 2026-10-29 @ 6e8cdf6
+verified-on: 2026-11-03 @ cc4da15
 sources: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, crates/taba-node/src/http/tokens, crates/taba-node/src/http/auth, crates/taba-node/src/http/nodes, crates/taba-node/src/http/topic_stats, crates/taba-node/src/core/topic, crates/taba-node/src/core/validation, crates/taba-node/src/core/content]
 ---
 
@@ -181,6 +181,7 @@ The node that receives is the **coordinator**: it generates the `id`, does the r
 |---|---|---|
 | `groupId` | FIFO only | Group (1 to 128, `A-Za-z0-9_-.:`). Outside FIFO, guides fair delivery |
 | `deduplicationId` | no, **FIFO only** | Deduplication key in the group; without it, the SHA-256 of the body. Outside FIFO: `400 validation.not-applicable` |
+| `delaySeconds` | no, **not on FIFO** | Seconds the message stays invisible from the publication, 0 to `delivery.visibility-timeout.max`. The message is born invisible (`invisibleUntil` is the publication plus the delay) and the first delivery comes after that; `deliveryCount` stays 0 until then. On a FIFO queue: `400 validation.not-applicable`. On a distributor it applies to every copy ([12-delivery.md](12-delivery.md#delayed-publication)) |
 
 **Response on a queue — `PublishResponse`:**
 
@@ -209,7 +210,7 @@ curl -s -X POST "localhost:8080/topics/ordens/messages?groupId=g1&deduplicationI
 
 | Status | Codes | When |
 |---|---|---|
-| `400` | `validation.group-id-required`, `invalid-body`, `invalid-content-type`, `not-applicable`, `failed` | `groupId` missing in FIFO, body that does not match the `Content-Type`, `deduplicationId` outside FIFO |
+| `400` | `validation.group-id-required`, `invalid-body`, `invalid-content-type`, `not-applicable`, `out-of-range`, `failed` | `groupId` missing in FIFO, body that does not match the `Content-Type`, `deduplicationId` or `delaySeconds` outside the cases they apply to, `delaySeconds` negative or above the ceiling |
 | `401`/`403` | `auth.*` | Requires `publish`. On a distributor only it is checked, not the destination queues |
 | `404` | `topic.not-found` | — |
 | `413` | `message.too-large` | Above the topic's limit |
@@ -305,12 +306,13 @@ Three routes do the operations above for **many messages in one request**: publi
 
 | Route | Permission | Item | Result of an item |
 |---|---|---|---|
-| `POST /topics/{topic}/messages/batch` | `publish` | `{ body, contentType?, bodyEncoding?, groupId?, deduplicationId? }` | `201` with `id`; `200` with `duplicate: true` (FIFO) or with `matched` and `deliveries` (distributor); or the error |
+| `POST /topics/{topic}/messages/batch` | `publish` | `{ body, contentType?, bodyEncoding?, groupId?, deduplicationId?, delaySeconds? }` | `201` with `id`; `200` with `duplicate: true` (FIFO) or with `matched` and `deliveries` (distributor); or the error |
 | `POST /topics/{topic}/messages/ack` | `consume` | `{ id, receiptToken }` | `204` with `id`; or the error (`404 message.not-found`, `409 message.stale-receipt`, `400 validation.required`) |
 | `POST /topics/{topic}/messages/visibility` | `consume` | `{ id, receiptToken, visibilityTimeout }` | `200` with `id` and `invisibleUntil`; or the error |
 
 - **The body of a publication** comes in the form the `GET` delivers it: for `application/json` (or `*/*+json`), the JSON itself, kept byte by byte; for `text/*` in UTF-8, a string; for any other type, a string in base64 with `bodyEncoding: "base64"` (which also works for JSON and text). Without `contentType`, `application/json`. What does not fit is `400 validation.invalid-body` **in that item**; a body above the topic's `maxMessageBytes` is `413 message.too-large` in that item.
 - **FIFO queue:** the items of a group are published **in the order of the list**, one after the other; groups and items of other queues go at the same time. Deduplication is per item, so a repeated item answers `200` with `duplicate: true` and the `id` of the first one.
+- **Delay:** `delaySeconds` is per item, as in the single call. A value above the ceiling, or on a FIFO queue, is the error of **that item** (`400`); a value that is not a non-negative integer refuses the whole request.
 - **Limits:** 1 to `api.batch.max-messages` items (default **1000**; outside, `400 validation.out-of-range`) and `api.batch.max-bytes` of request (default **16 MB**; above, `413 message.too-large`, without reading the rest). The whole request is refused, before any item is applied, for a topic that does not exist (`404`), a distributor on `/ack` and `/visibility` (`409 topic.wrong-type`), a body that is not `application/json` (`415`) or a field that does not exist (`400 validation.unknown-field`).
 - **Rate limit:** a batch counts as **one** call of its category, like a `GET` that delivers many messages ([14](14-security.md#rate-limit)).
 

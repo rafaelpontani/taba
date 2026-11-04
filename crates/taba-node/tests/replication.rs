@@ -600,6 +600,144 @@ async fn the_visibility_can_be_changed_and_an_expired_one_is_redelivered_without
     cluster.shutdown().await;
 }
 
+/// UC: UC-MSG-027
+#[tokio::test]
+async fn a_delayed_message_is_invisible_on_every_copy_until_the_delay_passes() {
+    let cluster = TestCluster::start(3).await;
+    create_queue(cluster.node(1), "orders").await;
+    let response = cluster
+        .node(2)
+        .client
+        .post(
+            cluster
+                .node(2)
+                .client_url("/topics/orders/messages?delaySeconds=60"),
+        )
+        .json(&json!({"x": 1}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 201);
+    let id = response.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    // All the responsible nodes store the same absolute instant and no delivery.
+    let wanted = cluster.clock.now_millis() + 60_000;
+    for number in 1..=3 {
+        let messages = messages_of(cluster.node(number));
+        let id = id.clone();
+        eventually("the delay on every copy", move || {
+            messages
+                .message_info("orders", &id)
+                .unwrap()
+                .is_some_and(|i| i.meta.invisible_until_ms == wanted && i.meta.delivery_count == 0)
+        })
+        .await;
+    }
+
+    // No node delivers it, whichever takes the call and even if it waits a little.
+    for number in 1..=3 {
+        assert!(
+            consume(cluster.node(number), "orders", "maxMessages=1&waitTime=1")
+                .await
+                .is_empty()
+        );
+    }
+
+    cluster.clock.advance(Duration::from_secs(61));
+    let mut got = Vec::new();
+    for _ in 0..40 {
+        got = consume(cluster.node(3), "orders", "maxMessages=1").await;
+        if !got.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0]["id"], id);
+    assert_eq!(got[0]["deliveryCount"], 1);
+    cluster.shutdown().await;
+}
+
+/// UC: UC-MSG-026
+#[tokio::test]
+async fn delay_seconds_is_checked_on_the_api_before_anything_is_stored() {
+    let cluster = TestCluster::start(3).await;
+    create_queue(cluster.node(1), "orders").await;
+    let fifo = cluster
+        .node(1)
+        .client
+        .post(cluster.node(1).client_url("/topics"))
+        .json(&json!({"name": "ordered", "type": "queue", "fifo": true}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(fifo.status(), 201);
+
+    let post = |node: usize, path: &'static str| {
+        let node = cluster.node(node);
+        let url = node.client_url(path);
+        let request = node.client.post(url);
+        async move { request.json(&json!({"x": 1})).send().await.unwrap() }
+    };
+    // Not a number, negative: the query is refused as for `waitTime`.
+    let text = post(1, "/topics/orders/messages?delaySeconds=soon").await;
+    assert_eq!(error_code(text, 400).await, "validation.failed");
+    let negative = post(1, "/topics/orders/messages?delaySeconds=-1").await;
+    assert_eq!(error_code(negative, 400).await, "validation.out-of-range");
+    // A FIFO queue, through any node (the forward to the group's primary does not carry it).
+    let on_fifo = post(2, "/topics/ordered/messages?groupId=g&delaySeconds=5").await;
+    assert_eq!(error_code(on_fifo, 400).await, "validation.not-applicable");
+
+    // In a batch, an item of the wrong type refuses the whole request, as any other field of the wrong type.
+    let batch = cluster
+        .node(3)
+        .client
+        .post(cluster.node(3).client_url("/topics/orders/messages/batch"))
+        .json(&json!({"messages": [
+            {"body": {"n": 1}, "delaySeconds": 30},
+            {"body": {"n": 2}, "delaySeconds": "soon"},
+        ]}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        batch.status(),
+        400,
+        "an item of the wrong type refuses the whole request"
+    );
+
+    let batch = cluster
+        .node(3)
+        .client
+        .post(cluster.node(3).client_url("/topics/orders/messages/batch"))
+        .json(&json!({"messages": [
+            {"body": {"n": 1}, "delaySeconds": 30},
+            {"body": {"n": 2}},
+        ]}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(batch.status(), 200);
+    let results = batch.json::<Value>().await.unwrap()["results"].clone();
+    assert_eq!(results[0]["status"], 201);
+    assert_eq!(results[1]["status"], 201);
+    // Only the item without a delay is there to be delivered.
+    let mut got = Vec::new();
+    for _ in 0..40 {
+        got = consume(cluster.node(1), "orders", "maxMessages=10").await;
+        if !got.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0]["body"], json!({"n": 2}));
+    cluster.shutdown().await;
+}
+
 /// UC: UC-ESC-029, UC-INV-019
 #[tokio::test]
 async fn a_message_that_spent_its_deliveries_moves_to_the_dead_letter_on_every_node() {

@@ -339,3 +339,76 @@ where
     }
     panic!("the call never answered {expected}");
 }
+
+/// UC: UC-MSG-028
+#[tokio::test]
+async fn alone_a_delayed_publication_in_a_batch_and_in_a_single_call_waits_for_the_deadline() {
+    let clock = std::sync::Arc::new(taba_node::core::clock::ManualClock::at_doc_epoch());
+    let node = profile().clock(clock.clone()).start().await;
+    wait_joined(&node).await;
+    let state = node.node.shared().clone();
+    eventually("the node to be active", move || {
+        state.state() == taba_node::cluster::state::NodeState::Active
+    })
+    .await;
+    let created = node
+        .client
+        .post(node.client_url("/topics"))
+        .json(&json!({ "name": "orders", "type": "queue" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 201);
+
+    let single = node
+        .client
+        .post(node.client_url("/topics/orders/messages?delaySeconds=30"))
+        .json(&json!({ "n": "single" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(single.status(), 201);
+    let batch = post_json(
+        &node,
+        "/topics/orders/messages/batch",
+        json!({ "messages": [
+            { "body": { "n": "batch-delayed" }, "delaySeconds": 30 },
+            { "body": { "n": "batch-now" } },
+        ]}),
+    )
+    .await;
+    assert!(
+        batch["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["status"] == 201),
+        "{batch}"
+    );
+
+    let consume = || async {
+        let response: Value = node
+            .client
+            .get(node.client_url("/topics/orders/messages?maxMessages=10"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let mut names: Vec<String> = response["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["body"]["n"].as_str().unwrap().to_owned())
+            .collect();
+        names.sort();
+        names
+    };
+    assert_eq!(consume().await, ["batch-now"]);
+    clock.advance(std::time::Duration::from_secs(29));
+    assert!(consume().await.is_empty(), "29 s: still waiting");
+    clock.advance(std::time::Duration::from_secs(1));
+    assert_eq!(consume().await, ["batch-delayed", "single"]);
+    node.shutdown().await;
+}

@@ -111,7 +111,8 @@ fn annotate(state: &AppState, topic: &str, operation: &'static str) {
     params(
         ("topic" = String, Path, description = "The topic name."),
         ("groupId" = Option<String>, Query, description = "Group (1 to 128 characters of `A-Za-z0-9_-.:`). Required on a FIFO queue; elsewhere it guides the fair delivery."),
-        ("deduplicationId" = Option<String>, Query, description = "FIFO queues only: the deduplication key inside the group (default: the SHA-256 of the body). Elsewhere it is `400 validation.not-applicable`.")
+        ("deduplicationId" = Option<String>, Query, description = "FIFO queues only: the deduplication key inside the group (default: the SHA-256 of the body). Elsewhere it is `400 validation.not-applicable`."),
+        ("delaySeconds" = Option<u64>, Query, description = "Seconds the message stays invisible from the publication, from 0 to `delivery.visibility-timeout.max`. Not for a FIFO queue (`400 validation.not-applicable`). On a distributor it applies to every copy.")
     ),
     request_body(
         content = MessageBytes, content_type = "*/*",
@@ -140,11 +141,17 @@ async fn publish(
     // The topic is checked (`404`) and the limit found out before reading the body.
     let limit = state.messages.publish_limit(&topic)?;
     let body = read_body(body, limit).await?;
+    // The range (up to `delivery.visibility-timeout.max`) is checked by the engine, which knows the topic's type.
+    let delay_secs = params
+        .get("delaySeconds")
+        .map(|text| crate::engine::messages::query_number("delaySeconds", text, (0, u64::MAX)))
+        .transpose()?;
     let request = PublishRequest {
         body,
         content_type: content_type(&headers),
         group_id: params.get("groupId").cloned(),
         deduplication_id: params.get("deduplicationId").cloned(),
+        delay_secs,
     };
     let published = match &state.replicated {
         Some(cluster) => cluster.publish(&topic, request).await?,

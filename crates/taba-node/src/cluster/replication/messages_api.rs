@@ -219,7 +219,8 @@ impl ClusterMessages {
             group_id: meta.group_id.clone(),
             deduplication_id: None,
             delivery_count: 0,
-            invisible_until_ms: None,
+            // A delayed message (`delaySeconds`) is born invisible: every responsible node stores the same instant.
+            invisible_until_ms: (meta.invisible_until_ms > 0).then_some(meta.invisible_until_ms),
             receipt_token: None,
             dead_lettered_ms: None,
             dead_letter_reason: None,
@@ -822,6 +823,7 @@ impl ClusterMessages {
             content_type: Some(record.content_type),
             group_id: record.group_id,
             deduplication_id: record.deduplication_id,
+            delay_secs: None,
         };
         self.coordinate_fifo(&view, &request)
             .await

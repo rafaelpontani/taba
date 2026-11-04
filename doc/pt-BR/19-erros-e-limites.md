@@ -3,7 +3,7 @@ título: Erros e limites
 resumo: O catálogo completo de códigos de erro (cada um com o status HTTP fixo), os limites fixos de validação, os limites configuráveis e os rate limits.
 tipo: referência
 status: estável
-verificado-em: 2026-10-15 @ 56121c9
+verificado-em: 2026-11-03 @ cc4da15
 fontes: [crates/taba-node/src/core/error/mod.rs, crates/taba-node/src/core/validation/mod.rs, crates/taba-node/src/http/ratelimit, crates/taba-node/src/config/params/mod.rs]
 ---
 
@@ -22,11 +22,11 @@ Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status
 | `validation.failed` | Erro genérico; os problemas vêm em `details` |
 | `validation.required` | Campo ou parâmetro obrigatório ausente |
 | `validation.unknown-field` | Campo que a rota não define |
-| `validation.out-of-range` | Número fora da faixa (`ttl`, `maxDeliveries`, `idleTimeout`, `waitTime`, `maxMessages`, `limit`, `visibilityTimeout`) |
+| `validation.out-of-range` | Número fora da faixa (`ttl`, `maxDeliveries`, `idleTimeout`, `waitTime`, `maxMessages`, `limit`, `visibilityTimeout`, `delaySeconds`) |
 | `validation.invalid-name` | Nome de tópico (ou de token) fora do padrão |
 | `validation.reserved-name` | Nome terminado em `-dead-letter`, na criação e no `autoCreate` |
 | `validation.immutable-field` | `PATCH` tenta mudar `name`, `id`, `type`, `volatile`, `fifo` (ou, num token, permissões e prefixos) |
-| `validation.not-applicable` | Campo que não vale para o tipo (`prefixes` numa fila, `ttl` num distribuidor, `deduplicationId` fora da FIFO, `fifo` num distribuidor) |
+| `validation.not-applicable` | Campo que não vale para o tipo (`prefixes` numa fila, `ttl` num distribuidor, `deduplicationId` e `delaySeconds` fora dos casos em que valem, `fifo` num distribuidor) |
 | `validation.invalid-body` | O corpo não confere com o `Content-Type` (JSON inválido, texto que não é UTF-8) |
 | `validation.invalid-content-type` | O `Content-Type` da publicação não é um media type válido |
 | `validation.group-id-required` | Publicação numa fila FIFO sem `groupId` |

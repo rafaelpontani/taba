@@ -3,7 +3,7 @@ title: Pending items
 summary: Everything that remains open in the project — design questions (D…), problems of logic, risk or limit (PRB-…) and the known limits, each with its evidence.
 type: reference
 status: partial
-verified-on: 2026-10-29 @ 6e8cdf6
+verified-on: 2026-11-03 @ cc4da15
 sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 ---
 
@@ -85,6 +85,14 @@ Found by the chaos run ([37-guarantees.md](37-guarantees.md)).
 |---|---|---|
 
 **Default of `cluster.vote.min-voters` in clusters of 4 nodes or more (D182).** The default (2) lets each half of a 4-node cluster exclude the other in a 2 + 2 partition; both halves accept writes and the loser regroups when they meet (D181, no message is lost). A majority of the table as the default would avoid the split, at the price of no writes at all on a 2 + 2 partition (neither half has a majority). Proposal: keep 2 (availability) and document the majority for whoever prefers consistency; the alternative is a majority by default.
+
+## Delayed publication (new problems and limits)
+
+Found while adding `delaySeconds` ([12-delivery.md](12-delivery.md#delayed-publication), D200).
+
+| Code | Effect | Proposal |
+|---|---|---|
+| **PRB-093** | **A delayed message is counted as *in processing* until it is released.** The delivery index gives a message with a future deadline the same state as a delivered one (`counts` returns it as in processing). So the statistics of the topic (`invisibleMessages`) and the owner's per-group counters include it: a group that publishes many delayed messages weighs more in the fair delivery (an in-processing message weighs 1, a ready one `delivery.fair.ready-weight`, 0.1), and a consumer that scales by `visibleMessages` sees fewer messages than will be there. SQS has its own counter for them (`ApproximateNumberOfMessagesDelayed`) | Count the messages whose `deliveryCount` is 0 and whose deadline is in the future apart, in the index and in the statistics, and leave them out of the group size. Only worth doing if a real workload publishes many delayed messages |
 
 ## 1. Unblocked
 

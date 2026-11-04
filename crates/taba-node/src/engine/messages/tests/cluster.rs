@@ -578,6 +578,7 @@ async fn the_id_of_a_group_keeps_growing_even_if_the_clock_of_the_new_primary_is
         content_type: Some("application/json".into()),
         group_id: Some("g".into()),
         deduplication_id: Some(key.to_owned()),
+        ..Default::default()
     };
     let Draft::New { mut meta, body } =
         c.h.messages
