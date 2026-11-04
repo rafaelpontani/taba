@@ -3,7 +3,7 @@ título: Tipos de tópico
 resumo: Fila, distribuidor, fila volátil e fila FIFO — o que cada um faz, como se cria, como se comporta, o que muda no anel, e como escolher.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-11-03 @ cc4da15
 fontes: [crates/taba-node/src/core/topic, crates/taba-node/src/engine/topics, crates/taba-node/src/engine/messages, crates/taba-node/src/cluster/volatile, crates/taba-node/src/http/topics]
 ---
 
@@ -164,6 +164,7 @@ curl -s -X POST localhost:8080/topics/ordens/messages -d '{"n":3}'
 
 - `groupId` é **obrigatório** (1 a 128 caracteres, `A-Za-z0-9_-.:`). `deduplicationId` é opcional (mesmos caracteres); numa fila que **não** é FIFO o parâmetro é recusado com `400`.
 - A mensagem entregue traz `groupId` e `deduplicationId`.
+- `delaySeconds` não vale numa fila FIFO: é recusado com `400 validation.not-applicable`, porque uma mensagem esperando na cabeça de um grupo seguraria o grupo inteiro ([12-entrega.md](12-entrega.md#publicação-com-atraso)).
 - Aceita qualquer `replication.factor`: o quórum da FIFO é `min(2, fator)` (primário e secundário; com fator 1, só o primário).
 
 ### Onde o grupo mora

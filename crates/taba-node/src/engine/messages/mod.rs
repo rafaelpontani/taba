@@ -185,6 +185,10 @@ pub struct PublishRequest {
     pub content_type: Option<String>,
     pub group_id: Option<String>,
     pub deduplication_id: Option<String>,
+    /// Seconds the message stays invisible from the publication (`delaySeconds`): it is born with
+    /// `invisibleUntil = now + delay`, as if a delivery had set it, and without a delivery. `None` or `0`: ready at once.
+    /// Not for a FIFO queue (`400 validation.not-applicable`), as in SQS.
+    pub delay_secs: Option<u64>,
 }
 
 /// The result of a publication.
@@ -401,7 +405,7 @@ fn too_large(limit: u64) -> TabaError {
 
 /// A query integer within the range: text that is not an integer is `validation.failed`, and an
 /// integer outside the range (including negative) is `validation.out-of-range`.
-fn query_number(field: &str, text: &str, range: (u64, u64)) -> Result<u64, TabaError> {
+pub(crate) fn query_number(field: &str, text: &str, range: (u64, u64)) -> Result<u64, TabaError> {
     let Ok(value) = text.trim().parse::<i64>() else {
         let message = "Expected an integer.";
         return Err(TabaError::new(
@@ -1262,7 +1266,9 @@ impl Messages {
                 "Only applies on a FIFO queue.",
             ));
         }
+        let delay_ms = self.delay_ms(request, fifo)?;
         let now = self.clock.now_millis();
+        let until = if delay_ms > 0 { now + delay_ms } else { 0 };
         // On FIFO every message has a deduplication key: the given one, or the body's hash.
         let dedup_key = fifo.then(|| {
             (
@@ -1282,7 +1288,7 @@ impl Messages {
             deduplication_id: dedup_key.as_ref().map(|(_, key)| key.clone()),
             published_ms: now,
             delivery_count: 0,
-            invisible_until_ms: 0,
+            invisible_until_ms: until,
             receipt_token: None,
             dead_lettered_ms: None,
             dead_letter_reason: None,
@@ -1323,7 +1329,7 @@ impl Messages {
             }
             state
                 .index
-                .insert(&id, request.group_id.as_deref(), now, 0, 0, now);
+                .insert(&id, request.group_id.as_deref(), now, until, 0, now);
             self.backup_stored(&name, &id, true);
             if let Some(key) = dedup_key {
                 state.dedup.insert(key, (id.clone(), now));
@@ -3022,6 +3028,7 @@ impl Messages {
                 "Only applies on a FIFO queue.",
             ));
         }
+        let delay_ms = self.delay_ms(request, false)?;
         let now = self.clock.now_millis();
         let id = self.ids.new_at(now);
         // The publication counts from the instant the `id` holds: that is where the `ttl` counts from on every node.
@@ -3033,7 +3040,8 @@ impl Messages {
             deduplication_id: None,
             published_ms,
             delivery_count: 0,
-            invisible_until_ms: 0,
+            // The delay counts from the coordinator's clock; the owner compares the absolute instant with its own.
+            invisible_until_ms: if delay_ms > 0 { now + delay_ms } else { 0 },
             receipt_token: None,
             dead_lettered_ms: None,
             dead_letter_reason: None,
@@ -3050,6 +3058,7 @@ impl Messages {
         request: &PublishRequest,
     ) -> Result<(Prepared, String), TabaError> {
         let prepared = Prepared::new(request)?;
+        self.delay_ms(request, true)?;
         let limit = view.max_message_bytes().unwrap_or(self.rules.max_bytes);
         if request.body.len() as u64 > limit {
             return Err(too_large(limit));
@@ -4071,9 +4080,33 @@ impl Messages {
     }
 
     /// Validates what the publication brings before knowing the topic's type (`Content-Type`, body,
-    /// `groupId`, `deduplicationId`).
+    /// `groupId`, `deduplicationId`, `delaySeconds`).
     pub fn validate_publish(&self, request: &PublishRequest) -> Result<(), TabaError> {
-        Prepared::new(request).map(|_| ())
+        Prepared::new(request)?;
+        self.delay_ms(request, false).map(|_| ())
+    }
+
+    /// The `delaySeconds` of a publication in milliseconds, checked: from 0 to the same ceiling as `visibilityTimeout`
+    /// (`delivery.visibility-timeout.max`, none by default). On a FIFO queue any value is
+    /// `400 validation.not-applicable`: the order of a group does not allow a message to wait behind another.
+    fn delay_ms(&self, request: &PublishRequest, fifo: bool) -> Result<u64, TabaError> {
+        let Some(secs) = request.delay_secs else {
+            return Ok(0);
+        };
+        if fifo {
+            return Err(TabaError::new(
+                ErrorCode::ValidationNotApplicable,
+                "`delaySeconds` does not apply on a FIFO queue.",
+            )
+            .with_detail(
+                "delaySeconds",
+                ErrorCode::ValidationNotApplicable,
+                "Does not apply on a FIFO queue.",
+            ));
+        }
+        let max = self.rules.visibility_max_secs.unwrap_or(u64::MAX);
+        validation::in_range("delaySeconds", secs, (0, max))?;
+        Ok(secs.saturating_mul(1000))
     }
 }
 

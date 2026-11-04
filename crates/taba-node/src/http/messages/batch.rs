@@ -49,6 +49,8 @@ pub(crate) struct PublishItem {
     group_id: Option<String>,
     /// FIFO queues only: the deduplication key inside the group.
     deduplication_id: Option<String>,
+    /// Seconds the message stays invisible from the publication. Not for a FIFO queue.
+    delay_seconds: Option<u64>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -268,6 +270,7 @@ impl PublishItem {
             content_type: self.content_type,
             group_id: self.group_id,
             deduplication_id: self.deduplication_id,
+            delay_secs: self.delay_seconds,
         })
     }
 }

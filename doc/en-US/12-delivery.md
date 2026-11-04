@@ -3,7 +3,7 @@ title: Message delivery
 summary: How Taba delivers, confirms and redelivers messages — invisibility, ready list, delivery owner, long polling, node channel, ack, delivery limit, dead-letter and fair delivery across groups.
 type: explanation
 status: stable
-verified-on: 2026-11-02 @ ccbb961
+verified-on: 2026-11-03 @ cc4da15
 sources: [crates/taba-node/src/engine/messages, crates/taba-node/src/engine/messages/index, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/cluster/replication/signals.rs, crates/taba-node/src/cluster/channel, crates/taba-node/src/http/messages]
 ---
 
@@ -97,6 +97,18 @@ curl -s -X PUT "localhost:8080/topics/pedidos/messages/<id>/visibility?receiptTo
 - The value is the **new time from now** (`now + visibilityTimeout`), **not** an increment; it respects `delivery.visibility-timeout.max`.
 - **`0` releases the message immediately**: the owner puts it back in the ready list as on an expiry. If `deliveryCount ≥ maxDeliveries`, it goes to the dead-letter.
 - `409 message.stale-receipt` if the token is stale.
+
+## Delayed publication
+
+`POST /topics/{topic}/messages?delaySeconds=N` (or `delaySeconds` in an item of the batch) publishes a message that is **born invisible**: `invisibleUntil` is the instant of the publication plus `N` seconds, as if a delivery had set it, but **without a delivery** (D200).
+
+- **The deadline is an absolute instant.** The node that coordinates the publication computes it and every responsible node stores the same value; the owner compares it with its own clock, as with any other invisibility ([Expiry of the invisibility](#expiry-of-the-invisibility)).
+- **When it passes**, the message is released as an expired invisibility is: it enters the ready list and a consumer in long polling is served as usual. The first delivery makes `deliveryCount` 1.
+- **No `receiptToken` before that.** An ack or a change of invisibility on a message not yet delivered answers `409 message.stale-receipt`.
+- **The `ttl` counts from the publication**, so a delay longer than the `ttl` makes the message expire without ever being delivered (and without going to the dead-letter).
+- **Range:** 0 (no delay) to `delivery.visibility-timeout.max` (no ceiling by default). **Not on a FIFO queue** (`400 validation.not-applicable`): a message waiting at the head would hold its whole group. On a distributor the delay applies to every copy, and a copy to a FIFO queue fails alone.
+- **Restart and change of owner.** Nothing special: the new owner reads `invisibleUntil` from the metadata, and a message whose deadline is in the future enters as invisible.
+- **Known limit:** until it is released, the owner counts the message as *in processing*, not as ready ([PRB-093](31-pending-items.md)).
 
 ## Confirm (ack)
 

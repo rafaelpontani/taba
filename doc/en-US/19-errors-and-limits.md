@@ -3,7 +3,7 @@ title: Errors and limits
 summary: The complete catalogue of error codes (each with its fixed HTTP status), the fixed validation limits, the configurable limits and the rate limits.
 type: reference
 status: stable
-verified-on: 2026-10-15 @ 56121c9
+verified-on: 2026-11-03 @ cc4da15
 sources: [crates/taba-node/src/core/error/mod.rs, crates/taba-node/src/core/validation/mod.rs, crates/taba-node/src/http/ratelimit, crates/taba-node/src/config/params/mod.rs]
 ---
 
@@ -22,11 +22,11 @@ Every API error is an **`ErrorCode`** of the catalogue (`core/error`), with a **
 | `validation.failed` | Generic error; the problems come in `details` |
 | `validation.required` | Required field or parameter missing |
 | `validation.unknown-field` | Field that the route does not define |
-| `validation.out-of-range` | Number out of range (`ttl`, `maxDeliveries`, `idleTimeout`, `waitTime`, `maxMessages`, `limit`, `visibilityTimeout`) |
+| `validation.out-of-range` | Number out of range (`ttl`, `maxDeliveries`, `idleTimeout`, `waitTime`, `maxMessages`, `limit`, `visibilityTimeout`, `delaySeconds`) |
 | `validation.invalid-name` | Topic (or token) name outside the pattern |
 | `validation.reserved-name` | Name ending in `-dead-letter`, on creation and on `autoCreate` |
 | `validation.immutable-field` | `PATCH` tries to change `name`, `id`, `type`, `volatile`, `fifo` (or, on a token, permissions and prefixes) |
-| `validation.not-applicable` | Field that does not apply to the type (`prefixes` on a queue, `ttl` on a distributor, `deduplicationId` outside FIFO, `fifo` on a distributor) |
+| `validation.not-applicable` | Field that does not apply to the type (`prefixes` on a queue, `ttl` on a distributor, `deduplicationId` and `delaySeconds` outside the cases they apply to, `fifo` on a distributor) |
 | `validation.invalid-body` | The body does not match the `Content-Type` (invalid JSON, text that is not UTF-8) |
 | `validation.invalid-content-type` | The publication's `Content-Type` is not a valid media type |
 | `validation.group-id-required` | Publishing to a FIFO queue without `groupId` |

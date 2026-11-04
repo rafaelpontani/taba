@@ -2491,6 +2491,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "delaySeconds",
+            "in": "query",
+            "description": "Seconds the message stays invisible from the publication, from 0 to `delivery.visibility-timeout.max`. Not for a FIFO queue (`400 validation.not-applicable`). On a distributor it applies to every copy.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
           }
         ],
         "requestBody": {
@@ -4465,6 +4476,15 @@
               "null"
             ],
             "description": "FIFO queues only: the deduplication key inside the group."
+          },
+          "delaySeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds the message stays invisible from the publication. Not for a FIFO queue.",
+            "minimum": 0
           },
           "groupId": {
             "type": [

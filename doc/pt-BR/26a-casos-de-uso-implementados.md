@@ -3,7 +3,7 @@ título: Casos de uso implementados
 resumo: O catálogo dos casos de uso do Taba que têm ao menos um teste que os cita, por área, com o caso, o nível e os testes que o provam.
 tipo: referência
 status: estável
-verificado-em: 2026-10-29 @ 6e8cdf6
+verificado-em: 2026-11-03 @ cc4da15
 fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp]
 ---
 
@@ -781,6 +781,52 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `src/cluster/replication/replica/tests.rs::the_hold_of_the_node_alone_excludes_a_pending_operation_on_the_same_message`
 
 ---
+
+### UC-MSG-025
+
+**Caso:** Uma mensagem é publicada com `delaySeconds` (fila comum, um nó): outras mensagens, uma com `delaySeconds` 0, uma mensagem atrasada confirmada antes da primeira entrega e um atraso maior que o `ttl` da fila  
+**Então:** a mensagem atrasada não é entregue até o atraso passar, e as outras são; no prazo ela é entregue com `deliveryCount` 1 (o atraso não é uma entrega); `0` ou sem o campo está pronta na hora; um ack com recibo inventado antes da primeira entrega é `409 message.stale-receipt` e não muda nada; uma mensagem atrasada além do `ttl` expira sem ser entregue ([D200](30-decisoes.md))  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/tests.rs::a_delayed_message_is_invisible_until_the_delay_passes_and_then_is_a_first_delivery`
+  - `src/engine/messages/tests.rs::a_delay_of_zero_or_none_is_ready_at_once_and_a_delayed_message_cannot_be_acked_before_delivery`
+  - `src/engine/messages/tests.rs::a_message_delayed_longer_than_the_ttl_expires_without_being_delivered`
+
+---
+
+### UC-MSG-026
+
+**Caso:** `delaySeconds` numa fila FIFO, acima de `delivery.visibility-timeout.max`, negativo ou que não é número, num distribuidor com uma fila comum e uma FIFO, e num item de um lote  
+**Então:** uma fila FIFO o recusa (`400 validation.not-applicable`), também por outro nó; um valor acima do teto é `400 validation.out-of-range` e o próprio teto é aceito; um valor negativo é `400 validation.out-of-range` e texto é `400 validation.failed`; num distribuidor toda cópia é atrasada e a cópia para a fila FIFO falha sozinha; um item do lote com atraso é publicado e atrasado, os outros não, e um item do tipo errado recusa a requisição  
+**Nível:** U, C  
+**Testes:**
+  - `src/engine/messages/tests.rs::delay_seconds_is_refused_on_a_fifo_queue_and_above_the_visibility_ceiling`
+  - `src/engine/messages/tests.rs::a_delayed_publication_to_a_distributor_delays_every_copy_and_a_fifo_copy_fails_alone`
+  - `tests/replication.rs::delay_seconds_is_checked_on_the_api_before_anything_is_stored`
+
+---
+
+### UC-MSG-027
+
+**Caso:** Uma mensagem é publicada com `delaySeconds=60` por um nó de um cluster de três nós, e consumida por cada nó antes e depois do atraso  
+**Então:** todo nó responsável guarda o mesmo `invisibleUntil` (a publicação mais 60 s) com `deliveryCount` 0; nenhum nó a entrega antes do prazo, nem com long polling; depois do prazo ela é entregue com `deliveryCount` 1 ([D200](30-decisoes.md))  
+**Nível:** C  
+**Testes:**
+  - `tests/replication.rs::a_delayed_message_is_invisible_on_every_copy_until_the_delay_passes`
+
+---
+
+### UC-MSG-028
+
+**Caso:** Um nó que é o único nó responsável pelas suas mensagens (`replication.factor=1`) recebe uma publicação com atraso numa chamada avulsa e outra num lote, junto de um item do lote sem atraso  
+**Então:** o motor as aplica direto (sem as duas fases) e guarda o prazo: só o item sem atraso é entregue; 29 s depois ainda nada; aos 30 s as duas mensagens atrasadas são entregues ([D200](30-decisoes.md), [D191](30-decisoes.md))  
+**Nível:** C  
+**Testes:**
+  - `tests/single_node.rs::alone_a_delayed_publication_in_a_batch_and_in_a_single_call_waits_for_the_deadline`
+
+---
+
+
 
 
 ## CNS: Consumo (`GET`), long polling e `autoCreate`
