@@ -3,7 +3,7 @@ título: Problemas conhecidos
 resumo: Registro, com histórico, dos testes de cluster intermitentes e dos problemas conhecidos: cada um com título, status, data em que foi achado, data da solução e o histórico de ocorrências e tentativas.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-29 @ 1f43daf
+verificado-em: 2026-11-04 @ ad87b34
 fontes: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -19,7 +19,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|---|---|
 | [Um teste de replicação cujas 14 publicações não caíram no nó isolado](#um-teste-de-replicação-cujas-14-publicações-não-caíram-no-nó-isolado) | Corrigido | 2026-11-03 | 2026-11-03 |
 | [Um teste de sincronização cuja segunda store achou o banco travado no arm64](#um-teste-de-sincronização-cuja-segunda-store-achou-o-banco-travado-no-arm64) | Corrigido | 2026-11-03 | 2026-11-03 |
-| [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Aberto | 2026-11-03 | — |
+| [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Corrigido | 2026-11-03 | 2026-11-04 |
 | [Uma votação de exclusão que falha uma vez na suíte completa](#uma-votação-de-exclusão-que-falha-uma-vez-na-suíte-completa) | Aberto | 2026-10-29 | — |
 | [Um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la) | Corrigido | 2026-10-27 | 2026-10-29 |
 | [Uma rajada do canal que não chega ao outro nó na caça](#uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça) | Aberto | 2026-10-29 | — |
@@ -68,18 +68,22 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 ## Um consume com ack que falha uma vez no docker/validate.sh depois de um drain
 
-**Status:** Aberto · **Achado em:** 2026-11-03 · **Corrigido em:** —
+**Status:** Corrigido · **Achado em:** 2026-11-03 · **Corrigido em:** 2026-11-04
 
 - **Teste:** `docker/validate.sh`, etapa "No acknowledged message was lost": `drain_topic validation-crash` chama `taba-cli consume --max 10 --wait 3 --ack` em laço logo depois de o `taba-1` sair por drain e voltar.
 - **Sintoma:** um `taba-cli consume` saiu com código 1 e o script parou (`Failed (code 1)`) sem dizer por quê: o `taba_cli` jogava fora o stderr do `docker compose run`, e o erro do `taba-cli` junto. Foi a primeira rodada depois de a máquina reiniciar, com o Docker Desktop recém-iniciado: o cluster levou 402 s para ficar saudável (24 s na rodada seguinte). A rodada seguinte, no mesmo código, passou em todas as etapas (50 mensagens publicadas, todas recebidas e confirmadas).
-- **Causa:** não identificada. Não é uma mensagem perdida: a etapa parou antes de comparar o que foi publicado com o que foi recebido.
-- **Próximo passo:** o `taba_cli` (`docker/cluster.sh`) agora mostra as últimas linhas do erro do `taba-cli` quando um comando falha; a próxima ocorrência diz qual erro o nó devolveu (um `503` enquanto um nó ainda volta do drain, por exemplo). Se for um erro de tentar de novo, o `drain_topic` deveria tentar de novo em vez de parar.
+- **Causa:** uma mensagem já confirmada voltava à vida a partir do backup em S3. Quando um membro sai do cluster, cada nó roda o `recover_missing` na rodada seguinte de heartbeat e busca no bucket o que deveria guardar e não tem. Para saber o que está morto ele lia só o journal no bucket, que chega atrasado (`backup.meta.interval`), e não o log de excluídas do próprio nó. Uma mensagem que já estava num segmento (o drain do nó que saiu envia tudo) e foi confirmada nos segundos antes dessa rodada voltava, só naquele nó. Ela era entregue de novo, e o ack dela não conseguia mais fechar o quórum: o primário aceitava e os outros dois nós, que não a tinham mais, respondiam `message.not-found`, e o cliente recebia `503 cluster.quorum-unavailable`. Nenhuma mensagem se perdeu; mensagens confirmadas foram entregues de novo. Só clusters com `backup.s3.bucket` são afetados. O defeito é do nó, não da máquina: a primeira falha pareceu ligada a uma partida lenta só porque o tempo da rodada de heartbeat decide se os acks vêm antes.
+- **Como foi achado:** com o cluster mantido de pé depois de uma falha (`TABA_KEEP=1`), o log da rodada que falhou tem `messages that only existed on dead nodes came back from S3 recovered=5` menos de um segundo depois dos acks; o `memoryMessages` dos três nós era `1 6 1`, onde um tópico saudável tem o mesmo número em todos; e 5 das mensagens ainda entregues estavam na tabela `excluded` dos três nós.
+- **Correção:** o `recover_missing` também pula o que o log de excluídas do nó tem (`src/cluster/backup/restore.rs`). O ack grava a exclusão antes de tirar a mensagem do índice, sob a mesma trava, então uma mensagem que o nó não guarda mais já está no log. Teste: `tests/backup.rs::a_message_acked_before_the_journal_reaches_the_bucket_does_not_come_back_from_s3`, que falha sem a correção (a recuperação devolve 1). UC-BKP-046.
+- **Verificação:** o `docker/validate.sh` falhou 4 de 4 rodadas nesta máquina antes da correção (uma delas em `a3bdab9`, antes do gateway SQS e SNS) e passou 3 de 3 com ela.
 
 **Histórico**
 
 | Data | Evento |
 |---|---|
 | 2026-11-03 | Uma falha na primeira rodada depois de reiniciar a máquina (cluster saudável em 402 s); a rodada seguinte passou. O `taba_cli` agora mostra o erro. |
+| 2026-11-04 | Quatro falhas seguidas com `cluster.quorum-unavailable` na mesma etapa, inclusive no commit anterior ao gateway; a `v0.3.5` foi promovida com a falha registrada no pull request dela. |
+| 2026-11-04 | Causa achada e corrigida: o `recover_missing` ignorava o log de excluídas. Teste novo; o `docker/validate.sh` passou 3 de 3. |
 
 ## Uma votação de exclusão que falha uma vez na suíte completa
 
@@ -327,6 +331,7 @@ O que os problemas acima ensinaram, para o próximo ser achado mais rápido (a l
 - **Quando o log não tem nenhuma linha do caminho suspeito, ponha uma, rode de novo e tire.** A execução que falhou na oferta não tinha nenhuma linha sobre a oferta. Linhas temporárias em cada passo (o que foi oferecido, a quem foi enviado, o que cada nó aprendeu), marcadas com uma palavra que se possa buscar (`HUNT`), e a mesma caçada, deram a ordem dos eventos em milissegundos; as linhas foram removidas com `git checkout` antes da correção. Guarde o log capturado (`target/`).
 - **Uma correção não está pronta sem um teste que falha sem ela** (aqui, um que falha por timeout e não travando) e sem repetir a execução que travava.
 - **Olhe o que aconteceu antes de teorizar sobre o que poderia.** O item pendente culpava um register expirado; o dump da mensagem que falhou e uma linha de log em cada register mostraram que nada expirou e que uma verificação e uma reserva eram dois passos. Um relatório de falha deve dizer onde a coisa está agora, em cada nó (`diagnosis` no `tests/chaos.rs`).
+- **Uma nova tentativa que continua falhando é um estado a inspecionar, não um tempo a esperar.** A primeira nota aqui propunha que o `drain_topic` tentasse de novo; a causa real teria ficado escondida. Manter o cluster de pé depois da falha e comparar a mesma mensagem em cada nó (`memoryMessages`, a tabela `excluded`) achou a causa em uma rodada.
 
 ## Fontes e provas
 

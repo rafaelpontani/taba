@@ -3,7 +3,7 @@ title: Optional S3 backup
 summary: How Taba keeps a serious-failure backup in an S3 (or SeaweedFS, MinIO) bucket without ever waiting for it — what goes to the bucket, who writes, how the node restores, how to force the backup and stop and start the cluster, the configuration, the limits and the simulated scenarios.
 type: explanation
 status: stable
-verified-on: 2026-10-14 @ efeb47a
+verified-on: 2026-11-04 @ ad87b34
 sources: [crates/taba-node/src/storage/backup, crates/taba-node/src/cluster/backup, crates/taba-node/src/engine/messages/backup.rs, crates/taba-node/src/http/backup.rs, crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/drain/mod.rs, crates/taba-node/src/cluster/vote/mod.rs, crates/taba-node/src/cluster/service/mod.rs, crates/taba-node/src/config/mod.rs, crates/taba-node/tests/backup.rs, docker-compose.yml, examples/backup-s3]
 ---
 
@@ -196,7 +196,7 @@ With SeaweedFS, MinIO (or another compatible S3), `backup.s3.endpoint`, `access-
 | 8 | Total stop with up to 60 s of state | Restores the messages, but the journal has up to `backup.meta.interval` of lag | A receipt or invisibility of the last window may be behind; the message may become deliverable before the deadline. *At-least-once*: the consumer must be idempotent |
 | 9 | `receipt_token` stored in the bucket | The in-flight consumer confirms the ack after the restore | The token is not a secret; it only avoids duplicate processing |
 | 10 | S3 **without conditional write** | The restore lock is not safe | Two restorers may diverge. Accepted risk, warned in the log |
-| 11 | Several nodes go down, some remain | The survivors take over the blocks and fetch from S3 what no live node has | Confirmed messages stay available; those that only existed in S3 may be behind by `backup.meta.interval` |
+| 11 | Several nodes go down, some remain | The survivors take over the blocks and fetch from S3 what no live node has | Confirmed messages stay available; those that only existed in S3 may be behind by `backup.meta.interval`. A message the node's log of excluded messages has does not come back, even if the journal has not reached the bucket yet |
 | 12 | S3 down for a long time with high traffic | The `outbox` accumulates IDs | If the backlog fills the disk, the node goes into `failed`: the same risk that already existed, because the backlog already occupies the disk |
 | 13 | `aws-sdk-s3` uses `aws-lc-rs` | It built on Windows (MSVC) without extra tools (CMake/NASM) | Nothing to do; the build gets slower |
 | 14 | Single survivor excludes the dead and restores | If the dead were only in a partition, they return as new nodes | Their memory-only data may diverge; the reunion uses the one that already exists (`check_reunion`) |

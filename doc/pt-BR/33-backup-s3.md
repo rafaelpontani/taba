@@ -3,7 +3,7 @@ título: Backup opcional em S3
 resumo: Como o Taba guarda um backup de falha grave num bucket S3 (ou SeaweedFS, MinIO) sem nunca esperar por ele — o que vai ao bucket, quem grava, como o nó restaura, como forçar o backup e parar e iniciar o cluster, a configuração, os limites e os cenários simulados.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-14 @ efeb47a
+verificado-em: 2026-11-04 @ ad87b34
 fontes: [crates/taba-node/src/storage/backup, crates/taba-node/src/cluster/backup, crates/taba-node/src/engine/messages/backup.rs, crates/taba-node/src/http/backup.rs, crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/drain/mod.rs, crates/taba-node/src/cluster/vote/mod.rs, crates/taba-node/src/cluster/service/mod.rs, crates/taba-node/src/config/mod.rs, crates/taba-node/tests/backup.rs, docker-compose.yml, examples/backup-s3]
 ---
 
@@ -196,7 +196,7 @@ Com SeaweedFS, MinIO (ou outro S3 compatível), `backup.s3.endpoint`, `access-ke
 | 8 | Parada total com estado de até 60 s | Restaura as mensagens, mas o diário tem até `backup.meta.interval` de defasagem | Um recibo ou invisibilidade da última janela pode estar defasado; a mensagem pode voltar entregável antes do prazo. *At-least-once*: o consumidor precisa ser idempotente |
 | 9 | `receipt_token` guardado no bucket | O consumidor em voo confirma o ack depois da restauração | O token não é segredo; só evita processamento duplicado |
 | 10 | S3 **sem escrita condicional** | A trava de restauração não é segura | Dois restauradores podem divergir. Risco aceito, avisado no log |
-| 11 | Vários nós caem, sobra algum | Os sobreviventes assumem os blocos e buscam no S3 o que nenhum nó vivo tem | As mensagens confirmadas ficam disponíveis; as que só existiam no S3 podem estar defasadas por `backup.meta.interval` |
+| 11 | Vários nós caem, sobra algum | Os sobreviventes assumem os blocos e buscam no S3 o que nenhum nó vivo tem | As mensagens confirmadas ficam disponíveis; as que só existiam no S3 podem estar defasadas por `backup.meta.interval`. Uma mensagem que o log de excluídas do nó tem não volta, mesmo que o journal ainda não tenha chegado ao bucket |
 | 12 | S3 fora por muito tempo com tráfego alto | O `outbox` acumula IDs | Se o backlog encher o disco, o nó entra em `failed`: o mesmo risco que já existia, porque o backlog já ocupa o disco |
 | 13 | O `aws-sdk-s3` usa `aws-lc-rs` | Compilou no Windows (MSVC) sem ferramentas extras (CMake/NASM) | Nada a fazer; a compilação fica mais lenta |
 | 14 | Sobrevivente único exclui os mortos e restaura | Se os mortos estavam só em partição, voltam como nós novos | Os dados deles só em memória podem divergir; o reencontro usa a reunião que já existe (`check_reunion`) |
