@@ -582,6 +582,60 @@ async fn three_of_five_nodes_fall_and_the_survivors_find_the_missing_messages_in
     cluster.shutdown().await;
 }
 
+/// UC: UC-BKP-046
+#[tokio::test]
+async fn a_message_acked_before_the_journal_reaches_the_bucket_does_not_come_back_from_s3() {
+    let s3 = Arc::new(MemoryStore::new());
+    // O journal não sai sozinho durante o teste: é a janela em que o bucket ainda não sabe do ack.
+    let env = [("TABA_BACKUP_META_INTERVAL", "1h")];
+    let cluster = TestCluster::start_with_backup(3, &env, s3.clone()).await;
+    common::cluster::settled(&cluster).await;
+    create_queue(cluster.node(1), "orders").await;
+    for i in 0..3 {
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
+    }
+    flush_all(&cluster).await;
+    assert_eq!(messages_in_bucket(&s3, "orders").await, 3);
+
+    let delivered = consume(
+        cluster.node(1),
+        "orders",
+        "maxMessages=1&visibilityTimeout=300",
+    )
+    .await;
+    let id = delivered[0]["id"].as_str().unwrap().to_owned();
+    ack(cluster.node(1), "orders", &delivered[0]).await;
+    assert!(
+        !journal_records(&s3, "orders")
+            .await
+            .iter()
+            .any(|r| r.id == id && r.removed),
+        "the test needs the removal to be missing from the journal"
+    );
+
+    // A saída de um membro leva cada nó a procurar no bucket o que deveria ter e não tem.
+    for node in &cluster.nodes {
+        assert_eq!(
+            backup_of(node).recover_missing().await,
+            0,
+            "the message was already acknowledged: it must not come back"
+        );
+    }
+    for number in 1..=3 {
+        for message in consume(
+            cluster.node(number),
+            "orders",
+            "maxMessages=10&visibilityTimeout=300",
+        )
+        .await
+        {
+            assert_ne!(message["id"].as_str(), Some(id.as_str()));
+            ack(cluster.node(number), "orders", &message).await;
+        }
+    }
+    cluster.shutdown().await;
+}
+
 /// UC: UC-BKP-023
 #[tokio::test]
 async fn a_single_survivor_excludes_the_dead_even_below_the_minimum_of_voters() {

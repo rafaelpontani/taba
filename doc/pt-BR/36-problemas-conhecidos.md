@@ -3,7 +3,7 @@ título: Problemas conhecidos
 resumo: Registro, com histórico, dos testes de cluster intermitentes e dos problemas conhecidos: cada um com título, status, data em que foi achado, data da solução e o histórico de ocorrências e tentativas.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-29 @ 1f43daf
+verificado-em: 2026-11-05 @ 29af16e
 fontes: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -17,12 +17,14 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro) | Corrigido | 2026-11-05 | 2026-11-05 |
+| [Um nó que para de responder e não é excluído em 30 s](#um-nó-que-para-de-responder-e-não-é-excluído-em-30-s) | Aberto | 2026-11-04 | — |
 | [Um teste de replicação cujas 14 publicações não caíram no nó isolado](#um-teste-de-replicação-cujas-14-publicações-não-caíram-no-nó-isolado) | Corrigido | 2026-11-03 | 2026-11-03 |
 | [Um teste de sincronização cuja segunda store achou o banco travado no arm64](#um-teste-de-sincronização-cuja-segunda-store-achou-o-banco-travado-no-arm64) | Corrigido | 2026-11-03 | 2026-11-03 |
-| [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Aberto | 2026-11-03 | — |
+| [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Corrigido | 2026-11-03 | 2026-11-04 |
 | [Uma votação de exclusão que falha uma vez na suíte completa](#uma-votação-de-exclusão-que-falha-uma-vez-na-suíte-completa) | Aberto | 2026-10-29 | — |
 | [Um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la) | Corrigido | 2026-10-27 | 2026-10-29 |
-| [Uma rajada do canal que não chega ao outro nó na caça](#uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça) | Aberto | 2026-10-29 | — |
+| [Uma rajada do canal que não chega ao outro nó na caça](#uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça) | Corrigido | 2026-10-29 | 2026-11-05 |
 | [Um sinal de pronto perdido que a caça não corrige a tempo](#um-sinal-de-pronto-perdido-que-a-caça-não-corrige-a-tempo) | Aberto | 2026-10-29 | — |
 | [A rodada de caos: uma entrega além do limite e um ack que o dono nunca aplicou](#a-rodada-de-caos-uma-entrega-além-do-limite-e-um-ack-que-o-dono-nunca-aplicou) | Corrigido | 2026-10-27 | 2026-10-27 |
 | [Um nó de teste reiniciado que perde a porta para outro teste](#um-nó-de-teste-reiniciado-que-perde-a-porta-para-outro-teste) | Aberto | 2026-10-26 | — |
@@ -33,6 +35,38 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## Um segundo canal que não é fechado primeiro
+
+**Status:** Corrigido · **Achado em:** 2026-11-05 · **Corrigido em:** 2026-11-05
+
+- **Teste:** `tests/channel.rs::two_connections_at_once_end_with_a_single_channel_per_pair`.
+- **Sintoma:** no job do servidor em arm64 do pull request "Release v0.3.6" (#52), `channel.rs:599` falhou com `assertion failed: closed.is_none()`: a primeira coisa que o teste leu da conexão extra foi uma mensagem, não o fechamento. Os outros 15 testes do arquivo passaram.
+- **Causa:** o teste, não o canal. `Channels::install` só recusa a conexão extra quando o nó tem, naquele instante, um link aberto por ele mesmo; com um link aberto pelo outro lado, ou sem link, ele fica com a nova e conversa nela até o nó 1 reabrir a sua, e aí a conexão extra fecha. Esse é o comportamento projetado (o mesmo lado reabrindo substitui o link antigo), mas o teste exigia que a primeira coisa lida fosse o fechamento. O log da falha capturada mostra o link do par caindo 3 ms antes da asserção, o que não acontece no caminho que o teste supunha. Qual link o nó 2 tinha não vai para o log, então esse detalhe vem do código.
+- **Correção:** o teste lê até a conexão fechar, com limite de 30 s. O que ele prova continua igual: a conexão do menor hash fecha e sobra um canal. O código do servidor não mudou.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-05 | Uma falha em arm64 no #52. Não reproduzida na caça: 0 falhas em 480 execuções do teste sozinho (60 rodadas de 8 processos) e 0 em 320 execuções do arquivo inteiro (40 rodadas de 8 processos). |
+| 2026-11-05 | Reproduzida uma vez em outras 320 execuções do arquivo inteiro, com o log guardado. Teste corrigido; a mesma caça depois: 0 falhas em 320 execuções. |
+
+## Um nó que para de responder e não é excluído em 30 s
+
+**Status:** Aberto · **Achado em:** 2026-11-04 · **Corrigido em:** —
+
+- **Teste:** `tests/failures.rs::a_node_that_stops_answering_with_the_connection_open_is_detected_and_excluded`.
+- **Sintoma:** no job do servidor em amd64 do back-merge `main → release` depois da `v0.3.5` (#50), o teste terminou com `waited 30 s`. Rodar o job de novo passou.
+- **Causa:** não identificada. O log do job que falhou não foi estudado.
+- **Próximo passo:** `docker/hang-hunt.sh failures a_node_that_stops_answering` até guardar uma execução que falhe, e ler qual nó não participou da votação.
+- **Não fazer:** aumentar os 30 s do `eventually`.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-04 | Uma falha em amd64 no #50; rodar o job de novo passou. |
 
 ## Um teste de replicação cujas 14 publicações não caíram no nó isolado
 
@@ -68,18 +102,22 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 ## Um consume com ack que falha uma vez no docker/validate.sh depois de um drain
 
-**Status:** Aberto · **Achado em:** 2026-11-03 · **Corrigido em:** —
+**Status:** Corrigido · **Achado em:** 2026-11-03 · **Corrigido em:** 2026-11-04
 
 - **Teste:** `docker/validate.sh`, etapa "No acknowledged message was lost": `drain_topic validation-crash` chama `taba-cli consume --max 10 --wait 3 --ack` em laço logo depois de o `taba-1` sair por drain e voltar.
 - **Sintoma:** um `taba-cli consume` saiu com código 1 e o script parou (`Failed (code 1)`) sem dizer por quê: o `taba_cli` jogava fora o stderr do `docker compose run`, e o erro do `taba-cli` junto. Foi a primeira rodada depois de a máquina reiniciar, com o Docker Desktop recém-iniciado: o cluster levou 402 s para ficar saudável (24 s na rodada seguinte). A rodada seguinte, no mesmo código, passou em todas as etapas (50 mensagens publicadas, todas recebidas e confirmadas).
-- **Causa:** não identificada. Não é uma mensagem perdida: a etapa parou antes de comparar o que foi publicado com o que foi recebido.
-- **Próximo passo:** o `taba_cli` (`docker/cluster.sh`) agora mostra as últimas linhas do erro do `taba-cli` quando um comando falha; a próxima ocorrência diz qual erro o nó devolveu (um `503` enquanto um nó ainda volta do drain, por exemplo). Se for um erro de tentar de novo, o `drain_topic` deveria tentar de novo em vez de parar.
+- **Causa:** uma mensagem já confirmada voltava à vida a partir do backup em S3. Quando um membro sai do cluster, cada nó roda o `recover_missing` na rodada seguinte de heartbeat e busca no bucket o que deveria guardar e não tem. Para saber o que está morto ele lia só o journal no bucket, que chega atrasado (`backup.meta.interval`), e não o log de excluídas do próprio nó. Uma mensagem que já estava num segmento (o drain do nó que saiu envia tudo) e foi confirmada nos segundos antes dessa rodada voltava, só naquele nó. Ela era entregue de novo, e o ack dela não conseguia mais fechar o quórum: o primário aceitava e os outros dois nós, que não a tinham mais, respondiam `message.not-found`, e o cliente recebia `503 cluster.quorum-unavailable`. Nenhuma mensagem se perdeu; mensagens confirmadas foram entregues de novo. Só clusters com `backup.s3.bucket` são afetados. O defeito é do nó, não da máquina: a primeira falha pareceu ligada a uma partida lenta só porque o tempo da rodada de heartbeat decide se os acks vêm antes.
+- **Como foi achado:** com o cluster mantido de pé depois de uma falha (`TABA_KEEP=1`), o log da rodada que falhou tem `messages that only existed on dead nodes came back from S3 recovered=5` menos de um segundo depois dos acks; o `memoryMessages` dos três nós era `1 6 1`, onde um tópico saudável tem o mesmo número em todos; e 5 das mensagens ainda entregues estavam na tabela `excluded` dos três nós.
+- **Correção:** o `recover_missing` também pula o que o log de excluídas do nó tem (`src/cluster/backup/restore.rs`). O ack grava a exclusão antes de tirar a mensagem do índice, sob a mesma trava, então uma mensagem que o nó não guarda mais já está no log. Teste: `tests/backup.rs::a_message_acked_before_the_journal_reaches_the_bucket_does_not_come_back_from_s3`, que falha sem a correção (a recuperação devolve 1). UC-BKP-046.
+- **Verificação:** o `docker/validate.sh` falhou 4 de 4 rodadas nesta máquina antes da correção (uma delas em `a3bdab9`, antes do gateway SQS e SNS) e passou 3 de 3 com ela.
 
 **Histórico**
 
 | Data | Evento |
 |---|---|
 | 2026-11-03 | Uma falha na primeira rodada depois de reiniciar a máquina (cluster saudável em 402 s); a rodada seguinte passou. O `taba_cli` agora mostra o erro. |
+| 2026-11-04 | Quatro falhas seguidas com `cluster.quorum-unavailable` na mesma etapa, inclusive no commit anterior ao gateway; a `v0.3.5` foi promovida com a falha registrada no pull request dela. |
+| 2026-11-04 | Causa achada e corrigida: o `recover_missing` ignorava o log de excluídas. Teste novo; o `docker/validate.sh` passou 3 de 3. |
 
 ## Uma votação de exclusão que falha uma vez na suíte completa
 
@@ -118,19 +156,21 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 ## Uma rajada do canal que não chega ao outro nó na caça
 
-**Status:** Aberto · **Achado em:** 2026-10-29 · **Solução em:** —
+**Status:** Corrigido · **Achado em:** 2026-10-29 · **Solução em:** 2026-11-05
 
 - **Onde:** `tests/channel.rs::each_peer_has_an_out_queue_and_an_in_queue_that_drain` (e, uma vez cada, `every_node_has_one_channel_to_each_other_node_and_measures_it` e `two_connections_at_once_end_with_a_single_channel_per_pair`).
 - **Sintoma:** em `docker/hang-hunt.sh channel` (8 processos ao mesmo tempo) termina com `waited 30 s for: the burst to reach node 2`, em cerca de 1 processo em 14.
-- **Causa:** não identificada. **Não é consequência dos lotes**: a mesma caça (15 rodadas de 8 processos) falhou 8 vezes no código anterior a eles (`ab14fa5`) e 9 vezes no código com o `take` e o repasse da FIFO no lote.
-- **Próximo passo:** ler o log de uma execução que falhou (`target/hang-hunt-channel/`) e pôr em ordem os quadros da rajada, como o método do AGENTS.md diz para entregas perdidas.
-- **Não fazer:** aumentar os 30 s do `eventually`.
+- **Causa:** o teste, não o canal. A rajada sinaliza `ready` de tópicos inventados (`t0` a `t299`). O heartbeat seguinte (200 ms nos testes) lista os tópicos prontos de verdade, e o `Signals::apply_keepalive` tira corretamente os outros da tabela do nó 2, então o `t299` só fica lá até esse heartbeat. Num runner carregado, a checagem, a cada 10 ms, pode perder essa janela, e aí espera 30 s por um estado que não volta. Não era consequência dos lotes: a mesma caça falhava na mesma taxa no código anterior a eles.
+- **Correção:** o teste parte com `QUIET` (heartbeat de 30 s). Em `every_node_has_one_channel_to_each_other_node_and_measures_it`, uma causa à parte: o `queue_out` era lido uma vez e podia pegar um sinal a caminho (`left: 1`); agora espera a fila esvaziar. O outro teste citado aqui é o de [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro).
+- **Verificação:** ver o histórico. O código do servidor não mudou.
 
 **Histórico**
 
 | Data | Evento |
 |---|---|
 | 2026-10-29 | Encontrado na caça que validou o `take` e o repasse da FIFO no lote; a mesma taxa no commit anterior. |
+| 2026-11-05 | A caça do arquivo inteiro (40 rodadas de 8 processos, em `4892068`) teve problema em 15 rodadas: 18 falhas de `each_peer_has_an_out_queue_and_an_in_queue_that_drain` e 1 de `every_node_has_one_channel_to_each_other_node_and_measures_it`. |
+| 2026-11-05 | `each_peer_has_an_out_queue_and_an_in_queue_that_drain` falhou em arm64 no #52, a primeira vez no CI. Com `QUIET`, a mesma caça teve 0 falhas dele em 320 execuções (eram 18) e 2 de `every_node_has_one_channel_to_each_other_node_and_measures_it`, corrigido em seguida. Com as duas correções, ver [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro). |
 
 ## Um sinal de pronto perdido que a caça não corrige a tempo
 
@@ -327,6 +367,7 @@ O que os problemas acima ensinaram, para o próximo ser achado mais rápido (a l
 - **Quando o log não tem nenhuma linha do caminho suspeito, ponha uma, rode de novo e tire.** A execução que falhou na oferta não tinha nenhuma linha sobre a oferta. Linhas temporárias em cada passo (o que foi oferecido, a quem foi enviado, o que cada nó aprendeu), marcadas com uma palavra que se possa buscar (`HUNT`), e a mesma caçada, deram a ordem dos eventos em milissegundos; as linhas foram removidas com `git checkout` antes da correção. Guarde o log capturado (`target/`).
 - **Uma correção não está pronta sem um teste que falha sem ela** (aqui, um que falha por timeout e não travando) e sem repetir a execução que travava.
 - **Olhe o que aconteceu antes de teorizar sobre o que poderia.** O item pendente culpava um register expirado; o dump da mensagem que falhou e uma linha de log em cada register mostraram que nada expirou e que uma verificação e uma reserva eram dois passos. Um relatório de falha deve dizer onde a coisa está agora, em cada nó (`diagnosis` no `tests/chaos.rs`).
+- **Uma nova tentativa que continua falhando é um estado a inspecionar, não um tempo a esperar.** A primeira nota aqui propunha que o `drain_topic` tentasse de novo; a causa real teria ficado escondida. Manter o cluster de pé depois da falha e comparar a mesma mensagem em cada nó (`memoryMessages`, a tabela `excluded`) achou a causa em uma rodada.
 
 ## Fontes e provas
 

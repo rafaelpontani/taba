@@ -3,7 +3,7 @@ title: Known issues
 summary: Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts.
 type: reference
 status: partial
-verified-on: 2026-10-29 @ 1f43daf
+verified-on: 2026-11-05 @ 29af16e
 sources: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -17,12 +17,14 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first) | Fixed | 2026-11-05 | 2026-11-05 |
+| [A node that stops answering and is not excluded in 30 s](#a-node-that-stops-answering-and-is-not-excluded-in-30-s) | Open | 2026-11-04 | — |
 | [A replication test whose 14 publications missed the isolated node](#a-replication-test-whose-14-publications-missed-the-isolated-node) | Fixed | 2026-11-03 | 2026-11-03 |
 | [A sync test whose second store found the database locked on arm64](#a-sync-test-whose-second-store-found-the-database-locked-on-arm64) | Fixed | 2026-11-03 | 2026-11-03 |
-| [A consume with ack that fails once in docker/validate.sh after a drain](#a-consume-with-ack-that-fails-once-in-dockervalidatesh-after-a-drain) | Open | 2026-11-03 | — |
+| [A consume with ack that fails once in docker/validate.sh after a drain](#a-consume-with-ack-that-fails-once-in-dockervalidatesh-after-a-drain) | Fixed | 2026-11-03 | 2026-11-04 |
 | [An exclusion vote that fails once in the full suite](#an-exclusion-vote-that-fails-once-in-the-full-suite) | Open | 2026-10-29 | — |
 | [A register that checked the message before taking it](#a-register-that-checked-the-message-before-taking-it) | Fixed | 2026-10-27 | 2026-10-29 |
-| [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Open | 2026-10-29 | — |
+| [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Fixed | 2026-10-29 | 2026-11-05 |
 | [A lost ready signal that the hunt does not correct in time](#a-lost-ready-signal-that-the-hunt-does-not-correct-in-time) | Open | 2026-10-29 | — |
 | [The chaos run: a delivery past the limit and an ack the owner never applied](#the-chaos-run-a-delivery-past-the-limit-and-an-ack-the-owner-never-applied) | Fixed | 2026-10-27 | 2026-10-27 |
 | [A restarted test node that loses its port to another test](#a-restarted-test-node-that-loses-its-port-to-another-test) | Open | 2026-10-26 | — |
@@ -33,6 +35,38 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## A second channel that is not closed first
+
+**Status:** Fixed · **Found on:** 2026-11-05 · **Fixed on:** 2026-11-05
+
+- **Test:** `tests/channel.rs::two_connections_at_once_end_with_a_single_channel_per_pair`.
+- **Symptom:** in the arm64 server job of the pull request "Release v0.3.6" (#52), `channel.rs:599` failed with `assertion failed: closed.is_none()`: the first thing the test read from the extra connection was a message, not the close. The other 15 tests of the file passed.
+- **Cause:** the test, not the channel. `Channels::install` only refuses the extra connection when the node has, at that instant, a link opened by itself; with a link opened by the other side, or with no link, it keeps the new one and talks on it until node 1 reopens its own, and then the extra connection closes. That is the designed behaviour (the same side reopening replaces the old link), but the test demanded that the first thing read was the close. The log of the captured failure shows the link of the pair going down 3 ms before the assertion, which does not happen in the path the test assumed. Which link node 2 held is not logged, so that detail comes from the code.
+- **Fix:** the test reads until the connection closes, with a limit of 30 s. What it proves stays the same: the connection of the lowest hash closes and one channel remains. The server code did not change.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-05 | One failure on arm64 in #52. Not reproduced in the hunt: 0 failures in 480 runs of the test alone (60 rounds of 8 processes) and 0 in 320 runs of the whole file (40 rounds of 8 processes). |
+| 2026-11-05 | Reproduced once in another 320 runs of the whole file, with the log kept. Test fixed; the same hunt then: 0 failures in 320 runs. |
+
+## A node that stops answering and is not excluded in 30 s
+
+**Status:** Open · **Found on:** 2026-11-04 · **Fixed on:** —
+
+- **Test:** `tests/failures.rs::a_node_that_stops_answering_with_the_connection_open_is_detected_and_excluded`.
+- **Symptom:** in the amd64 server job of the back-merge `main → release` after `v0.3.5` (#50), the test ended with `waited 30 s`. Running the job again passed.
+- **Cause:** not identified. The log of the failing job was not studied.
+- **Next step:** `docker/hang-hunt.sh failures a_node_that_stops_answering` until it keeps a failing run, and read which node did not take part in the vote.
+- **Do not:** raise the 30 s of `eventually`.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-04 | One failure on amd64 in #50; running the job again passed. |
 
 ## A replication test whose 14 publications missed the isolated node
 
@@ -68,18 +102,22 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 ## A consume with ack that fails once in docker/validate.sh after a drain
 
-**Status:** Open · **Found on:** 2026-11-03 · **Fixed on:** —
+**Status:** Fixed · **Found on:** 2026-11-03 · **Fixed on:** 2026-11-04
 
 - **Test:** `docker/validate.sh`, step "No acknowledged message was lost": `drain_topic validation-crash` calls `taba-cli consume --max 10 --wait 3 --ack` in a loop right after `taba-1` left by drain and came back.
 - **Symptom:** one `taba-cli consume` exited with code 1 and the script stopped (`Failed (code 1)`) without saying why: `taba_cli` threw away the stderr of `docker compose run`, and the error of `taba-cli` with it. It was the first run after the machine restarted, with Docker Desktop just started: the cluster took 402 s to become healthy (24 s in the next run). The next run, on the same code, passed every step (50 messages published, all received and acknowledged).
-- **Cause:** not identified. It is not a lost message: the step stopped before comparing what was published with what was received.
-- **Next step:** `taba_cli` (`docker/cluster.sh`) now prints the last lines of the error of `taba-cli` when a command fails; the next occurrence says which error the node returned (a `503` while a node is still coming back from the drain, for example). If it is a retryable error, `drain_topic` should try again instead of stopping.
+- **Cause:** a message already acknowledged came back to life from the S3 backup. When a member leaves the cluster, each node runs `recover_missing` on its next heartbeat round and fetches from the bucket what it should hold and does not. To know what is dead it read only the journal in the bucket, which arrives late (`backup.meta.interval`), and not the node's own log of excluded messages. A message that had reached a segment (the drain of the node that left sends everything) and was acknowledged in the seconds before that round came back, on that node only. It was delivered again, and its ack could no longer close the quorum: the primary accepted and the two other nodes, which no longer had it, answered `message.not-found`, so the client got `503 cluster.quorum-unavailable`. No message was lost; acknowledged messages were delivered again. Only clusters with `backup.s3.bucket` are affected. The fault is in the node, not in the host: the first failure looked related to a slow start only because the timing of the heartbeat round decides whether the acks come first.
+- **How it was found:** with the cluster kept up after a failure (`TABA_KEEP=1`), the log of the failing run has `messages that only existed on dead nodes came back from S3 recovered=5` less than a second after the acks; `memoryMessages` of the three nodes was `1 6 1` where a healthy topic has the same number on all; and 5 of the messages still delivered were in the `excluded` table of all three nodes.
+- **Fix:** `recover_missing` also skips what the node's log of excluded messages has (`src/cluster/backup/restore.rs`). The ack records the exclusion before it takes the message out of the index, under the same lock, so a message the node no longer holds is already in the log. Test: `tests/backup.rs::a_message_acked_before_the_journal_reaches_the_bucket_does_not_come_back_from_s3`, which fails without the fix (the recovery returns 1). UC-BKP-046.
+- **Verification:** `docker/validate.sh` failed 4 of 4 runs on this host before the fix (one of them on `a3bdab9`, before the SQS and SNS gateway) and passed 3 of 3 with it.
 
 **History**
 
 | Date | Event |
 |---|---|
 | 2026-11-03 | One failure in the first run after a restart of the machine (cluster healthy in 402 s); the next run passed. `taba_cli` now shows the error. |
+| 2026-11-04 | Four failures in a row with `cluster.quorum-unavailable` in the same step, including on the commit before the gateway; `v0.3.5` was promoted with the failure recorded in its pull request. |
+| 2026-11-04 | Cause found and fixed: `recover_missing` ignored the log of excluded messages. New test; `docker/validate.sh` passed 3 of 3. |
 
 ## An exclusion vote that fails once in the full suite
 
@@ -118,19 +156,21 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 ## A channel burst that does not reach the other node in the hunt
 
-**Status:** Open · **Found on:** 2026-10-29 · **Fixed on:** —
+**Status:** Fixed · **Found on:** 2026-10-29 · **Fixed on:** 2026-11-05
 
 - **Where:** `tests/channel.rs::each_peer_has_an_out_queue_and_an_in_queue_that_drain` (and, once each, `every_node_has_one_channel_to_each_other_node_and_measures_it` and `two_connections_at_once_end_with_a_single_channel_per_pair`).
 - **Symptom:** in `docker/hang-hunt.sh channel` (8 processes at once) it ends with `waited 30 s for: the burst to reach node 2`, in about 1 process in 14.
-- **Cause:** not identified. It is **not a consequence of the batches**: the same hunt (15 rounds of 8 processes) failed 8 times on the code before them (`ab14fa5`) and 9 times on the code with `take` and the FIFO forward in the batch.
-- **Next step:** read the log of a failing run (`target/hang-hunt-channel/`) and put in order the frames of the burst, as the method of AGENTS.md says for lost deliveries.
-- **Do not:** raise the 30 s of `eventually`.
+- **Cause:** the test, not the channel. The burst signals `ready` for invented topics (`t0` to `t299`). The next heartbeat (200 ms in the tests) lists the topics that are really ready, and `Signals::apply_keepalive` rightly removes the others from the table of node 2, so `t299` is there only until that heartbeat. On a loaded runner the check, every 10 ms, can miss that window, and then it waits 30 s for a state that will not come back. It was not a consequence of the batches: the same hunt failed at the same rate on the code before them.
+- **Fix:** the test starts with `QUIET` (heartbeat of 30 s). In `every_node_has_one_channel_to_each_other_node_and_measures_it`, a separate cause: `queue_out` was read once and could catch a signal on its way (`left: 1`); it now waits for the queue to empty. The other test once named here is [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first).
+- **Verification:** see the history. The server code did not change.
 
 **History**
 
 | Date | Event |
 |---|---|
 | 2026-10-29 | Found in the hunt that validated the `take` and the FIFO forward in the batch; the same rate on the earlier commit. |
+| 2026-11-05 | The hunt of the whole file (40 rounds of 8 processes, on `4892068`) had a problem in 15 rounds: 18 failures of `each_peer_has_an_out_queue_and_an_in_queue_that_drain` and 1 of `every_node_has_one_channel_to_each_other_node_and_measures_it`. |
+| 2026-11-05 | `each_peer_has_an_out_queue_and_an_in_queue_that_drain` failed on arm64 in #52, the first time in CI. With `QUIET`, the same hunt had 0 failures of it in 320 runs (it had 18) and 2 of `every_node_has_one_channel_to_each_other_node_and_measures_it`, fixed next. With both fixes, see [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first). |
 
 ## A lost ready signal that the hunt does not correct in time
 
@@ -327,6 +367,7 @@ What the issues above taught, so the next one is found faster (the checklist for
 - **When the log has no line about the suspect path, add it, run again and take it out.** The failing run of the offer had no line about the offer. Temporary lines at each step (what was offered, to whom it was sent, what each node learned), marked with a word you can search (`HUNT`), and the same hunt, gave the order of the events in milliseconds; the lines were removed with `git checkout` before the fix. Keep the captured log (`target/`).
 - **A fix is not done without a test that fails without it** (here, one that fails by timeout and not by hanging) and without repeating the run that used to hang.
 - **Look at what happened before theorizing about what could.** The pending item blamed an expired register for two years of reasoning; the dump of the failing message and a log line at each register showed that nothing had expired and that a check and a reservation were two steps. A report of a failure should say where the thing is now, on each node (`diagnosis` in `tests/chaos.rs`).
+- **A retry that keeps failing is a state to inspect, not a timing to wait out.** The first note here proposed that `drain_topic` try again; the real cause would have stayed hidden. Keeping the cluster up after the failure and comparing the same message on every node (`memoryMessages`, the `excluded` table) found it in one run.
 
 ## Sources and evidence
 
