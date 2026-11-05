@@ -37,7 +37,7 @@ The order is a **proposal**; milestones 1 and 2 do not depend on each other.
 | Item | Detail | Closes |
 |---|---|---|
 | **Versioning policy in the paths** ⬜ | The OpenAPI documents exist ([15](15-api-overview.md)); what is left is deciding the policy of the prefix (today there is no `/v1`) **before** the other connectors fix the paths | RF-22 |
-| **Conformance suite** 🟡 | `connectors/contract/` ✅: the scenarios (`core.scn` and the cross-language ones), the drivers of the five connectors and a one-node Taba in Docker ([21-connectors.md](21-connectors.md#the-contract-tests), D183). Missing ⬜: the fixtures (request/response pairs) and the JSON reader test documents | UC-CNT (level `K`) |
+| **Conformance suite** 🟡 | `connectors/contract/` ✅: the scenarios (`core.scn` and the cross-language ones), the drivers of the eight connectors and a one-node Taba in Docker ([21-connectors.md](21-connectors.md#the-contract-tests), D183). Missing ⬜: the fixtures (request/response pairs) and the JSON reader test documents | UC-CNT (level `K`) |
 
 ### Milestone 2 — The other connectors
 
@@ -46,9 +46,9 @@ In phases ([21-connectors.md](21-connectors.md)); phases 2, 3 and 4 **do not dep
 | Phase | Languages | Note |
 |---|---|---|
 | 1 — Reference | **Python** (the most readable) and **Java** (the oldest base) ✅ | Stress the design at both ends. Ready (D68.2) with the contract tests (D183); publishing missing (PRB-079) |
-| 2 — C core | **C** (`libtaba`) and **C++** (C++03 header over `libtaba`) | |
-| 3 — Platforms | **Node.js** ✅ and **Go** | Node.js ready (D68.2) |
-| 4 — Remaining | **PHP** and **Ruby**; in **Rust**, the `async` form | |
+| 2 — C core | **C** (`libtaba`) and **C++** (C++03 header over `libtaba`) ⏸ | Deferred with no date (D68.4); see "Out of scope (for now)" |
+| 3 — Platforms | **Node.js** ✅ and **Go** ✅ | Node.js ready (D68.2); Go ready (D68.3) |
+| 4 — Remaining | **PHP** ✅ and **Ruby** ✅; in **Rust**, the `async` form | PHP and Ruby ready (D68.3); publishing missing (PRB-079) |
 | 5 — Integration | The scenarios pass on **all** against the real Taba ✅ (`connectors/contract/run.sh`, D183); usage examples fill the README table ⬜ | Depends on milestone 1 |
 
 Decisions that must be closed: **D68** (base versions of the languages still to do), **D70.1** and **D70.2** (organization and package names; PHP mirror; independent versions).
@@ -57,7 +57,7 @@ Decisions that must be closed: **D68** (base versions of the languages still to 
 
 | Item | Detail |
 |---|---|
-| Packages 🟡 | nuget.org (`Taba.*`) and crates.io (`taba-client`, `taba-cli`) automated in `release.yml` by Trusted Publishing, turned on by the `PUBLISH_CRATES` and `NUGET_USER` variables ([27-ci-cd.md](27-ci-cd.md#publishing-and-metadata)); the registries of the other languages are missing. **They cannot be deleted** |
+| Packages 🟡 | nuget.org (`Taba.*`) and crates.io (`taba-client`, `taba-cli`) automated in `release.yml` by Trusted Publishing, turned on by the `PUBLISH_CRATES` and `NUGET_USER` variables ([27-ci-cd.md](27-ci-cd.md#publishing-and-metadata)); the registries of the other languages are missing (PRB-079); meanwhile their files are attached to the Release (D70.3). **They cannot be deleted** |
 | Images ✅ | Docker Hub and GHCR, with the same digest on every tag ([27-ci-cd.md](27-ci-cd.md#docker-tags-and-floating-tags)) |
 | Public repository ⬜ | Today private; the definitive publication is the owner's decision |
 
@@ -100,7 +100,7 @@ The "unblocked" pending items of [31-pending-items.md](31-pending-items.md) are,
 
 ## Out of scope (for now)
 
-Administration graphical interface; advanced authentication (OAuth/OIDC, per-operation policy); AMQP, MQTT and Kafka protocols; stream processing and reprocessing of history; **multi-region**. Items out of scope may be reassessed.
+Administration graphical interface; advanced authentication (OAuth/OIDC, per-operation policy); AMQP, MQTT and Kafka protocols; stream processing and reprocessing of history; **multi-region**; the **C** and **C++** connectors (phase 2 of milestone 2, D68.4). Items out of scope may be reassessed.
 
 ## Sources and evidence
 

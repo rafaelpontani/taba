@@ -36,6 +36,20 @@ async def main():
 asyncio.run(main())
 ```
 
+## Installing (not in a registry yet)
+
+Not in a registry yet (the identifiers are still open). Until then, each [Release](https://github.com/rafaelpontani/taba/releases) has the installable file, with its checksum in `SHA256SUMS` and its provenance (`gh attestation verify <file> -R rafaelpontani/taba`). `<release>` below is the version of the Release; the version in the file name is the connector's own.
+
+```
+pip install https://github.com/rafaelpontani/taba/releases/download/v<release>/taba_client-0.1.0-py3-none-any.whl
+```
+
+Straight from the source, with no Release (a branch, a tag or a commit after the `@`):
+
+```
+pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"
+```
+
 ## Batches
 
 Many messages in one request, next to the single calls (optional): `publish_batch(topic, [BatchMessage(body, content_type=...)])`, `ack_batch(topic, messages)` and `change_visibility_batch(topic, messages, seconds)` (also on `AsyncClient`) return one `BatchResult` per item (`ok`, `status`, `id`, `error_code`). Each item is answered as its single call, in order, and an item that failed comes back with its `status` and error code instead of throwing. The bodies go in base64, so any type fits. Details: [Messages in batch](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#messages-in-batch-post-messagesbatch-ack-and-visibility).

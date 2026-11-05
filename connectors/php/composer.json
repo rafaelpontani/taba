@@ -1,0 +1,16 @@
+{
+    "name": "taba/client",
+    "description": "The PHP client of Taba: the nine operations of the client API, subscribe, consuming with a handler and the call retries of the common contract. No dependencies.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/rafaelpontani/taba",
+    "keywords": ["taba", "queue", "messaging", "client"],
+    "require": {
+        "php": ">=5.6",
+        "ext-curl": "*",
+        "ext-json": "*"
+    },
+    "autoload": {
+        "classmap": ["src/"]
+    }
+}

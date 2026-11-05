@@ -1,0 +1,28 @@
+# Tests of the Ruby connector on the base version (2.1) and a current one. Called by ci.yml.
+# The connector is not published yet (D70.1: the gem name is still open).
+name: Ruby connector build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  connector-ruby:
+    name: Ruby connector (tests, Ruby ${{ matrix.ruby }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ["2.1", "3.4"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tests
+        env:
+          RUBY: ${{ matrix.ruby }}
+        run: |
+          docker run --rm -v "$PWD/connectors/ruby:/work" -w /work "ruby:${RUBY}" \
+            ruby -Ilib -Itest -e 'Dir["test/*_test.rb"].each { |f| require File.expand_path(f) }'

@@ -101,6 +101,9 @@ cargo run -- init --out ./secrets                     # certificado e token raiz
 
 cd connectors/rust && cargo test --workspace --all-features && cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --all
 cd connectors/csharp && dotnet test Taba.Client.Tests
+cd connectors/go && go test -race .                    # Go 1.7+ (GOPATH or modules)
+cd connectors/php && php tests/run.php                 # PHP 5.6+
+cd connectors/ruby && ruby -Ilib -Itest -e 'Dir["test/*_test.rb"].each { |f| require File.expand_path(f) }'   # Ruby 2.1+
 
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d   # cluster de 3 nós, imagem local
 docker/validate.sh                                    # validação de ponta a ponta (≈ 5 min)

@@ -1,23 +1,23 @@
 # Connector contract tests
 
-The same scenario, run against a real Taba by **every connector** (C#, Java, Node.js, Python and Rust), through a small *driver* written in the connector's own language. The scenario is data, not code, so the contract is written once and each connector proves it.
+The same scenario, run against a real Taba by **every connector** (C#, Java, Node.js, Python, Rust, Go, PHP and Ruby), through a small *driver* written in the connector's own language. The scenario is data, not code, so the contract is written once and each connector proves it.
 
 ```
-connectors/contract/run.sh                # all five, then the five talking to each other
+connectors/contract/run.sh                # all eight, then the eight talking to each other
 connectors/contract/run.sh node python    # only these (no cross-language step)
 connectors/node/contract/run.sh           # one connector alone (starts its own node)
 ```
 
-Needs Docker. `run.sh` starts **one Taba node** from the image `taba:local` (built from the root `Dockerfile` if it does not exist; `TABA_IMAGE=rafaelpontani/taba:latest` uses a published one) in the one-node profile (`replication.factor=1`, no TLS, a development token), on its own Docker network. Each driver then runs **in the container of the oldest runtime the connector supports** (Node 18, Python 3.9, JDK 11, .NET 8 SDK, current Rust), reaching the node by name. Everything is removed at the end (`--keep` leaves the node).
+Needs Docker. `run.sh` starts **one Taba node** from the image `taba:local` (built from the root `Dockerfile` if it does not exist; `TABA_IMAGE=rafaelpontani/taba:latest` uses a published one) in the one-node profile (`replication.factor=1`, no TLS, a development token), on its own Docker network. Each driver then runs **in the container of the oldest runtime the connector supports** (Node 18, Python 3.9, JDK 11, .NET 8 SDK, current Rust, Go 1.7, PHP 5.6, Ruby 2.1), reaching the node by name. Everything is removed at the end (`--keep` leaves the node).
 
 ## What it checks
 
 | Scenario | What |
 |---|---|
 | `scenarios/core.scn` (every connector) | topics (create, get, list, update, delete, the `404`/`409`/`400` errors); publish, consume, `changeVisibility`, `ack`; the same in batch (one result per item, a bad item or an old receipt failing alone, the order of a FIFO group); text with accents, JSON and bytes coming back byte for byte; FIFO (duplicate reported, order inside a group); distributor; consuming with a handler (deleted, failed, kept, **invisibility renewed** while a slow handler holds the message); `subscribe` (acknowledges what the handler accepted, gives back what it refused); a **long polling cancelled** from outside; a wrong token and a refused connection (`client.network`) |
-| `scenarios/cross-*.scn` (all five together) | `setup` creates one queue per connector and a distributor over them; every connector **publishes** a text with accents, a JSON and bytes to the distributor; every connector **drains its own queue** and finds what each of the five published, exactly |
+| `scenarios/cross-*.scn` (all eight together) | `setup` creates one queue per connector and a distributor over them; every connector **publishes** a text with accents, a JSON and bytes to the distributor; every connector **drains its own queue** and finds what each of the eight published, exactly |
 
-A line the connector cannot do is printed as `SKIP`, never silently ignored (today: `cancelConsume` in Rust, whose client is synchronous and has no cancellation).
+A line the connector cannot do is printed as `SKIP`, never silently ignored (today: `cancelConsume` in Rust, whose client is synchronous and has no cancellation, and the `slow` mode of `handle` in PHP, which runs one thread and cannot renew the invisibility while a handler runs; the PHP driver takes the message out of the queue before printing the `SKIP`, so the next lines still hold).
 
 Not covered, because one node cannot show it: `503` and the retries with a node going down, and the cluster behaviour. That is `docker/validate.sh` with `taba-cli` and the chaos run (`docker/cluster.sh` has `taba_kill`), and the retry rules have their unit tests in each connector.
 
@@ -57,6 +57,6 @@ op key=value key=value ... [as=name] [=> expectation expectation ...]
 
 ## A driver
 
-`connectors/<language>/contract/` holds the driver (`driver.js`, `driver.py`, `ContractDriver.java`, `Program.cs`, `src/main.rs`) and `run.sh`. The driver takes `--url --token --prefix --lang --scenario FILE...`, runs the lines in order and prints `PASS`, `FAIL` (with what differed) or `SKIP` for each one, then `<lang>: N passed, N failed, N skipped`; the exit code is not zero if any line failed. It uses **only the connector's public API**, in the language's own style (a `Promise` and an `AbortSignal` in Node, a `CancelToken` in Python, a `Subscription` in Java, a `CancellationToken` in C#). It is not published with the package.
+`connectors/<language>/contract/` holds the driver (`driver.js`, `driver.py`, `ContractDriver.java`, `Program.cs`, `src/main.rs`, `main.go`, `driver.php`, `driver.rb`) and `run.sh`. The driver takes `--url --token --prefix --lang --scenario FILE...`, runs the lines in order and prints `PASS`, `FAIL` (with what differed) or `SKIP` for each one, then `<lang>: N passed, N failed, N skipped`; the exit code is not zero if any line failed. It uses **only the connector's public API**, in the language's own style (a `Promise` and an `AbortSignal` in Node, a `CancelToken` in Python, Ruby and PHP, a `Subscription` in Java, a `CancellationToken` in C#, a `context.Context` in Go). It is not published with the package.
 
 To add an operation: describe it in the table above, add it to every driver (or let a connector `SKIP` it on purpose) and use it in a scenario. To add a connector: a folder `connectors/<language>/contract/` with a driver and a `run.sh` like the others (they all end in `contract_main <language> "$@"` from `lib.sh`), and its name in `run.sh` and in `scenarios/cross-*.scn`.

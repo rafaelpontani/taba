@@ -35,7 +35,7 @@ Por isso o Taba é medido [contra brokers da mesma classe](doc/pt-BR/38-benchmar
 | **Durabilidade** | Cada mensagem é confirmada por um **quorum** de nós (3 cópias por padrão) e copiada **continuamente para o S3** (AWS, SeaweedFS, MinIO, Ceph...) |
 | **Implantação** | Uma imagem Docker (58 MB), Docker Compose ou o **Helm chart** em `oci://ghcr.io/rafaelpontani/charts/taba` |
 | **Operação** | `taba-cli`, uma linha de comando com **interface de terminal em tela cheia** (saúde do cluster, tópicos, gráficos das filas), além de métricas Prometheus e OpenTelemetry |
-| **Clientes** | HTTP simples, de qualquer linguagem; conectores prontos para **Java, C#/.NET, Python, Node.js e Rust** (Rust no crates.io, C# no nuget.org), todos sem dependências, além de um driver para o [OpenMessaging Benchmark](connectors/omb/README.md). Aplicações que usam o **AWS SDK (SQS e SNS)** se conectam sem mudar o código ([gateway](#use-o-aws-sdk-sem-mudar-o-seu-código)) |
+| **Clientes** | HTTP simples, de qualquer linguagem; conectores prontos para **Java, C#/.NET, Python, PHP, Ruby, Node.js, Go e Rust** (Rust no crates.io, C# no nuget.org), todos sem dependências, além de um driver para o [OpenMessaging Benchmark](connectors/omb/README.md). Aplicações que usam o **AWS SDK (SQS e SNS)** se conectam sem mudar o código ([gateway](#use-o-aws-sdk-sem-mudar-o-seu-código)) |
 | **Licença** | Servidor AGPLv3, conectores Apache-2.0 |
 
 ## Por que o Taba
@@ -154,7 +154,7 @@ O que o Taba não faz:
 - **Não substitui um protocolo, exceto o da AWS:** o Taba fala HTTP, e um gateway opcional fala os protocolos do **SQS e do SNS** ([acima](#use-o-aws-sdk-sem-mudar-o-seu-código), com os seus limites). Ainda não há compatibilidade com AMQP ou MQTT, então vir do RabbitMQ significa trocar o cliente.
 - **Não é uma plataforma de streaming:** processamento de streams e reprodução do histórico de mensagens estão fora do escopo ([Mensageria, não streaming](#mensageria-não-streaming)). Para filas e pub/sub, sim; para reler o passado, não.
 - **Fora do escopo por enquanto:** interface web, autenticação avançada (OAuth/OIDC) e multirregião.
-- **Ainda por vir:** os conectores de PHP, Ruby, Go, C e C++, e os pacotes dos conectores Java, Node.js e Python (hoje eles são usados a partir do código-fonte). Veja o [roadmap](doc/pt-BR/32-roadmap.md) e os [problemas conhecidos](doc/pt-BR/36-problemas-conhecidos.md).
+- **Ainda por vir:** os pacotes dos conectores Java, Node.js, Python, Go, PHP e Ruby (hoje os arquivos do Node.js, Python, Ruby, Java e PHP vão anexados a cada [Release](https://github.com/rafaelpontani/taba/releases) e o Go é lido do repositório: [como instalar](doc/pt-BR/21-conectores.md#usar-os-conectores-antes-de-publicados)). Veja o [roadmap](doc/pt-BR/32-roadmap.md) e os [problemas conhecidos](doc/pt-BR/36-problemas-conhecidos.md).
 
 ## Desenvolva em um nó
 
@@ -246,17 +246,15 @@ A API é HTTP, então qualquer linguagem já fala com o Taba pelo cliente HTTP q
 | Linguagem | Pasta | Versão base | Estado | Exemplo de uso |
 |---|---|---|---|---|
 | Java | `connectors/java/` | Java 11 | [pronto](connectors/java/README.md) (nove operações bloqueantes e com `CompletableFuture`, `subscribe`) | [README](connectors/java/README.md) |
-| C# | `connectors/csharp/` | .NET Framework 4.6.1 e .NET 5, 6, 8 e 10 | [pronto](connectors/csharp/README.md) (nove operações assíncronas e síncronas, `subscribe`) | [exemplo de console](examples/csharp-console/) |
+| C# | `connectors/csharp/` | .NET Framework 4.6.1 e .NET 5, 6, 8 e 10 | [pronto](connectors/csharp/README.md) (nove operações assíncronas e síncronas, `subscribe`) | [README](connectors/csharp/README.md) |
 | Python | `connectors/python/` | 3.9 | [pronto](connectors/python/README.md) (clientes síncrono e `asyncio`, `subscribe`) | [README](connectors/python/README.md) |
-| PHP | `connectors/php/` | 5.6 | planejado | TODO |
-| Ruby | `connectors/ruby/` | 2.0 | planejado | TODO |
+| PHP | `connectors/php/` | 5.6 | [pronto](connectors/php/README.md) (nove operações, `subscribe`, consumo com handler; uma thread só, então sem renovação automática da invisibilidade) | [README](connectors/php/README.md) |
+| Ruby | `connectors/ruby/` | 2.1 | [pronto](connectors/ruby/README.md) (nove operações, blocos, `subscribe`, `CancelToken`) | [README](connectors/ruby/README.md) |
 | Node.js | `connectors/node/` | 18 | [pronto](connectors/node/README.md) (nove operações com `Promise`, `subscribe`, tipos incluídos) | [README](connectors/node/README.md) |
-| Go | `connectors/go/` | 1.7 | planejado | TODO |
+| Go | `connectors/go/` | 1.7 | [pronto](connectors/go/README.md) (nove operações com `context.Context`, `Subscribe`) | [README](connectors/go/README.md) |
 | Rust | `connectors/rust/client/` | 1.70 | síncrono pronto ([README](connectors/rust/client/README.md)) | [exemplo](connectors/rust/client/README.md) |
-| C | `connectors/c/` | C89 | planejado | TODO |
-| C++ | `connectors/cpp/` | C++03 | planejado | TODO |
 
-Os cinco conectores prontos têm as mesmas operações, os mesmos padrões e os mesmos erros: os [testes de contrato](connectors/contract/README.md) passam um mesmo cenário por cada um deles contra um nó de verdade, cada um no runtime mais antigo que suporta, e depois fazem um ler as mensagens dos outros. Publicar e consumir com ack automático (a mensagem só é apagada se o handler não falhar):
+Os oito conectores prontos (Java, C#, Python, PHP, Ruby, Node.js, Go e Rust) têm as mesmas operações, os mesmos padrões e os mesmos erros: os [testes de contrato](connectors/contract/README.md) passam um mesmo cenário por cada um deles contra um nó de verdade, cada um no runtime mais antigo que suporta, e depois fazem um ler as mensagens dos outros (a única diferença é o PHP: roda numa thread só, então não renova a invisibilidade enquanto o handler roda). Publicar e consumir com ack automático (a mensagem só é apagada se o handler não falhar):
 
 ```java
 // Java
@@ -289,6 +287,30 @@ await client.publishJson('orders', { order: 9001 });
 await client.consumeWith('orders', { waitTime: 20 }, async ({ message }) => console.log(message.bodyText));
 ```
 
+```go
+// Go
+client, _ := taba.NewClient(taba.Config{BaseURL: "http://localhost:8080", Token: token})
+client.PublishJSON(ctx, "orders", map[string]int{"order": 9001})
+client.ConsumeWith(ctx, "orders", &taba.ConsumeOptions{WaitTime: taba.Int(20)}, func(c *taba.MessageContext) error {
+    fmt.Println(c.Message.BodyText())
+    return nil // a mensagem é apagada; devolver um erro a mantém
+})
+```
+
+```php
+// PHP
+$client = new TabaClient(new TabaConfig('http://localhost:8080', $token));
+$client->publishJson('orders', array('order' => 9001));
+$client->consumeWith('orders', function ($context) { echo $context->message->bodyText(); }, array('waitTime' => 20));
+```
+
+```ruby
+# Ruby
+client = Taba::Client.new('http://localhost:8080', token: token)
+client.publish_json('orders', order: 9001)
+client.consume_with('orders', wait_time: 20) { |context| puts context.message.body_text }
+```
+
 ```rust
 // Rust (feature "serde")
 client.publish_object("orders", &Order { number: 9001 })?;
@@ -304,7 +326,7 @@ O `taba-cli`, a linha de comando de cliente ([connectors/rust/cli](connectors/ru
 
 **Driver do OpenMessaging Benchmark.** O [`connectors/omb`](connectors/omb/README.md) é um driver para o [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark), escrito sobre o conector Java, para medir o Taba com a mesma ferramenta e as mesmas cargas do RabbitMQ e do NATS. É ele que o [benchmark](#desempenho) usa.
 
-As outras linguagens usam o próprio cliente HTTP ou a biblioteca C. O desenho está no [guia dos conectores](doc/pt-BR/21-conectores.md).
+As outras linguagens (C e C++ ficam adiados, sem data) usam o próprio cliente HTTP. O desenho está no [guia dos conectores](doc/pt-BR/21-conectores.md).
 
 > As versões base são propostas e podem mudar até serem confirmadas (pendência D68, veja as [pendências](doc/pt-BR/31-pendencias.md)).
 

@@ -37,7 +37,7 @@ A ordem é uma **proposta**; os marcos 1 e 2 não dependem um do outro.
 | Item | Detalhe | Fecha |
 |---|---|---|
 | **Política de versionamento nos caminhos** ⬜ | Os documentos OpenAPI existem ([15](15-api-visao-geral.md)); falta decidir a política do prefixo (hoje não há `/v1`) **antes** de os outros conectores fixarem os caminhos | RF-22 |
-| **Suíte de conformidade** 🟡 | `connectors/contract/` ✅: os cenários (`core.scn` e os entre linguagens), os drivers dos cinco conectores e um Taba de um nó no Docker ([21-conectores.md](21-conectores.md#os-testes-de-contrato), D183). Faltam ⬜: as fixtures (pares requisição/resposta) e os documentos de teste do leitor de JSON | UC-CNT (nível `K`) |
+| **Suíte de conformidade** 🟡 | `connectors/contract/` ✅: os cenários (`core.scn` e os entre linguagens), os drivers dos oito conectores e um Taba de um nó no Docker ([21-conectores.md](21-conectores.md#os-testes-de-contrato), D183). Faltam ⬜: as fixtures (pares requisição/resposta) e os documentos de teste do leitor de JSON | UC-CNT (nível `K`) |
 
 ### Marco 2 — Os demais conectores
 
@@ -46,9 +46,9 @@ Em fases ([21-conectores.md](21-conectores.md)); as fases 2, 3 e 4 **não depend
 | Fase | Linguagens | Observação |
 |---|---|---|
 | 1 — Referência | **Python** (a mais legível) e **Java** (a base mais antiga) ✅ | Estressam o desenho nas duas pontas. Prontos (D68.2) com os testes de contrato (D183); falta a publicação (PRB-079) |
-| 2 — Núcleo C | **C** (`libtaba`) e **C++** (cabeçalho C++03 sobre a `libtaba`) | |
-| 3 — Plataformas | **Node.js** ✅ e **Go** | Node.js pronto (D68.2) |
-| 4 — Restantes | **PHP** e **Ruby**; no **Rust**, a forma `async` | |
+| 2 — Núcleo C | **C** (`libtaba`) e **C++** (cabeçalho C++03 sobre a `libtaba`) ⏸ | Adiado, sem data (D68.4); veja "Fora do escopo (por enquanto)" |
+| 3 — Plataformas | **Node.js** ✅ e **Go** ✅ | Node.js pronto (D68.2); Go pronto (D68.3) |
+| 4 — Restantes | **PHP** ✅ e **Ruby** ✅; no **Rust**, a forma `async` | PHP e Ruby prontos (D68.3); falta a publicação (PRB-079) |
 | 5 — Integração | Os cenários passam em **todos** contra o Taba real ✅ (`connectors/contract/run.sh`, D183); exemplos de uso preenchem a tabela do README ⬜ | Depende do marco 1 |
 
 Decisões que precisam estar fechadas: **D68** (versões-base das linguagens ainda por fazer), **D70.1** e **D70.2** (nomes de organização e pacote; espelho do PHP; versões independentes).
@@ -57,7 +57,7 @@ Decisões que precisam estar fechadas: **D68** (versões-base das linguagens ain
 
 | Item | Detalhe |
 |---|---|
-| Pacotes 🟡 | nuget.org (`Taba.*`) e crates.io (`taba-client`, `taba-cli`) automatizados no `release.yml` por Trusted Publishing, ligados pelas variáveis `PUBLISH_CRATES` e `NUGET_USER` ([27-ci-cd.md](27-ci-cd.md#publicação-e-metadados)); faltam os registros das outras linguagens. **Não podem ser apagados** |
+| Pacotes 🟡 | nuget.org (`Taba.*`) e crates.io (`taba-client`, `taba-cli`) automatizados no `release.yml` por Trusted Publishing, ligados pelas variáveis `PUBLISH_CRATES` e `NUGET_USER` ([27-ci-cd.md](27-ci-cd.md#publicação-e-metadados)); faltam os registros das outras linguagens (PRB-079); enquanto isso os arquivos delas são anexados à Release (D70.3). **Não podem ser apagados** |
 | Imagens ✅ | Docker Hub e GHCR, com o mesmo digest em todas as tags ([27-ci-cd.md](27-ci-cd.md#tags-docker-e-tags-flutuantes)) |
 | Repositório público ⬜ | Hoje privado; a publicação definitiva é uma decisão do dono |
 
@@ -100,7 +100,7 @@ As pendências "sem bloqueio" de [31-pendencias.md](31-pendencias.md) são, em s
 
 ## Fora do escopo (por enquanto)
 
-Interface gráfica de administração; autenticação avançada (OAuth/OIDC, política por operação); protocolos AMQP, MQTT e Kafka; processamento de streams e reprocessamento do histórico; **multi-região**. Itens fora do escopo podem ser reavaliados.
+Interface gráfica de administração; autenticação avançada (OAuth/OIDC, política por operação); protocolos AMQP, MQTT e Kafka; processamento de streams e reprocessamento do histórico; **multi-região**; os conectores **C** e **C++** (fase 2 do marco 2, D68.4). Itens fora do escopo podem ser reavaliados.
 
 ## Fontes e provas
 

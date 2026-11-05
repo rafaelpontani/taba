@@ -47,13 +47,13 @@ A line **immediately above** the test function, with one or more codes separated
 fn publishing_binary_stores_the_raw_bytes() { /* … */ }
 ```
 
-- The prefix is `/// UC:` (triple slashes, including in C#) and the codes are **complete** (`UC-MSG-003`, never `MSG-003`). Attributes (`#[…]`) and other comment lines between the citation and the function are ignored.
+- The prefix is `/// UC:` (triple slashes, including in C#, Java, JavaScript and PHP), `// UC:` in Go (`gofmt` rewrites a `///` doc comment) and `# UC:` in Python and Ruby, and the codes are **complete** (`UC-MSG-003`, never `MSG-003`). Attributes (`#[…]`) and other comment lines between the citation and the function are ignored.
 - A test can cover several cases, and a case can have several tests. A case only counts as **covered** with a test **at the level** of the "Level" column.
 - You do not cite a code that does not exist.
 
 ## What `uc_coverage` checks
 
-`crates/taba-node/tests/uc_coverage.rs` reads the codes from the **cards** (`### UC-XXX-NNN`) of [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md) and those cited in `crates/taba-node/{src,tests}` and in `connectors/*` (`.rs` and `.cs` files). It fails when:
+`crates/taba-node/tests/uc_coverage.rs` reads the codes from the **cards** (`### UC-XXX-NNN`) of [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md) and those cited in `crates/taba-node/{src,tests}` and in `connectors/*` (`.rs`, `.cs`, `.java`, `.js`, `.py`, `.go`, `.php` and `.rb` files). It fails when:
 
 1. a test cites a code that **does not exist** or is `(retirado…)`;
 2. a code appears **twice** in the documentation.

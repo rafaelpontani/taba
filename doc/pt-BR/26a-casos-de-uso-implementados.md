@@ -3671,6 +3671,13 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/node/test/client.test.js::create topic sends only what was filled`
   - `connectors/python/tests/test_client.py::test_the_nine_operations_build_the_expected_routes`
   - `connectors/python/tests/test_client.py::test_create_topic_sends_only_what_was_filled`
+  - `connectors/go/client_test.go::TestTheNineOperationsBuildTheExpectedRoutes`
+  - `connectors/go/client_test.go::TestCreateTopicSendsOnlyWhatWasFilled`
+  - `connectors/php/tests/ClientTest.php::testTheNineOperationsBuildTheExpectedRoutes`
+  - `connectors/php/tests/ClientTest.php::testCreateTopicSendsOnlyWhatWasFilled`
+  - `connectors/php/tests/RealHttpTest.php::testTheRequestGoesOnTheWireWithTheRightVerbHeadersAndBody`
+  - `connectors/ruby/test/client_test.rb::test_the_nine_operations_build_the_expected_routes`
+  - `connectors/ruby/test/client_test.rb::test_create_topic_sends_only_what_was_filled`
 
 ---
 
@@ -3684,6 +3691,10 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::configDefaultsAndRequiredBaseUrl`
   - `connectors/node/test/client.test.js::config defaults and required base url`
   - `connectors/python/tests/test_client.py::test_config_defaults_and_required_base_url`
+  - `connectors/go/client_test.go::TestConfigDefaultsAndRequiredBaseURL`
+  - `connectors/php/tests/ClientTest.php::testConfigDefaultsAndRequiredBaseUrl`
+  - `connectors/php/tests/RealHttpTest.php::testAnInvalidAddressNeverReachesTheNetwork`
+  - `connectors/ruby/test/client_test.rb::test_config_defaults_and_required_base_url`
 
 ---
 
@@ -3698,6 +3709,10 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::aTokenGoesInEveryCallAndWithoutItNoCallCarriesAuthorization`
   - `connectors/node/test/client.test.js::a token goes in every call and without it no call carries authorization`
   - `connectors/python/tests/test_client.py::test_a_token_goes_in_every_call_and_without_it_no_call_carries_authorization`
+  - `connectors/go/client_test.go::TestATokenGoesInEveryCallAndWithoutItNoCallCarriesAuthorization`
+  - `connectors/php/tests/ClientTest.php::testATokenGoesInEveryCallAndWithoutItNoCallCarriesAuthorization`
+  - `connectors/php/tests/RealHttpTest.php::testTheRequestGoesOnTheWireWithTheRightVerbHeadersAndBody`
+  - `connectors/ruby/test/client_test.rb::test_a_token_goes_in_every_call_and_without_it_no_call_carries_authorization`
 
 ---
 
@@ -3715,6 +3730,13 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/node/test/client.test.js::a distributor answer lists each copy and the partial failures`
   - `connectors/python/tests/test_client.py::test_publish_sends_raw_bytes_with_content_type_and_query`
   - `connectors/python/tests/test_client.py::test_a_distributor_answer_lists_each_copy_and_the_partial_failures`
+  - `connectors/go/client_test.go::TestPublishSendsRawBytesWithContentTypeAndQuery`
+  - `connectors/go/client_test.go::TestADistributorAnswerListsEachCopyAndThePartialFailures`
+  - `connectors/php/tests/ClientTest.php::testPublishSendsRawBytesWithContentTypeAndQuery`
+  - `connectors/php/tests/ClientTest.php::testADistributorAnswerListsEachCopyAndThePartialFailures`
+  - `connectors/php/tests/RealHttpTest.php::testBinaryBodiesGoOutByteForByte`
+  - `connectors/ruby/test/client_test.rb::test_publish_sends_raw_bytes_with_content_type_and_query`
+  - `connectors/ruby/test/client_test.rb::test_a_distributor_answer_lists_each_copy_and_the_partial_failures`
 
 ---
 
@@ -3733,6 +3755,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/node/test/client.test.js::auto create parameters are left out without auto create`
   - `connectors/python/tests/test_client.py::test_consume_sends_only_what_was_given`
   - `connectors/python/tests/test_client.py::test_auto_create_parameters_are_left_out_without_auto_create`
+  - `connectors/go/client_test.go::TestConsumeSendsOnlyWhatWasGiven`
+  - `connectors/go/client_test.go::TestAutoCreateParametersAreLeftOutWithoutAutoCreate`
+  - `connectors/php/tests/ClientTest.php::testConsumeSendsOnlyWhatWasGiven`
+  - `connectors/php/tests/ClientTest.php::testAutoCreateParametersAreLeftOutWithoutAutoCreate`
+  - `connectors/ruby/test/client_test.rb::test_consume_sends_only_what_was_given`
+  - `connectors/ruby/test/client_test.rb::test_auto_create_parameters_are_left_out_without_auto_create`
 
 ---
 
@@ -3746,6 +3774,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::ackAndVisibilityPutTheReceiptTokenInTheQuery`
   - `connectors/node/test/client.test.js::ack and visibility put the receipt token in the query`
   - `connectors/python/tests/test_client.py::test_ack_and_visibility_put_the_receipt_token_in_the_query`
+  - `connectors/go/client_test.go::TestAckAndVisibilityPutTheReceiptTokenInTheQuery`
+  - `connectors/php/tests/ClientTest.php::testAckAndVisibilityPutTheReceiptTokenInTheQuery`
+  - `connectors/ruby/test/client_test.rb::test_ack_and_visibility_put_the_receipt_token_in_the_query`
 
 ---
 
@@ -3759,6 +3790,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::listAllTopicsFollowsNextCursorUntilTheLastPage`
   - `connectors/node/test/client.test.js::list all topics follows next cursor until the last page`
   - `connectors/python/tests/test_client.py::test_list_all_topics_follows_next_cursor_until_the_last_page`
+  - `connectors/go/client_test.go::TestListAllTopicsFollowsNextCursorUntilTheLastPage`
+  - `connectors/php/tests/ClientTest.php::testListAllTopicsFollowsNextCursorUntilTheLastPage`
+  - `connectors/ruby/test/client_test.rb::test_list_all_topics_follows_next_cursor_until_the_last_page`
 
 ---
 
@@ -3774,6 +3808,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::theConsumeReadTimeoutIsWaitTimePlusTenSecondsAndNotTheRequestTimeout`
   - `connectors/node/test/client.test.js::the consume read timeout is wait time plus ten seconds and not the request timeout`
   - `connectors/python/tests/test_client.py::test_the_consume_read_timeout_is_wait_time_plus_ten_seconds_and_not_the_request_timeout`
+  - `connectors/go/client_test.go::TestTheConsumeReadTimeoutIsWaitTimePlusTenSecondsAndNotTheRequestTimeout`
+  - `connectors/php/tests/ClientTest.php::testTheConsumeReadTimeoutIsWaitTimePlusTenSecondsAndNotTheRequestTimeout`
+  - `connectors/ruby/test/client_test.rb::test_the_consume_read_timeout_is_wait_time_plus_ten_seconds_and_not_the_request_timeout`
 
 ---
 
@@ -3789,6 +3826,10 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::aTimeoutIsNotRepeatedAndIsAClientSideError`
   - `connectors/node/test/client.test.js::a timeout is not repeated and is a client side error`
   - `connectors/python/tests/test_client.py::test_a_timeout_is_not_repeated_and_is_a_client_side_error`
+  - `connectors/go/client_test.go::TestATimeoutIsNotRepeatedAndIsAClientSideError`
+  - `connectors/php/tests/ClientTest.php::testATimeoutIsNotRepeatedAndIsAClientSideError`
+  - `connectors/php/tests/RealHttpTest.php::testATimeoutOfTheRealTransportIsNotRepeated`
+  - `connectors/ruby/test/client_test.rb::test_a_timeout_is_not_repeated_and_is_a_client_side_error`
 
 ---
 
@@ -3807,6 +3848,13 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/node/test/client.test.js::backoff without retry after is one two four seconds up to max attempts`
   - `connectors/python/tests/test_client.py::test_retries_429_and_503_waiting_for_retry_after_then_backoff`
   - `connectors/python/tests/test_client.py::test_backoff_without_retry_after_is_one_two_four_seconds_up_to_max_attempts`
+  - `connectors/go/client_test.go::TestRetries429And503WaitingForRetryAfterThenBackoff`
+  - `connectors/go/client_test.go::TestBackoffWithoutRetryAfterIsOneTwoFourSecondsUpToMaxAttempts`
+  - `connectors/php/tests/ClientTest.php::testRetries429And503WaitingForRetryAfterThenBackoff`
+  - `connectors/php/tests/ClientTest.php::testBackoffWithoutRetryAfterIsOneTwoFourSecondsUpToMaxAttempts`
+  - `connectors/php/tests/RealHttpTest.php::testAnErrorResponseBecomesATabaExceptionWithItsHeaders`
+  - `connectors/ruby/test/client_test.rb::test_retries_429_and_503_waiting_for_retry_after_then_backoff`
+  - `connectors/ruby/test/client_test.rb::test_backoff_without_retry_after_is_one_two_four_seconds_up_to_max_attempts`
 
 ---
 
@@ -3825,6 +3873,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/node/test/client.test.js::without a previous 503 a 409 or a 404 is a plain error`
   - `connectors/python/tests/test_client.py::test_after_a_503_a_409_on_create_and_a_404_on_delete_count_as_success`
   - `connectors/python/tests/test_client.py::test_without_a_previous_503_a_409_or_a_404_is_a_plain_error`
+  - `connectors/go/client_test.go::TestAfterA503A409OnCreateAndA404OnDeleteCountAsSuccess`
+  - `connectors/go/client_test.go::TestWithoutAPrevious503A409OrA404IsAPlainError`
+  - `connectors/php/tests/ClientTest.php::testAfterA503A409OnCreateAndA404OnDeleteCountAsSuccess`
+  - `connectors/php/tests/ClientTest.php::testWithoutAPrevious503A409OrA404IsAPlainError`
+  - `connectors/ruby/test/client_test.rb::test_after_a_503_a_409_on_create_and_a_404_on_delete_count_as_success`
+  - `connectors/ruby/test/client_test.rb::test_without_a_previous_503_a_409_or_a_404_is_a_plain_error`
 
 ---
 
@@ -3838,6 +3892,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::gatewayErrorsAreOnlyRepeatedWhenPublishingToAFifo`
   - `connectors/node/test/client.test.js::gateway errors are only repeated when publishing to a fifo`
   - `connectors/python/tests/test_client.py::test_gateway_errors_are_only_repeated_when_publishing_to_a_fifo`
+  - `connectors/go/client_test.go::TestGatewayErrorsAreOnlyRepeatedWhenPublishingToAFIFO`
+  - `connectors/php/tests/ClientTest.php::testGatewayErrorsAreOnlyRepeatedWhenPublishingToAFifo`
+  - `connectors/ruby/test/client_test.rb::test_gateway_errors_are_only_repeated_when_publishing_to_a_fifo`
 
 ---
 
@@ -3861,6 +3918,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/python/tests/test_client.py::test_network_failure_after_sending_is_not_repeated`
   - `connectors/python/tests/test_client.py::test_a_refused_connection_is_repeated_and_then_a_network_error`
   - `connectors/python/tests/test_client.py::test_a_refused_connection_succeeds_when_the_node_comes_back`
+  - `connectors/go/client_test.go::TestANetworkFailureAfterSendingIsNotRepeated`
+  - `connectors/go/client_test.go::TestARefusedConnectionIsRepeatedAndThenANetworkError`
+  - `connectors/go/client_test.go::TestARefusedConnectionSucceedsWhenTheNodeComesBack`
+  - `connectors/php/tests/ClientTest.php::testANetworkFailureAfterSendingIsNotRepeated`
+  - `connectors/php/tests/ClientTest.php::testARefusedConnectionIsRepeatedAndThenANetworkError`
+  - `connectors/php/tests/ClientTest.php::testARefusedConnectionSucceedsWhenTheNodeComesBack`
+  - `connectors/php/tests/RealHttpTest.php::testARefusedConnectionIsARetriedNetworkErrorOfTheRealTransport`
+  - `connectors/ruby/test/client_test.rb::test_a_network_failure_after_sending_is_not_repeated`
+  - `connectors/ruby/test/client_test.rb::test_a_refused_connection_is_repeated_and_then_a_network_error`
+  - `connectors/ruby/test/client_test.rb::test_a_refused_connection_succeeds_when_the_node_comes_back`
 
 ---
 
@@ -3879,6 +3946,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/node/test/client.test.js::a 4xx other than 429 is never repeated`
   - `connectors/python/tests/test_client.py::test_without_a_previous_503_a_409_or_a_404_is_a_plain_error`
   - `connectors/python/tests/test_client.py::test_a_4xx_other_than_429_is_never_repeated`
+  - `connectors/go/client_test.go::TestWithoutAPrevious503A409OrA404IsAPlainError`
+  - `connectors/go/client_test.go::TestA4xxOtherThan429IsNeverRepeated`
+  - `connectors/php/tests/ClientTest.php::testWithoutAPrevious503A409OrA404IsAPlainError`
+  - `connectors/php/tests/ClientTest.php::testA4xxOtherThan429IsNeverRepeated`
+  - `connectors/ruby/test/client_test.rb::test_without_a_previous_503_a_409_or_a_404_is_a_plain_error`
+  - `connectors/ruby/test/client_test.rb::test_a_4xx_other_than_429_is_never_repeated`
 
 ---
 
@@ -3894,6 +3967,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::messagesComeBackAsBytesForJsonTextAndBase64`
   - `connectors/node/test/client.test.js::messages come back as bytes for json text and base64`
   - `connectors/python/tests/test_client.py::test_messages_come_back_as_bytes_for_json_text_and_base64`
+  - `connectors/go/client_test.go::TestMessagesComeBackAsBytesForJSONTextAndBase64`
+  - `connectors/php/tests/ClientTest.php::testMessagesComeBackAsBytesForJsonTextAndBase64`
+  - `connectors/ruby/test/client_test.rb::test_messages_come_back_as_bytes_for_json_text_and_base64`
 
 ---
 
@@ -3907,6 +3983,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::messagesComeBackAsBytesForJsonTextAndBase64`
   - `connectors/node/test/client.test.js::messages come back as bytes for json text and base64`
   - `connectors/python/tests/test_client.py::test_messages_come_back_as_bytes_for_json_text_and_base64`
+  - `connectors/go/client_test.go::TestMessagesComeBackAsBytesForJSONTextAndBase64`
+  - `connectors/php/tests/ClientTest.php::testMessagesComeBackAsBytesForJsonTextAndBase64`
+  - `connectors/ruby/test/client_test.rb::test_messages_come_back_as_bytes_for_json_text_and_base64`
 
 ---
 
@@ -3930,6 +4009,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/python/tests/test_client.py::test_a_timeout_is_not_repeated_and_is_a_client_side_error`
   - `connectors/python/tests/test_client.py::test_the_error_carries_the_error_response_fields_and_the_headers`
   - `connectors/python/tests/test_client.py::test_a_non_json_error_still_reports_a_status_code`
+  - `connectors/go/client_test.go::TestATimeoutIsNotRepeatedAndIsAClientSideError`
+  - `connectors/go/client_test.go::TestTheErrorCarriesTheErrorResponseFieldsAndTheHeaders`
+  - `connectors/go/client_test.go::TestANonJSONErrorStillReportsAStatusCode`
+  - `connectors/php/tests/ClientTest.php::testATimeoutIsNotRepeatedAndIsAClientSideError`
+  - `connectors/php/tests/ClientTest.php::testTheErrorCarriesTheErrorResponseFieldsAndTheHeaders`
+  - `connectors/php/tests/ClientTest.php::testANonJsonErrorStillReportsAStatusCode`
+  - `connectors/php/tests/RealHttpTest.php::testAnErrorResponseBecomesATabaExceptionWithItsHeaders`
+  - `connectors/ruby/test/client_test.rb::test_a_timeout_is_not_repeated_and_is_a_client_side_error`
+  - `connectors/ruby/test/client_test.rb::test_the_error_carries_the_error_response_fields_and_the_headers`
+  - `connectors/ruby/test/client_test.rb::test_a_non_json_error_still_reports_a_status_code`
 
 ---
 
@@ -3949,6 +4038,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/node/test/client.test.js::the error carries the error response fields and the headers`
   - `connectors/python/tests/test_client.py::test_headers_carry_the_agent_and_the_optional_ids`
   - `connectors/python/tests/test_client.py::test_the_error_carries_the_error_response_fields_and_the_headers`
+  - `connectors/go/client_test.go::TestHeadersCarryTheAgentAndTheOptionalIDs`
+  - `connectors/go/client_test.go::TestTheErrorCarriesTheErrorResponseFieldsAndTheHeaders`
+  - `connectors/php/tests/ClientTest.php::testHeadersCarryTheAgentAndTheOptionalIds`
+  - `connectors/php/tests/ClientTest.php::testTheErrorCarriesTheErrorResponseFieldsAndTheHeaders`
+  - `connectors/ruby/test/client_test.rb::test_headers_carry_the_agent_and_the_optional_ids`
+  - `connectors/ruby/test/client_test.rb::test_the_error_carries_the_error_response_fields_and_the_headers`
 
 ---
 
@@ -3980,6 +4075,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/python/tests/test_client.py::test_many_threads_can_use_one_client_at_the_same_time`
   - `connectors/python/tests/test_client.py::test_cancelling_the_token_cancels_the_call_without_a_client_error`
   - `connectors/python/tests/test_client.py::test_cancelling_the_task_cancels_the_call_in_flight`
+  - `connectors/go/client_test.go::TestManyGoroutinesCanUseOneClientAtTheSameTime`
+  - `connectors/go/client_test.go::TestCancellingTheContextCancelsTheCallWithoutAClientError`
+  - `connectors/php/tests/RealHttpTest.php::testCancellingATokenEndsALongPollingWithoutAClientError`
+  - `connectors/ruby/test/client_test.rb::test_many_threads_can_use_one_client_at_the_same_time`
+  - `connectors/ruby/test/client_test.rb::test_cancelling_the_token_cancels_the_call_without_a_client_error`
 
 ---
 
@@ -4051,6 +4151,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/node/test/client.test.js::messages come back as bytes for json text and base64`
   - `connectors/python/tests/test_client.py::test_publish_sends_raw_bytes_with_content_type_and_query`
   - `connectors/python/tests/test_client.py::test_messages_come_back_as_bytes_for_json_text_and_base64`
+  - `connectors/go/client_test.go::TestPublishSendsRawBytesWithContentTypeAndQuery`
+  - `connectors/go/client_test.go::TestMessagesComeBackAsBytesForJSONTextAndBase64`
+  - `connectors/php/tests/ClientTest.php::testPublishSendsRawBytesWithContentTypeAndQuery`
+  - `connectors/php/tests/ClientTest.php::testMessagesComeBackAsBytesForJsonTextAndBase64`
+  - `connectors/ruby/test/client_test.rb::test_publish_sends_raw_bytes_with_content_type_and_query`
+  - `connectors/ruby/test/client_test.rb::test_messages_come_back_as_bytes_for_json_text_and_base64`
 
 ---
 
@@ -4077,6 +4183,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/node/test/client.test.js::an invalid answer is an invalid response error and not a crash`
   - `connectors/python/tests/test_client.py::test_messages_come_back_as_bytes_for_json_text_and_base64`
   - `connectors/python/tests/test_client.py::test_an_invalid_answer_is_an_invalid_response_error_and_not_a_crash`
+  - `connectors/go/client_test.go::TestMessagesComeBackAsBytesForJSONTextAndBase64`
+  - `connectors/go/client_test.go::TestAnInvalidAnswerIsAnInvalidResponseErrorAndNotACrash`
+  - `connectors/php/tests/ClientTest.php::testMessagesComeBackAsBytesForJsonTextAndBase64`
+  - `connectors/php/tests/ClientTest.php::testAnInvalidAnswerIsAnInvalidResponseErrorAndNotACrash`
+  - `connectors/ruby/test/client_test.rb::test_messages_come_back_as_bytes_for_json_text_and_base64`
+  - `connectors/ruby/test/client_test.rb::test_an_invalid_answer_is_an_invalid_response_error_and_not_a_crash`
 
 ---
 
@@ -4114,6 +4226,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::unknownFieldsInResponsesAreIgnoredAndTheContractVersionIsDeclared`
   - `connectors/node/test/client.test.js::unknown fields in responses are ignored and the contract version is declared`
   - `connectors/python/tests/test_client.py::test_unknown_fields_in_responses_are_ignored_and_the_contract_version_is_declared`
+  - `connectors/go/client_test.go::TestUnknownFieldsInResponsesAreIgnoredAndTheContractVersionIsDeclared`
+  - `connectors/php/tests/ClientTest.php::testUnknownFieldsInResponsesAreIgnoredAndTheContractVersionIsDeclared`
+  - `connectors/ruby/test/client_test.rb::test_unknown_fields_in_responses_are_ignored_and_the_contract_version_is_declared`
 
 ---
 
@@ -4132,6 +4247,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/node/test/client.test.js::update topic is a real PATCH without a method override header`
   - `connectors/python/tests/test_client.py::test_the_nine_operations_build_the_expected_routes`
   - `connectors/python/tests/test_client.py::test_update_topic_is_a_real_patch_without_a_method_override_header`
+  - `connectors/go/client_test.go::TestTheNineOperationsBuildTheExpectedRoutes`
+  - `connectors/php/tests/ClientTest.php::testTheNineOperationsBuildTheExpectedRoutes`
+  - `connectors/ruby/test/client_test.rb::test_the_nine_operations_build_the_expected_routes`
 
 ---
 
@@ -4162,6 +4280,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/python/tests/test_client.py::test_subscribe_acks_only_what_the_handler_accepted_and_stops_on_cancel`
   - `connectors/python/tests/test_client.py::test_subscribe_returns_without_an_error_when_cancelled_during_the_long_polling`
   - `connectors/python/tests/test_client.py::test_the_async_subscribe_acks_only_what_the_handler_accepted_and_stops_when_the_task_is_cancelled`
+  - `connectors/go/client_test.go::TestSubscribeAcksOnlyWhatTheHandlerAcceptedAndStopsOnCancel`
+  - `connectors/go/client_test.go::TestSubscribeReturnsWithoutAnErrorWhenCancelledDuringTheLongPolling`
+  - `connectors/php/tests/ClientTest.php::testSubscribeAcksOnlyWhatTheHandlerAcceptedAndStopsOnCancel`
+  - `connectors/php/tests/ClientTest.php::testSubscribeReturnsWithoutAnErrorWhenCancelledDuringTheLongPolling`
+  - `connectors/ruby/test/client_test.rb::test_subscribe_acks_only_what_the_handler_accepted_and_stops_on_cancel`
+  - `connectors/ruby/test/client_test.rb::test_subscribe_returns_without_an_error_when_cancelled_during_the_long_polling`
 
 ---
 
@@ -4189,6 +4313,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::publishJsonSerializesTheObjectAndSendsItAsJson`
   - `connectors/node/test/client.test.js::publish json serializes the object and sends it as json`
   - `connectors/python/tests/test_client.py::test_publish_json_serializes_the_object_and_sends_it_as_json`
+  - `connectors/go/client_test.go::TestPublishJSONSerializesTheObjectAndSendsItAsJSON`
+  - `connectors/php/tests/ClientTest.php::testPublishJsonSerializesTheValueAndSendsItAsJson`
+  - `connectors/ruby/test/client_test.rb::test_publish_json_serializes_the_value_and_sends_it_as_json`
 
 ---
 
@@ -4219,6 +4346,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/python/tests/test_client.py::test_a_refused_renewal_marks_the_lease_as_lost_and_the_delete_is_tolerated`
   - `connectors/python/tests/test_client.py::test_consume_json_hands_over_the_parsed_body_and_refuses_a_body_that_is_not_json`
   - `connectors/python/tests/test_client.py::test_the_async_consume_with_renews_the_visibility_and_deletes_when_the_handler_returns`
+  - `connectors/go/client_test.go::TestConsumeWithAHandlerDeletesByDefaultAndKeepsTheMessageWhenAskedOrWhenItFails`
+  - `connectors/go/client_test.go::TestConsumeWithAHandlerRenewsTheVisibilityWhileItRunsAndLetsItChangeIt`
+  - `connectors/go/client_test.go::TestARefusedRenewalMarksTheLeaseAsLostAndTheDeleteIsTolerated`
+  - `connectors/php/tests/ClientTest.php::testConsumeWithAHandlerDeletesByDefaultAndKeepsTheMessageWhenAskedOrWhenItFails`
+  - `connectors/php/tests/ClientTest.php::testTheHandlerCanChangeTheVisibilityAndATolerated404ofTheDelete`
+  - `connectors/php/tests/ClientTest.php::testConsumeJsonHandsOverTheParsedBodyAndRefusesABodyThatIsNotJson`
+  - `connectors/ruby/test/client_test.rb::test_consume_with_a_handler_deletes_by_default_and_keeps_the_message_when_asked_or_when_it_fails`
+  - `connectors/ruby/test/client_test.rb::test_consume_with_a_handler_renews_the_visibility_while_it_runs_and_lets_it_change_it`
+  - `connectors/ruby/test/client_test.rb::test_a_refused_renewal_marks_the_lease_as_lost_and_the_delete_is_tolerated`
+  - `connectors/ruby/test/client_test.rb::test_consume_json_hands_over_the_parsed_body_and_refuses_a_body_that_is_not_json`
 
 ---
 
@@ -4303,6 +4440,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::ackBatchAndChangeVisibilityBatchSendTheReceiptsOfTheMessages`
   - `connectors/node/test/client.test.js::the batches send one JSON and read one result per item`
   - `connectors/python/tests/test_client.py::test_the_batches_send_one_json_and_read_one_result_per_item`
+  - `connectors/go/client_test.go::TestTheBatchesSendOneJSONAndReadOneResultPerItem`
+  - `connectors/php/tests/ClientTest.php::testTheBatchesSendOneJsonAndReadOneResultPerItem`
+  - `connectors/ruby/test/client_test.rb::test_the_batches_send_one_json_and_read_one_result_per_item`
   - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::aProducerInBatchesDeliversEveryMessageTheFullBatchesAndTheRestByTheLinger`
 
 ---

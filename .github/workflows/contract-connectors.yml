@@ -1,6 +1,6 @@
 # Contract tests of all the connectors against a real Taba (connectors/contract/README.md): builds the node image from this
-# commit, starts one node (the one-node profile) and runs the same scenario through the C#, Java, Node.js, Python and
-# Rust connectors, each in the container of its oldest supported runtime, and then makes them read each other's messages.
+# commit, starts one node (the one-node profile) and runs the same scenario through the C#, Java, Node.js, Python,
+# Rust, Go, PHP and Ruby connectors, each in the container of its oldest supported runtime, and then makes them read each other's messages.
 # Called by ci.yml (pull requests to release). Publishes nothing.
 name: Connector contract tests
 
