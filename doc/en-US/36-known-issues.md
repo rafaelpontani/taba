@@ -3,7 +3,7 @@ title: Known issues
 summary: Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts.
 type: reference
 status: partial
-verified-on: 2026-11-04 @ ad87b34
+verified-on: 2026-11-05 @ 4892068
 sources: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -17,6 +17,8 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first) | Open | 2026-11-05 | — |
+| [A node that stops answering and is not excluded in 30 s](#a-node-that-stops-answering-and-is-not-excluded-in-30-s) | Open | 2026-11-04 | — |
 | [A replication test whose 14 publications missed the isolated node](#a-replication-test-whose-14-publications-missed-the-isolated-node) | Fixed | 2026-11-03 | 2026-11-03 |
 | [A sync test whose second store found the database locked on arm64](#a-sync-test-whose-second-store-found-the-database-locked-on-arm64) | Fixed | 2026-11-03 | 2026-11-03 |
 | [A consume with ack that fails once in docker/validate.sh after a drain](#a-consume-with-ack-that-fails-once-in-dockervalidatesh-after-a-drain) | Fixed | 2026-11-03 | 2026-11-04 |
@@ -33,6 +35,37 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## A second channel that is not closed first
+
+**Status:** Open · **Found on:** 2026-11-05 · **Fixed on:** —
+
+- **Test:** `tests/channel.rs::two_connections_at_once_end_with_a_single_channel_per_pair`.
+- **Symptom:** in the arm64 server job of the pull request "Release v0.3.6" (#52), `channel.rs:599` failed with `assertion failed: closed.is_none()`: the first thing the test read from the extra connection was a message, not the close. The other 15 tests of the file passed.
+- **Cause:** not identified. Reading the code, `Channels::install` only refuses the extra connection when the node has, at that instant, a link opened by itself; with a link opened by the other side, or with no link, it keeps the new one and talks on it, and the test takes that for a failure. This is a hypothesis: no log of a failure exists, and the only earlier sighting is the one noted in [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt).
+- **Next step:** keep the log of a failing run with `docker/hang-hunt.sh channel` and see which link node 2 had when the extra connection arrived. The test stays as it is until then.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-05 | One failure on arm64 in #52. Not reproduced in the hunt: 0 failures in 480 runs of the test alone (60 rounds of 8 processes) and 0 in 320 runs of the whole file (40 rounds of 8 processes). |
+
+## A node that stops answering and is not excluded in 30 s
+
+**Status:** Open · **Found on:** 2026-11-04 · **Fixed on:** —
+
+- **Test:** `tests/failures.rs::a_node_that_stops_answering_with_the_connection_open_is_detected_and_excluded`.
+- **Symptom:** in the amd64 server job of the back-merge `main → release` after `v0.3.5` (#50), the test ended with `waited 30 s`. Running the job again passed.
+- **Cause:** not identified. The log of the failing job was not studied.
+- **Next step:** `docker/hang-hunt.sh failures a_node_that_stops_answering` until it keeps a failing run, and read which node did not take part in the vote.
+- **Do not:** raise the 30 s of `eventually`.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-04 | One failure on amd64 in #50; running the job again passed. |
 
 ## A replication test whose 14 publications missed the isolated node
 
@@ -135,6 +168,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | Date | Event |
 |---|---|
 | 2026-10-29 | Found in the hunt that validated the `take` and the FIFO forward in the batch; the same rate on the earlier commit. |
+| 2026-11-05 | The hunt of the whole file (40 rounds of 8 processes, on `4892068`) had a problem in 15 rounds: 18 failures of `each_peer_has_an_out_queue_and_an_in_queue_that_drain` and 1 of `every_node_has_one_channel_to_each_other_node_and_measures_it`. |
 
 ## A lost ready signal that the hunt does not correct in time
 
