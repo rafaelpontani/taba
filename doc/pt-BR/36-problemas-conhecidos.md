@@ -3,7 +3,7 @@ título: Problemas conhecidos
 resumo: Registro, com histórico, dos testes de cluster intermitentes e dos problemas conhecidos: cada um com título, status, data em que foi achado, data da solução e o histórico de ocorrências e tentativas.
 tipo: referência
 status: parcial
-verificado-em: 2026-11-05 @ 4892068
+verificado-em: 2026-11-05 @ 29af16e
 fontes: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -17,14 +17,14 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
-| [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro) | Aberto | 2026-11-05 | — |
+| [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro) | Corrigido | 2026-11-05 | 2026-11-05 |
 | [Um nó que para de responder e não é excluído em 30 s](#um-nó-que-para-de-responder-e-não-é-excluído-em-30-s) | Aberto | 2026-11-04 | — |
 | [Um teste de replicação cujas 14 publicações não caíram no nó isolado](#um-teste-de-replicação-cujas-14-publicações-não-caíram-no-nó-isolado) | Corrigido | 2026-11-03 | 2026-11-03 |
 | [Um teste de sincronização cuja segunda store achou o banco travado no arm64](#um-teste-de-sincronização-cuja-segunda-store-achou-o-banco-travado-no-arm64) | Corrigido | 2026-11-03 | 2026-11-03 |
 | [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Corrigido | 2026-11-03 | 2026-11-04 |
 | [Uma votação de exclusão que falha uma vez na suíte completa](#uma-votação-de-exclusão-que-falha-uma-vez-na-suíte-completa) | Aberto | 2026-10-29 | — |
 | [Um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la) | Corrigido | 2026-10-27 | 2026-10-29 |
-| [Uma rajada do canal que não chega ao outro nó na caça](#uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça) | Aberto | 2026-10-29 | — |
+| [Uma rajada do canal que não chega ao outro nó na caça](#uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça) | Corrigido | 2026-10-29 | 2026-11-05 |
 | [Um sinal de pronto perdido que a caça não corrige a tempo](#um-sinal-de-pronto-perdido-que-a-caça-não-corrige-a-tempo) | Aberto | 2026-10-29 | — |
 | [A rodada de caos: uma entrega além do limite e um ack que o dono nunca aplicou](#a-rodada-de-caos-uma-entrega-além-do-limite-e-um-ack-que-o-dono-nunca-aplicou) | Corrigido | 2026-10-27 | 2026-10-27 |
 | [Um nó de teste reiniciado que perde a porta para outro teste](#um-nó-de-teste-reiniciado-que-perde-a-porta-para-outro-teste) | Aberto | 2026-10-26 | — |
@@ -38,18 +38,19 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 ## Um segundo canal que não é fechado primeiro
 
-**Status:** Aberto · **Achado em:** 2026-11-05 · **Corrigido em:** —
+**Status:** Corrigido · **Achado em:** 2026-11-05 · **Corrigido em:** 2026-11-05
 
 - **Teste:** `tests/channel.rs::two_connections_at_once_end_with_a_single_channel_per_pair`.
 - **Sintoma:** no job do servidor em arm64 do pull request "Release v0.3.6" (#52), `channel.rs:599` falhou com `assertion failed: closed.is_none()`: a primeira coisa que o teste leu da conexão extra foi uma mensagem, não o fechamento. Os outros 15 testes do arquivo passaram.
-- **Causa:** não identificada. Pela leitura do código, `Channels::install` só recusa a conexão extra quando o nó tem, naquele instante, um link aberto por ele mesmo; com um link aberto pelo outro lado, ou sem link, ele fica com a nova e conversa nela, e o teste entende isso como falha. É uma hipótese: não há log de uma falha, e a única ocorrência anterior é a anotada em [Uma rajada do canal que não chega ao outro nó na caça](#uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça).
-- **Próximo passo:** guardar o log de uma execução que falhe com `docker/hang-hunt.sh channel` e ver qual link o nó 2 tinha quando a conexão extra chegou. O teste fica como está até lá.
+- **Causa:** o teste, não o canal. `Channels::install` só recusa a conexão extra quando o nó tem, naquele instante, um link aberto por ele mesmo; com um link aberto pelo outro lado, ou sem link, ele fica com a nova e conversa nela até o nó 1 reabrir a sua, e aí a conexão extra fecha. Esse é o comportamento projetado (o mesmo lado reabrindo substitui o link antigo), mas o teste exigia que a primeira coisa lida fosse o fechamento. O log da falha capturada mostra o link do par caindo 3 ms antes da asserção, o que não acontece no caminho que o teste supunha. Qual link o nó 2 tinha não vai para o log, então esse detalhe vem do código.
+- **Correção:** o teste lê até a conexão fechar, com limite de 30 s. O que ele prova continua igual: a conexão do menor hash fecha e sobra um canal. O código do servidor não mudou.
 
 **Histórico**
 
 | Data | Evento |
 |---|---|
 | 2026-11-05 | Uma falha em arm64 no #52. Não reproduzida na caça: 0 falhas em 480 execuções do teste sozinho (60 rodadas de 8 processos) e 0 em 320 execuções do arquivo inteiro (40 rodadas de 8 processos). |
+| 2026-11-05 | Reproduzida uma vez em outras 320 execuções do arquivo inteiro, com o log guardado. Teste corrigido; a mesma caça depois: 0 falhas em 320 execuções. |
 
 ## Um nó que para de responder e não é excluído em 30 s
 
@@ -155,13 +156,13 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 ## Uma rajada do canal que não chega ao outro nó na caça
 
-**Status:** Aberto · **Achado em:** 2026-10-29 · **Solução em:** —
+**Status:** Corrigido · **Achado em:** 2026-10-29 · **Solução em:** 2026-11-05
 
 - **Onde:** `tests/channel.rs::each_peer_has_an_out_queue_and_an_in_queue_that_drain` (e, uma vez cada, `every_node_has_one_channel_to_each_other_node_and_measures_it` e `two_connections_at_once_end_with_a_single_channel_per_pair`).
 - **Sintoma:** em `docker/hang-hunt.sh channel` (8 processos ao mesmo tempo) termina com `waited 30 s for: the burst to reach node 2`, em cerca de 1 processo em 14.
-- **Causa:** não identificada. **Não é consequência dos lotes**: a mesma caça (15 rodadas de 8 processos) falhou 8 vezes no código anterior a eles (`ab14fa5`) e 9 vezes no código com o `take` e o repasse da FIFO no lote.
-- **Próximo passo:** ler o log de uma execução que falhou (`target/hang-hunt-channel/`) e pôr em ordem os quadros da rajada, como o método do AGENTS.md diz para entregas perdidas.
-- **Não fazer:** aumentar os 30 s do `eventually`.
+- **Causa:** o teste, não o canal. A rajada sinaliza `ready` de tópicos inventados (`t0` a `t299`). O heartbeat seguinte (200 ms nos testes) lista os tópicos prontos de verdade, e o `Signals::apply_keepalive` tira corretamente os outros da tabela do nó 2, então o `t299` só fica lá até esse heartbeat. Num runner carregado, a checagem, a cada 10 ms, pode perder essa janela, e aí espera 30 s por um estado que não volta. Não era consequência dos lotes: a mesma caça falhava na mesma taxa no código anterior a eles.
+- **Correção:** o teste parte com `QUIET` (heartbeat de 30 s). Em `every_node_has_one_channel_to_each_other_node_and_measures_it`, uma causa à parte: o `queue_out` era lido uma vez e podia pegar um sinal a caminho (`left: 1`); agora espera a fila esvaziar. O outro teste citado aqui é o de [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro).
+- **Verificação:** ver o histórico. O código do servidor não mudou.
 
 **Histórico**
 
@@ -169,6 +170,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-10-29 | Encontrado na caça que validou o `take` e o repasse da FIFO no lote; a mesma taxa no commit anterior. |
 | 2026-11-05 | A caça do arquivo inteiro (40 rodadas de 8 processos, em `4892068`) teve problema em 15 rodadas: 18 falhas de `each_peer_has_an_out_queue_and_an_in_queue_that_drain` e 1 de `every_node_has_one_channel_to_each_other_node_and_measures_it`. |
+| 2026-11-05 | `each_peer_has_an_out_queue_and_an_in_queue_that_drain` falhou em arm64 no #52, a primeira vez no CI. Com `QUIET`, a mesma caça teve 0 falhas dele em 320 execuções (eram 18) e 2 de `every_node_has_one_channel_to_each_other_node_and_measures_it`, corrigido em seguida. Com as duas correções, ver [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro). |
 
 ## Um sinal de pronto perdido que a caça não corrige a tempo
 

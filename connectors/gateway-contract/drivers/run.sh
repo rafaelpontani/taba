@@ -37,7 +37,9 @@ case "$lang" in
   # NuGet: cache de cada contêiner (volume anônimo); drivers em paralelo que dividiam o mesmo volume quebravam o restore
   csharp) volumes=(-v /root/.nuget/packages -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1) ;;
   java) volumes=(-v gwm2:/root/.m2) ;;
-  rust) volumes=(-v gwcargo:/usr/local/cargo/registry -v gwrusttarget:/cache) ;;
+  # Cargo: o CARGO_HOME inteiro no volume. A trava de download dele fica em CARGO_HOME, fora de registry: com só o registry
+  # no volume, cada contêiner tinha a sua trava e os drivers em paralelo desempacotavam os mesmos pacotes ao mesmo tempo
+  rust) volumes=(-v gwrusttarget:/cache -e CARGO_HOME=/cache/cargo) ;;
 esac
 
 gw_docker "$image" "${volumes[@]}" "${env[@]+"${env[@]}"}" -- sh "$inside" "$@"
