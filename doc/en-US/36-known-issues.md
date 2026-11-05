@@ -3,7 +3,7 @@ title: Known issues
 summary: Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts.
 type: reference
 status: partial
-verified-on: 2026-11-05 @ 4892068
+verified-on: 2026-11-05 @ 29af16e
 sources: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -17,14 +17,14 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
-| [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first) | Open | 2026-11-05 | — |
+| [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first) | Fixed | 2026-11-05 | 2026-11-05 |
 | [A node that stops answering and is not excluded in 30 s](#a-node-that-stops-answering-and-is-not-excluded-in-30-s) | Open | 2026-11-04 | — |
 | [A replication test whose 14 publications missed the isolated node](#a-replication-test-whose-14-publications-missed-the-isolated-node) | Fixed | 2026-11-03 | 2026-11-03 |
 | [A sync test whose second store found the database locked on arm64](#a-sync-test-whose-second-store-found-the-database-locked-on-arm64) | Fixed | 2026-11-03 | 2026-11-03 |
 | [A consume with ack that fails once in docker/validate.sh after a drain](#a-consume-with-ack-that-fails-once-in-dockervalidatesh-after-a-drain) | Fixed | 2026-11-03 | 2026-11-04 |
 | [An exclusion vote that fails once in the full suite](#an-exclusion-vote-that-fails-once-in-the-full-suite) | Open | 2026-10-29 | — |
 | [A register that checked the message before taking it](#a-register-that-checked-the-message-before-taking-it) | Fixed | 2026-10-27 | 2026-10-29 |
-| [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Open | 2026-10-29 | — |
+| [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Fixed | 2026-10-29 | 2026-11-05 |
 | [A lost ready signal that the hunt does not correct in time](#a-lost-ready-signal-that-the-hunt-does-not-correct-in-time) | Open | 2026-10-29 | — |
 | [The chaos run: a delivery past the limit and an ack the owner never applied](#the-chaos-run-a-delivery-past-the-limit-and-an-ack-the-owner-never-applied) | Fixed | 2026-10-27 | 2026-10-27 |
 | [A restarted test node that loses its port to another test](#a-restarted-test-node-that-loses-its-port-to-another-test) | Open | 2026-10-26 | — |
@@ -38,18 +38,19 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 ## A second channel that is not closed first
 
-**Status:** Open · **Found on:** 2026-11-05 · **Fixed on:** —
+**Status:** Fixed · **Found on:** 2026-11-05 · **Fixed on:** 2026-11-05
 
 - **Test:** `tests/channel.rs::two_connections_at_once_end_with_a_single_channel_per_pair`.
 - **Symptom:** in the arm64 server job of the pull request "Release v0.3.6" (#52), `channel.rs:599` failed with `assertion failed: closed.is_none()`: the first thing the test read from the extra connection was a message, not the close. The other 15 tests of the file passed.
-- **Cause:** not identified. Reading the code, `Channels::install` only refuses the extra connection when the node has, at that instant, a link opened by itself; with a link opened by the other side, or with no link, it keeps the new one and talks on it, and the test takes that for a failure. This is a hypothesis: no log of a failure exists, and the only earlier sighting is the one noted in [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt).
-- **Next step:** keep the log of a failing run with `docker/hang-hunt.sh channel` and see which link node 2 had when the extra connection arrived. The test stays as it is until then.
+- **Cause:** the test, not the channel. `Channels::install` only refuses the extra connection when the node has, at that instant, a link opened by itself; with a link opened by the other side, or with no link, it keeps the new one and talks on it until node 1 reopens its own, and then the extra connection closes. That is the designed behaviour (the same side reopening replaces the old link), but the test demanded that the first thing read was the close. The log of the captured failure shows the link of the pair going down 3 ms before the assertion, which does not happen in the path the test assumed. Which link node 2 held is not logged, so that detail comes from the code.
+- **Fix:** the test reads until the connection closes, with a limit of 30 s. What it proves stays the same: the connection of the lowest hash closes and one channel remains. The server code did not change.
 
 **History**
 
 | Date | Event |
 |---|---|
 | 2026-11-05 | One failure on arm64 in #52. Not reproduced in the hunt: 0 failures in 480 runs of the test alone (60 rounds of 8 processes) and 0 in 320 runs of the whole file (40 rounds of 8 processes). |
+| 2026-11-05 | Reproduced once in another 320 runs of the whole file, with the log kept. Test fixed; the same hunt then: 0 failures in 320 runs. |
 
 ## A node that stops answering and is not excluded in 30 s
 
@@ -155,13 +156,13 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 ## A channel burst that does not reach the other node in the hunt
 
-**Status:** Open · **Found on:** 2026-10-29 · **Fixed on:** —
+**Status:** Fixed · **Found on:** 2026-10-29 · **Fixed on:** 2026-11-05
 
 - **Where:** `tests/channel.rs::each_peer_has_an_out_queue_and_an_in_queue_that_drain` (and, once each, `every_node_has_one_channel_to_each_other_node_and_measures_it` and `two_connections_at_once_end_with_a_single_channel_per_pair`).
 - **Symptom:** in `docker/hang-hunt.sh channel` (8 processes at once) it ends with `waited 30 s for: the burst to reach node 2`, in about 1 process in 14.
-- **Cause:** not identified. It is **not a consequence of the batches**: the same hunt (15 rounds of 8 processes) failed 8 times on the code before them (`ab14fa5`) and 9 times on the code with `take` and the FIFO forward in the batch.
-- **Next step:** read the log of a failing run (`target/hang-hunt-channel/`) and put in order the frames of the burst, as the method of AGENTS.md says for lost deliveries.
-- **Do not:** raise the 30 s of `eventually`.
+- **Cause:** the test, not the channel. The burst signals `ready` for invented topics (`t0` to `t299`). The next heartbeat (200 ms in the tests) lists the topics that are really ready, and `Signals::apply_keepalive` rightly removes the others from the table of node 2, so `t299` is there only until that heartbeat. On a loaded runner the check, every 10 ms, can miss that window, and then it waits 30 s for a state that will not come back. It was not a consequence of the batches: the same hunt failed at the same rate on the code before them.
+- **Fix:** the test starts with `QUIET` (heartbeat of 30 s). In `every_node_has_one_channel_to_each_other_node_and_measures_it`, a separate cause: `queue_out` was read once and could catch a signal on its way (`left: 1`); it now waits for the queue to empty. The other test once named here is [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first).
+- **Verification:** see the history. The server code did not change.
 
 **History**
 
@@ -169,6 +170,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-10-29 | Found in the hunt that validated the `take` and the FIFO forward in the batch; the same rate on the earlier commit. |
 | 2026-11-05 | The hunt of the whole file (40 rounds of 8 processes, on `4892068`) had a problem in 15 rounds: 18 failures of `each_peer_has_an_out_queue_and_an_in_queue_that_drain` and 1 of `every_node_has_one_channel_to_each_other_node_and_measures_it`. |
+| 2026-11-05 | `each_peer_has_an_out_queue_and_an_in_queue_that_drain` failed on arm64 in #52, the first time in CI. With `QUIET`, the same hunt had 0 failures of it in 320 runs (it had 18) and 2 of `every_node_has_one_channel_to_each_other_node_and_measures_it`, fixed next. With both fixes, see [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first). |
 
 ## A lost ready signal that the hunt does not correct in time
 

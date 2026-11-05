@@ -77,11 +77,11 @@ async fn every_node_has_one_channel_to_each_other_node_and_measures_it() {
                 "the channel with {id} is connected"
             );
         }
-        assert_eq!(
-            total(&text, "taba_cluster_channel_queue_out", ""),
-            0.0,
-            "nothing pending"
-        );
+        // Um sinal pode estar a caminho neste instante: o que importa é que a fila esvazie.
+        eventually_async("nothing pending", || async {
+            total(&node.metrics().await, "taba_cluster_channel_queue_out", "") == 0.0
+        })
+        .await;
     }
     cluster.shutdown().await;
 }
@@ -592,11 +592,14 @@ async fn two_connections_at_once_end_with_a_single_channel_per_pair() {
 
     // If node 1 has the highest hash, its connection stays and node 2's falls (node 1 reopens it, replacing the
     // test's, which is on the same side); otherwise the node with the lowest hash (1) closes the one it opened.
+    // Se o nó 2 não tinha, nesse instante, um link aberto por ele, fica com esta conexão e conversa nela até o nó 1
+    // reabrir a sua: o que importa é que ela feche, não que nada chegue antes.
     if !one_wins {
-        let closed = tokio::time::timeout(Duration::from_secs(2), extra.rx.recv())
-            .await
-            .expect("the connection of the lowest hash should close");
-        assert!(closed.is_none());
+        tokio::time::timeout(Duration::from_secs(30), async {
+            while extra.rx.recv().await.is_some() {}
+        })
+        .await
+        .expect("the connection of the lowest hash should close");
     }
     // In any order, in the end there is a single channel between the two, up and talking.
     eventually_async("the single channel reestablished", || async {
@@ -617,7 +620,9 @@ fn settled_pair(cluster: &TestCluster) -> bool {
 /// UC: UC-CAN-018
 #[tokio::test]
 async fn each_peer_has_an_out_queue_and_an_in_queue_that_drain() {
-    let cluster = TestCluster::start(2).await;
+    // Sem heartbeat durante a rajada: os tópicos dela são inventados, e o heartbeat seguinte, que lista só os tópicos
+    // prontos de verdade, os apagaria da tabela do nó 2, às vezes antes de o teste olhar.
+    let cluster = TestCluster::start_with(2, &[QUIET]).await;
     settled(&cluster).await;
     // A burst of signals from node 1: each goes through the outgoing queue to node 2 and through its
     // incoming queue, and both return to zero.
