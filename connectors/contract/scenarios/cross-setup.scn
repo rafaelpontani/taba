@@ -4,4 +4,7 @@ createTopic name={p}-in-java type=queue
 createTopic name={p}-in-node type=queue
 createTopic name={p}-in-python type=queue
 createTopic name={p}-in-rust type=queue
+createTopic name={p}-in-go type=queue
+createTopic name={p}-in-php type=queue
+createTopic name={p}-in-ruby type=queue
 createTopic name={p}-in type=distributor prefixes={p}-in-

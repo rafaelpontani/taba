@@ -29,6 +29,8 @@ using (var client = new TabaClient(config))
 }
 ```
 
+A complete console program (creates a topic, publishes, consumes with long polling and confirms; the address and the root token come from environment variables) is in [`examples/csharp-console`](https://github.com/rafaelpontani/taba/tree/main/examples/csharp-console).
+
 `SubscribeAsync(topic, options, handler, cancellationToken)` runs the whole loop: long polling, calls the `handler` and acknowledges by itself **only if it finishes without an exception** (a failing one goes back to the queue at the end of the `visibilityTimeout`). It ends, without an exception, when the token is cancelled.
 
 **Consuming with the object already deserialized (the most common use):** `ConsumeAsync<T>` reads from the queue (with 20 s long polling, one message at a time and 120 s of invisibility by default), hands the body over as `T` in `context.Body` (same serializer as `PublishJsonAsync`; the whole message stays in `context.Message`) and deletes the message if the handler finishes without an exception. While the handler runs, the invisibility is renewed automatically. If the body is not a `T`, it throws `client.invalid-response` before calling the handler, and the message is not deleted.

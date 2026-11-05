@@ -47,13 +47,13 @@ Uma linha **imediatamente acima** da função de teste, com um ou mais códigos 
 fn publishing_binary_stores_the_raw_bytes() { /* … */ }
 ```
 
-- O prefixo é `/// UC:` (barras triplas, inclusive em C#) e os códigos são **completos** (`UC-MSG-003`, nunca `MSG-003`). Atributos (`#[…]`) e outras linhas de comentário entre a citação e a função são ignorados.
+- O prefixo é `/// UC:` (barras triplas, inclusive em C#, Java, JavaScript e PHP), `// UC:` no Go (o `gofmt` reescreve um comentário de documentação `///`) e `# UC:` no Python e no Ruby, e os códigos são **completos** (`UC-MSG-003`, nunca `MSG-003`). Atributos (`#[…]`) e outras linhas de comentário entre a citação e a função são ignorados.
 - Um teste pode cobrir vários casos, e um caso pode ter vários testes. Um caso só vale como **coberto** com um teste **no nível** da coluna "Nível".
 - Não se cita um código que não existe.
 
 ## O que o `uc_coverage` confere
 
-`crates/taba-node/tests/uc_coverage.rs` lê os códigos dos **cartões** (`### UC-XXX-NNN`) de [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md) e os citados em `crates/taba-node/{src,tests}` e em `connectors/*` (arquivos `.rs` e `.cs`). Falha quando:
+`crates/taba-node/tests/uc_coverage.rs` lê os códigos dos **cartões** (`### UC-XXX-NNN`) de [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md) e os citados em `crates/taba-node/{src,tests}` e em `connectors/*` (arquivos `.rs`, `.cs`, `.java`, `.js`, `.py`, `.go`, `.php` e `.rb`). Falha quando:
 
 1. um teste cita um código que **não existe** ou está `(retirado…)`;
 2. um código aparece **duas vezes** na documentação.

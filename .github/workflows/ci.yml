@@ -44,11 +44,35 @@ jobs:
     name: Java connector
     uses: ./.github/workflows/build-connector-java.yml
 
+  connector-go:
+    name: Go connector
+    uses: ./.github/workflows/build-connector-go.yml
+
+  connector-php:
+    name: PHP connector
+    uses: ./.github/workflows/build-connector-php.yml
+
+  connector-ruby:
+    name: Ruby connector
+    uses: ./.github/workflows/build-connector-ruby.yml
+
+  # The installable file of each connector (the ones attached to the Release): a broken package is found here, not in release.yml.
+  connector-packages:
+    name: Connector packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: .github/scripts/package-connectors.sh dist
+
   connector-omb:
     name: OMB driver
     uses: ./.github/workflows/build-connector-omb.yml
 
-  # The five connectors against a real node (builds the server image: slow, so only for what goes to release).
+  # The eight connectors against a real node (builds the server image: slow, so only for what goes to release).
   connector-contract:
     name: Connector contract tests
     if: github.base_ref == 'release' || github.event_name == 'workflow_dispatch'

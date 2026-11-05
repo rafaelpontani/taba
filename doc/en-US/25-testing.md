@@ -91,7 +91,7 @@ cargo fmt --all --check
 cd connectors/rust && cargo test --workspace --all-features
 cd connectors/csharp && dotnet test Taba.Client.Tests          # unit; the integration ones require TABA_URL
 connectors/csharp/scripts/integration.sh                       # starts Compose, creates tokens and queues, runs everything
-connectors/contract/run.sh                                     # the five connectors against one real node, then against each other
+connectors/contract/run.sh                                     # the eight connectors against one real node, then against each other
 docker/validate.sh                                             # end to end (≈ 5 min)
 docker/hang-hunt.sh nodes_api <test name>                         # a test that hangs only under load: logs + thread stacks
 ```
@@ -135,7 +135,7 @@ The case that taught this is in [36-known-issues.md](36-known-issues.md#a-channe
 
 ## The connector contract tests: `connectors/contract/run.sh`
 
-One scenario, written as data (`scenarios/core.scn`), run by a small driver of **each connector** in its own language against **one Taba node** in Docker (the one-node profile), each in the container of its oldest supported runtime; then the five connectors publish to a distributor and each reads what the others sent (`scenarios/cross-*.scn`). The language of the scenario, the operations and how to add a connector are in [connectors/contract/README.md](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md); the summary is in [21-connectors.md](21-connectors.md#the-contract-tests). The `connector-contract` job of `ci.yml` runs it on pull requests to `release`. It does not take nodes down: the cluster behavior is `docker/validate.sh`.
+One scenario, written as data (`scenarios/core.scn`), run by a small driver of **each connector** in its own language against **one Taba node** in Docker (the one-node profile), each in the container of its oldest supported runtime; then the eight connectors publish to a distributor and each reads what the others sent (`scenarios/cross-*.scn`). The language of the scenario, the operations and how to add a connector are in [connectors/contract/README.md](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md); the summary is in [21-connectors.md](21-connectors.md#the-contract-tests). The `connector-contract` job of `ci.yml` runs it on pull requests to `release`. It does not take nodes down: the cluster behavior is `docker/validate.sh`.
 
 ## `docker/validate.sh` and `docker/cluster.sh`
 
