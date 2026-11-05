@@ -3,7 +3,7 @@ título: Problemas conhecidos
 resumo: Registro, com histórico, dos testes de cluster intermitentes e dos problemas conhecidos: cada um com título, status, data em que foi achado, data da solução e o histórico de ocorrências e tentativas.
 tipo: referência
 status: parcial
-verificado-em: 2026-11-04 @ ad87b34
+verificado-em: 2026-11-05 @ 4892068
 fontes: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -17,6 +17,8 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro) | Aberto | 2026-11-05 | — |
+| [Um nó que para de responder e não é excluído em 30 s](#um-nó-que-para-de-responder-e-não-é-excluído-em-30-s) | Aberto | 2026-11-04 | — |
 | [Um teste de replicação cujas 14 publicações não caíram no nó isolado](#um-teste-de-replicação-cujas-14-publicações-não-caíram-no-nó-isolado) | Corrigido | 2026-11-03 | 2026-11-03 |
 | [Um teste de sincronização cuja segunda store achou o banco travado no arm64](#um-teste-de-sincronização-cuja-segunda-store-achou-o-banco-travado-no-arm64) | Corrigido | 2026-11-03 | 2026-11-03 |
 | [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Corrigido | 2026-11-03 | 2026-11-04 |
@@ -33,6 +35,37 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## Um segundo canal que não é fechado primeiro
+
+**Status:** Aberto · **Achado em:** 2026-11-05 · **Corrigido em:** —
+
+- **Teste:** `tests/channel.rs::two_connections_at_once_end_with_a_single_channel_per_pair`.
+- **Sintoma:** no job do servidor em arm64 do pull request "Release v0.3.6" (#52), `channel.rs:599` falhou com `assertion failed: closed.is_none()`: a primeira coisa que o teste leu da conexão extra foi uma mensagem, não o fechamento. Os outros 15 testes do arquivo passaram.
+- **Causa:** não identificada. Pela leitura do código, `Channels::install` só recusa a conexão extra quando o nó tem, naquele instante, um link aberto por ele mesmo; com um link aberto pelo outro lado, ou sem link, ele fica com a nova e conversa nela, e o teste entende isso como falha. É uma hipótese: não há log de uma falha, e a única ocorrência anterior é a anotada em [Uma rajada do canal que não chega ao outro nó na caça](#uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça).
+- **Próximo passo:** guardar o log de uma execução que falhe com `docker/hang-hunt.sh channel` e ver qual link o nó 2 tinha quando a conexão extra chegou. O teste fica como está até lá.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-05 | Uma falha em arm64 no #52. Não reproduzida na caça: 0 falhas em 480 execuções do teste sozinho (60 rodadas de 8 processos) e 0 em 320 execuções do arquivo inteiro (40 rodadas de 8 processos). |
+
+## Um nó que para de responder e não é excluído em 30 s
+
+**Status:** Aberto · **Achado em:** 2026-11-04 · **Corrigido em:** —
+
+- **Teste:** `tests/failures.rs::a_node_that_stops_answering_with_the_connection_open_is_detected_and_excluded`.
+- **Sintoma:** no job do servidor em amd64 do back-merge `main → release` depois da `v0.3.5` (#50), o teste terminou com `waited 30 s`. Rodar o job de novo passou.
+- **Causa:** não identificada. O log do job que falhou não foi estudado.
+- **Próximo passo:** `docker/hang-hunt.sh failures a_node_that_stops_answering` até guardar uma execução que falhe, e ler qual nó não participou da votação.
+- **Não fazer:** aumentar os 30 s do `eventually`.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-04 | Uma falha em amd64 no #50; rodar o job de novo passou. |
 
 ## Um teste de replicação cujas 14 publicações não caíram no nó isolado
 
@@ -135,6 +168,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | Data | Evento |
 |---|---|
 | 2026-10-29 | Encontrado na caça que validou o `take` e o repasse da FIFO no lote; a mesma taxa no commit anterior. |
+| 2026-11-05 | A caça do arquivo inteiro (40 rodadas de 8 processos, em `4892068`) teve problema em 15 rodadas: 18 falhas de `each_peer_has_an_out_queue_and_an_in_queue_that_drain` e 1 de `every_node_has_one_channel_to_each_other_node_and_measures_it`. |
 
 ## Um sinal de pronto perdido que a caça não corrige a tempo
 
