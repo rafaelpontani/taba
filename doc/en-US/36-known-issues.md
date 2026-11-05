@@ -3,7 +3,7 @@ title: Known issues
 summary: Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts.
 type: reference
 status: partial
-verified-on: 2026-10-29 @ 1f43daf
+verified-on: 2026-11-04 @ ad87b34
 sources: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -19,7 +19,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|---|---|
 | [A replication test whose 14 publications missed the isolated node](#a-replication-test-whose-14-publications-missed-the-isolated-node) | Fixed | 2026-11-03 | 2026-11-03 |
 | [A sync test whose second store found the database locked on arm64](#a-sync-test-whose-second-store-found-the-database-locked-on-arm64) | Fixed | 2026-11-03 | 2026-11-03 |
-| [A consume with ack that fails once in docker/validate.sh after a drain](#a-consume-with-ack-that-fails-once-in-dockervalidatesh-after-a-drain) | Open | 2026-11-03 | — |
+| [A consume with ack that fails once in docker/validate.sh after a drain](#a-consume-with-ack-that-fails-once-in-dockervalidatesh-after-a-drain) | Fixed | 2026-11-03 | 2026-11-04 |
 | [An exclusion vote that fails once in the full suite](#an-exclusion-vote-that-fails-once-in-the-full-suite) | Open | 2026-10-29 | — |
 | [A register that checked the message before taking it](#a-register-that-checked-the-message-before-taking-it) | Fixed | 2026-10-27 | 2026-10-29 |
 | [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Open | 2026-10-29 | — |
@@ -68,18 +68,22 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 ## A consume with ack that fails once in docker/validate.sh after a drain
 
-**Status:** Open · **Found on:** 2026-11-03 · **Fixed on:** —
+**Status:** Fixed · **Found on:** 2026-11-03 · **Fixed on:** 2026-11-04
 
 - **Test:** `docker/validate.sh`, step "No acknowledged message was lost": `drain_topic validation-crash` calls `taba-cli consume --max 10 --wait 3 --ack` in a loop right after `taba-1` left by drain and came back.
 - **Symptom:** one `taba-cli consume` exited with code 1 and the script stopped (`Failed (code 1)`) without saying why: `taba_cli` threw away the stderr of `docker compose run`, and the error of `taba-cli` with it. It was the first run after the machine restarted, with Docker Desktop just started: the cluster took 402 s to become healthy (24 s in the next run). The next run, on the same code, passed every step (50 messages published, all received and acknowledged).
-- **Cause:** not identified. It is not a lost message: the step stopped before comparing what was published with what was received.
-- **Next step:** `taba_cli` (`docker/cluster.sh`) now prints the last lines of the error of `taba-cli` when a command fails; the next occurrence says which error the node returned (a `503` while a node is still coming back from the drain, for example). If it is a retryable error, `drain_topic` should try again instead of stopping.
+- **Cause:** a message already acknowledged came back to life from the S3 backup. When a member leaves the cluster, each node runs `recover_missing` on its next heartbeat round and fetches from the bucket what it should hold and does not. To know what is dead it read only the journal in the bucket, which arrives late (`backup.meta.interval`), and not the node's own log of excluded messages. A message that had reached a segment (the drain of the node that left sends everything) and was acknowledged in the seconds before that round came back, on that node only. It was delivered again, and its ack could no longer close the quorum: the primary accepted and the two other nodes, which no longer had it, answered `message.not-found`, so the client got `503 cluster.quorum-unavailable`. No message was lost; acknowledged messages were delivered again. Only clusters with `backup.s3.bucket` are affected. The fault is in the node, not in the host: the first failure looked related to a slow start only because the timing of the heartbeat round decides whether the acks come first.
+- **How it was found:** with the cluster kept up after a failure (`TABA_KEEP=1`), the log of the failing run has `messages that only existed on dead nodes came back from S3 recovered=5` less than a second after the acks; `memoryMessages` of the three nodes was `1 6 1` where a healthy topic has the same number on all; and 5 of the messages still delivered were in the `excluded` table of all three nodes.
+- **Fix:** `recover_missing` also skips what the node's log of excluded messages has (`src/cluster/backup/restore.rs`). The ack records the exclusion before it takes the message out of the index, under the same lock, so a message the node no longer holds is already in the log. Test: `tests/backup.rs::a_message_acked_before_the_journal_reaches_the_bucket_does_not_come_back_from_s3`, which fails without the fix (the recovery returns 1). UC-BKP-046.
+- **Verification:** `docker/validate.sh` failed 4 of 4 runs on this host before the fix (one of them on `a3bdab9`, before the SQS and SNS gateway) and passed 3 of 3 with it.
 
 **History**
 
 | Date | Event |
 |---|---|
 | 2026-11-03 | One failure in the first run after a restart of the machine (cluster healthy in 402 s); the next run passed. `taba_cli` now shows the error. |
+| 2026-11-04 | Four failures in a row with `cluster.quorum-unavailable` in the same step, including on the commit before the gateway; `v0.3.5` was promoted with the failure recorded in its pull request. |
+| 2026-11-04 | Cause found and fixed: `recover_missing` ignored the log of excluded messages. New test; `docker/validate.sh` passed 3 of 3. |
 
 ## An exclusion vote that fails once in the full suite
 
@@ -327,6 +331,7 @@ What the issues above taught, so the next one is found faster (the checklist for
 - **When the log has no line about the suspect path, add it, run again and take it out.** The failing run of the offer had no line about the offer. Temporary lines at each step (what was offered, to whom it was sent, what each node learned), marked with a word you can search (`HUNT`), and the same hunt, gave the order of the events in milliseconds; the lines were removed with `git checkout` before the fix. Keep the captured log (`target/`).
 - **A fix is not done without a test that fails without it** (here, one that fails by timeout and not by hanging) and without repeating the run that used to hang.
 - **Look at what happened before theorizing about what could.** The pending item blamed an expired register for two years of reasoning; the dump of the failing message and a log line at each register showed that nothing had expired and that a check and a reservation were two steps. A report of a failure should say where the thing is now, on each node (`diagnosis` in `tests/chaos.rs`).
+- **A retry that keeps failing is a state to inspect, not a timing to wait out.** The first note here proposed that `drain_topic` try again; the real cause would have stayed hidden. Keeping the cluster up after the failure and comparing the same message on every node (`memoryMessages`, the `excluded` table) found it in one run.
 
 ## Sources and evidence
 

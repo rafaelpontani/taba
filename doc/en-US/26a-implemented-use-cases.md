@@ -56,7 +56,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 44 | 7 |
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 10 | 2 |
 | `CFG` | Configuration and startup validations | 11 | 2 |
-| `BKP` | Optional S3 backup | 45 | 0 |
+| `BKP` | Optional S3 backup | 46 | 0 |
 | `CHS` | Chaos with a verified history | 5 | 0 |
 | `BNC` | Local comparative benchmark (`bench/run.sh`) | 5 | 1 |
 
@@ -10226,6 +10226,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C
 **Tests:**
   - `tests/cold_start.rs::a_slow_bucket_holds_only_the_fifo_queues_the_rest_of_the_cluster_is_available`
+
+---
+
+### UC-BKP-046
+
+**Case:** A member leaves and a node looks in the bucket for what it should hold, right after a message of a segment was acknowledged and before the journal reaches the bucket
+**Then:** the message **does not come back**: the node's log of excluded messages says it is dead, so it is not delivered again and the next acks are not refused for lack of quorum.
+**Level:** C
+**Tests:**
+  - `tests/backup.rs::a_message_acked_before_the_journal_reaches_the_bucket_does_not_come_back_from_s3`
 
 ---
 

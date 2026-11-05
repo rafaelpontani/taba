@@ -416,8 +416,8 @@ impl Backup {
     }
 
     /// Brings back from the bucket the messages this node is responsible for (primary or replica) and does not
-    /// have. Reads only each segment's footer and, of what is missing, the entry by `Range`; the journal says
-    /// what was already confirmed. Returns how many came back.
+    /// have. Reads only each segment's footer and, of what is missing, the entry by `Range`; the journal and this
+    /// node's log of excluded messages say what was already confirmed. Returns how many came back.
     pub async fn recover_missing(&self) -> u64 {
         let me = self.node_id();
         let mut recovered = 0;
@@ -479,7 +479,13 @@ impl Backup {
                     continue;
                 };
                 for entry in &footer.entries {
-                    if removed.contains(&entry.id) || self.messages.holds(&name, &entry.id) {
+                    // O journal chega ao bucket com atraso (`backup.meta.interval`): um ack recente só está no log
+                    // de excluídas deste nó. Sem olhar o log, a mensagem confirmada voltaria à vida, só aqui, e o ack
+                    // dela nunca mais fecharia o quórum.
+                    if removed.contains(&entry.id)
+                        || self.messages.holds(&name, &entry.id)
+                        || self.messages.is_excluded(&name, &entry.id)
+                    {
                         continue;
                     }
                     let Some(raw) = self

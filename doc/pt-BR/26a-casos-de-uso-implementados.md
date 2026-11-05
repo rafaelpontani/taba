@@ -56,7 +56,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 44 | 7 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 10 | 2 |
 | `CFG` | Configuração e validações de partida | 11 | 2 |
-| `BKP` | Backup opcional em S3 | 45 | 0 |
+| `BKP` | Backup opcional em S3 | 46 | 0 |
 | `CHS` | Caos com histórico verificado | 5 | 0 |
 | `BNC` | Benchmark comparativo local (`bench/run.sh`) | 5 | 1 |
 
@@ -10226,6 +10226,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C
 **Testes:**
   - `tests/cold_start.rs::a_slow_bucket_holds_only_the_fifo_queues_the_rest_of_the_cluster_is_available`
+
+---
+
+### UC-BKP-046
+
+**Caso:** Um membro sai e um nó procura no balde o que deveria guardar, logo depois de uma mensagem de um segmento ser confirmada e antes de o journal chegar ao balde
+**Então:** a mensagem **não volta**: o log de excluídas do nó diz que ela está morta, então ela não é entregue de novo e os acks seguintes não são recusados por falta de quórum.
+**Nível:** C
+**Testes:**
+  - `tests/backup.rs::a_message_acked_before_the_journal_reaches_the_bucket_does_not_come_back_from_s3`
 
 ---
 
