@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/rafaelpontani/taba/security/advisories/new
+    about: Do not open a public issue. Report it privately (see SECURITY.md).
+  - name: Documentation
+    url: https://github.com/rafaelpontani/taba/blob/main/doc/en-US/README.md
+    about: Read the documentation first.
