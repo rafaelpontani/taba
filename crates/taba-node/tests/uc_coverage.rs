@@ -130,7 +130,7 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The source files of a connector folder (Rust, C#, Java, JavaScript and Python), at any depth, without the
+/// The source files of a connector folder (Rust, C#, Java, JavaScript, Python, Go, PHP and Ruby), at any depth, without the
 /// build, output and dependency folders.
 fn connector_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
@@ -157,7 +157,7 @@ fn connector_files(dir: &Path, out: &mut Vec<PathBuf>) {
                 connector_files(&path, out);
             }
         } else if path.extension().is_some_and(|e| {
-            ["rs", "cs", "java", "js", "mjs", "py"]
+            ["rs", "cs", "java", "js", "mjs", "py", "go", "php", "rb"]
                 .iter()
                 .any(|x| e == *x)
         }) {
@@ -190,13 +190,15 @@ fn source_files() -> Vec<(PathBuf, PathBuf)> {
     out
 }
 
-/// The list of codes of a citation line: `/// UC: …` (Rust, C#, Java, JavaScript) or `# UC: …` (Python).
+/// The list of codes of a citation line: `/// UC: …` (Rust, C#, Java, JavaScript, PHP), `// UC: …` (Go: `gofmt` rewrites a `///` doc comment) or `# UC: …` (Python, Ruby).
 /// The markers are built here so this file does not cite itself.
 fn citation(line: &str) -> Option<&str> {
     let slashes = format!("{} UC:", "///");
+    let two_slashes = format!("{} UC:", "//");
     let hash = format!("{} UC:", "#");
     let line = line.trim_start();
     line.strip_prefix(slashes.as_str())
+        .or_else(|| line.strip_prefix(two_slashes.as_str()))
         .or_else(|| line.strip_prefix(hash.as_str()))
 }
 
@@ -329,6 +331,7 @@ fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
                 || line.is_empty()
                 || line.starts_with("#[")
                 || (extension == "py" && (line.starts_with('#') || line.starts_with('@')))
+                || (extension == "rb" && line.starts_with('#'))
                 || (extension == "cs" && line.starts_with('['))
                 || (extension == "java" && line.starts_with('@'))
                 || line.starts_with("//")
@@ -336,7 +339,8 @@ fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
                 continue;
             }
             // Rust: `fn name(`. C# and Java: `public async Task name(` (the last term before the parenthesis).
-            // Python: `def name(`. JavaScript: `test('name', …)`.
+            // Python: `def name(`. Ruby: `def name`. Go: `func Name(`. PHP: `public function name(`.
+            // JavaScript: `test('name', …)`.
             let name = match extension.as_str() {
                 "cs" | "java" => line
                     .split('(')
@@ -345,6 +349,16 @@ fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
                     .and_then(|head| head.split_whitespace().last()),
                 "py" => line
                     .split("def ")
+                    .nth(1)
+                    .and_then(|after| after.split('(').next()),
+                "rb" => line
+                    .strip_prefix("def ")
+                    .and_then(|after| after.split(['(', ' ']).next()),
+                "go" => line
+                    .strip_prefix("func ")
+                    .and_then(|after| after.split('(').next()),
+                "php" => line
+                    .split("function ")
                     .nth(1)
                     .and_then(|after| after.split('(').next()),
                 "js" | "mjs" => line

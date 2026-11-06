@@ -31,6 +31,20 @@ try (TabaClient client = new TabaClient(config)) {
 }
 ```
 
+## Installing (not in a registry yet)
+
+Not in a registry yet (the identifiers are still open). Until then, each [Release](https://github.com/rafaelpontani/taba/releases) has the installable file, with its checksum in `SHA256SUMS` and its provenance (`gh attestation verify <file> -R rafaelpontani/taba`). `<release>` below is the version of the Release; the version in the file name is the connector's own. The jar has no dependencies.
+
+With Maven, install the jar in your local repository once and then use the coordinates above:
+
+```
+curl -LO https://github.com/rafaelpontani/taba/releases/download/v<release>/taba-client-0.1.0.jar
+mvn install:install-file -Dfile=taba-client-0.1.0.jar -DgroupId=io.github.rafaelpontani \
+    -DartifactId=taba-client -Dversion=0.1.0 -Dpackaging=jar
+```
+
+With Gradle: `implementation files('libs/taba-client-0.1.0.jar')`. From the source: `cd connectors/java && mvn install`.
+
 ## JSON
 
 The JDK has no JSON library, so the connector does not guess one. `publishJson` and the typed `consume(topic, Order.class, handler)` use the `TabaJsonSerializer` you put in the configuration; without it they fail with `client.invalid-config`. With Jackson:

@@ -91,7 +91,7 @@ cargo fmt --all --check
 cd connectors/rust && cargo test --workspace --all-features
 cd connectors/csharp && dotnet test Taba.Client.Tests          # unitários; os de integração exigem TABA_URL
 connectors/csharp/scripts/integration.sh                       # sobe o Compose, cria tokens e filas, roda tudo
-connectors/contract/run.sh                                     # os cinco conectores contra um nó real, e depois entre si
+connectors/contract/run.sh                                     # os oito conectores contra um nó real, e depois entre si
 docker/validate.sh                                             # ponta a ponta (≈ 5 min)
 docker/hang-hunt.sh nodes_api <test name>                         # a test that hangs only under load: logs + thread stacks
 ```
@@ -135,7 +135,7 @@ O caso que ensinou isso está em [36-problemas-conhecidos.md](36-problemas-conhe
 
 ## Os testes de contrato dos conectores: `connectors/contract/run.sh`
 
-Um cenário, escrito como dado (`scenarios/core.scn`), executado por um driver pequeno de **cada conector** na sua própria linguagem contra **um nó Taba** no Docker (o perfil de um nó), cada um no contêiner da menor versão que suporta; depois os cinco conectores publicam em um distribuidor e cada um lê o que os outros enviaram (`scenarios/cross-*.scn`). A linguagem do cenário, as operações e como acrescentar um conector estão em [connectors/contract/README.md](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md); o resumo está em [21-conectores.md](21-conectores.md#os-testes-de-contrato). O job `connector-contract` do `ci.yml` roda nos pull requests para `release`. Ele não derruba nós: o comportamento do cluster é o `docker/validate.sh`.
+Um cenário, escrito como dado (`scenarios/core.scn`), executado por um driver pequeno de **cada conector** na sua própria linguagem contra **um nó Taba** no Docker (o perfil de um nó), cada um no contêiner da menor versão que suporta; depois os oito conectores publicam em um distribuidor e cada um lê o que os outros enviaram (`scenarios/cross-*.scn`). A linguagem do cenário, as operações e como acrescentar um conector estão em [connectors/contract/README.md](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md); o resumo está em [21-conectores.md](21-conectores.md#os-testes-de-contrato). O job `connector-contract` do `ci.yml` roda nos pull requests para `release`. Ele não derruba nós: o comportamento do cluster é o `docker/validate.sh`.
 
 ## `docker/validate.sh` e `docker/cluster.sh`
 

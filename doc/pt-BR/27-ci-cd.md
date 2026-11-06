@@ -4,7 +4,7 @@ resumo: Como o repositório é validado e publicado — os workflows do GitHub A
 tipo: referência
 status: estável
 verificado-em: 2026-10-27 @ ada9ff1
-fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md]
+fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/scripts/package-connectors.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md]
 ---
 
 # CI/CD e releases
@@ -47,11 +47,11 @@ feature/*  ── PR ──▶ ci.yml: build + testes (nada é publicado, nenhum
 
 | Arquivo | Faz |
 |---|---|
-| `ci.yml` | Chama `build-server`, `build-connector-rust`, `build-connector-csharp` e os builds dos conectores Java, Node.js e Python e do driver do OMB (`build-connector-omb.yml`); job `bench` (o plano do `bench/run.sh` e os testes do relatório do benchmark local; nenhum benchmark roda no GitHub, [38-benchmarks.md](38-benchmarks.md)); job `connector-contract` (`contract-connectors.yml`, só em pull requests para `release`); job `gateway-contract` (`contract-gateway.yml`, só em pull requests para `release`); job `helm` (`deploy/helm/tests/run.sh static`); job `rust-audit` (`cargo audit` nos dois `Cargo.lock`: falha com um aviso do RustSec); job `workflows` (`actionlint` e `zizmor`, falha a partir de `medium`); job `plans` (falha quando `doc/plans/` tem um arquivo: planos nunca chegam a `release` ou `main`). `concurrency` cancela execuções antigas da mesma ref |
+| `ci.yml` | Chama `build-server`, `build-connector-rust`, `build-connector-csharp` e os builds dos conectores Java, Node.js, Python, Go (`build-connector-go.yml`), PHP (`build-connector-php.yml`) e Ruby (`build-connector-ruby.yml`) e do driver do OMB (`build-connector-omb.yml`); job `bench` (o plano do `bench/run.sh` e os testes do relatório do benchmark local; nenhum benchmark roda no GitHub, [38-benchmarks.md](38-benchmarks.md)); job `connector-contract` (`contract-connectors.yml`, só em pull requests para `release`); job `gateway-contract` (`contract-gateway.yml`, só em pull requests para `release`); job `helm` (`deploy/helm/tests/run.sh static`); job `rust-audit` (`cargo audit` nos dois `Cargo.lock`: falha com um aviso do RustSec); job `workflows` (`actionlint` e `zizmor`, falha a partir de `medium`); job `plans` (falha quando `doc/plans/` tem um arquivo: planos nunca chegam a `release` ou `main`). `concurrency` cancela execuções antigas da mesma ref |
 | `build-server.yml` | **Servidor**, em **dois runners nativos** (`amd64` em `ubuntu-latest`, `arm64` em `ubuntu-24.04-arm`): `cargo fmt --all --check` e `clippy -D warnings` **só em x86_64**, `cargo test --workspace --locked`, o **binário estático musl** (ação `node-binary`) enviado como artefato `taba-node-<arch>` |
 | `build-connector-rust.yml` | **Conector Rust** (workspace `connectors/rust`), nos dois runners: `fmt`, `clippy`, `test`, `cargo package --workspace` (o que o crates.io receberia), `cargo build --release -p taba-cli` (musl); artefato `taba-cli-<arch>` |
 | `contract-gateway.yml` | **Testes de contrato do gateway SQS e SNS**: dois jobs. O `emulator` roda `connectors/gateway-contract/run.sh --target emulator` (os cenários de `scenarios/aws/` no ElasticMQ e no moto: é o que mostra que os testes estão certos). O `taba` constrói a imagem do servidor do commit, sobe um nó com `gateway.sqs` e `gateway.sns` ligados e roda `connectors/gateway-contract/run.sh` (o SDK nativo da AWS de seis linguagens, cada uma numa versão atual e numa antiga, depois cada linguagem lendo o que a anterior enviou; [39-gateway.md](39-gateway.md)). Chamado pelo `ci.yml` em pull requests para `release`, ou à mão. Não publica nada |
-| `contract-connectors.yml` | **Testes de contrato dos cinco conectores** contra um nó real: constrói a imagem do servidor do commit, sobe um nó (o perfil de um nó) e roda `connectors/contract/run.sh` (cada conector no contêiner da sua menor versão, depois os cinco lendo as mensagens uns dos outros; [21-conectores.md](21-conectores.md#os-testes-de-contrato)). Chamado pelo `ci.yml` em pull requests para `release`, ou à mão. Não publica nada |
+| `contract-connectors.yml` | **Testes de contrato dos oito conectores** contra um nó real: constrói a imagem do servidor do commit, sobe um nó (o perfil de um nó) e roda `connectors/contract/run.sh` (cada conector no contêiner da sua menor versão, depois os oito lendo as mensagens uns dos outros; [21-conectores.md](21-conectores.md#os-testes-de-contrato)). Chamado pelo `ci.yml` em pull requests para `release`, ou à mão. Não publica nada |
 | `build-connector-csharp.yml` | **Conector C#**: SDKs 6.0 e 8.0, `dotnet test` (sem `TABA_URL`, os de integração são **ignorados**), `dotnet pack` dos **três pacotes** com o commit e o link da Release; artefato `nuget-packages` (`.nupkg` e `.snupkg`) |
 | `chaos.yml` | Toda noite (e à mão): uma varredura de 200 sementes da rodada de caos (`tests/chaos.rs`, [37-garantias.md](37-garantias.md)), uma faixa diferente por dia. Fora dos checks obrigatórios; a semente que falha é impressa no log |
 | `release.yml` | O release (abaixo) |
@@ -69,9 +69,10 @@ Princípio: **nada público antes de tudo estar verde, e tudo o que é público 
 | 1 | `plan` | semantic-release em **dry-run** calcula a versão. Sem versão, só os builds rodam. Calcula as tags Docker e as flutuantes do git (a versão nova entra na comparação, porque sua tag ainda não existe) |
 | 2 | `server`, `connector-rust`, `connector-csharp` | Compilam e **testam com a versão**. Rodam a cada push, mesmo sem versão |
 | 3 | `chart` | `set-version.sh` grava `version` e `appVersion` exatos no `Chart.yaml`; `run.sh static`; `helm package` |
+| 3 | `connector-packages` | `package-connectors.sh` monta o arquivo instalável dos conectores Node.js (`.tgz`), Python (`.whl`), Ruby (`.gem`), Java (`.jar`) e PHP (`.zip`), cada um no contêiner de um runtime atual, com a versão do próprio manifesto. O mesmo script roda no `ci.yml` (job `connector-packages`), então um pacote quebrado aparece no pull request |
 | 4 | `images` | Monta `taba` e `taba-cli` (os dois *targets* do `Dockerfile.ci`) para `linux/amd64` e `linux/arm64`, **sem compilar nada**, com proveniência SLSA (`mode=max`), SBOM e labels OCI (`revision` = commit). Envia **só por digest, sem tag**, para Docker Hub e GHCR; atesta (`attest-build-provenance`) e assina (cosign keyless) cada digest |
-| 5 | `tag` | Só agora o semantic-release cria a **tag** em `github.sha` e a **GitHub Release como rascunho**. Falha se a versão não é a do plano ou se a tag não aponta para o commit |
-| 6 | `release-assets` | Binários (com a arquitetura no nome), `.nupkg`, `.snupkg`, o `.tgz` do chart e o `SHA256SUMS`, todos atestados, no rascunho, mais o `taba-<versão>.intoto.jsonl` (o bundle da proveniência como arquivo da Release, que o OpenSSF Scorecard reconhece) |
+| 5 | `tag` | (espera também o `connector-packages`, porque a tag não se desfaz) Só agora o semantic-release cria a **tag** em `github.sha` e a **GitHub Release como rascunho**. Falha se a versão não é a do plano ou se a tag não aponta para o commit |
+| 6 | `release-assets` | Binários (com a arquitetura no nome), `.nupkg`, `.snupkg`, o `.tgz` do chart, os arquivos do `connector-packages` e o `SHA256SUMS`, todos atestados, no rascunho, mais o `taba-<versão>.intoto.jsonl` (o bundle da proveniência como arquivo da Release, que o OpenSSF Scorecard reconhece) |
 | 7 | `crates`, `nuget`, `chart-publish` | crates.io e nuget.org por **Trusted Publishing** (OIDC); o chart em `oci://ghcr.io/rafaelpontani/charts`, atestado e assinado |
 | 8 | `finalize` | A Release sai do rascunho: `--prerelease` nas candidatas, `--latest` só na maior final |
 | 9 | `floating` | Cria as tags Docker (exata e flutuantes) com `docker buildx imagetools create` **apontando para o digest** (sem reconstruir) e move as tags flutuantes do git |
@@ -133,7 +134,7 @@ Só a tag **fixa** (`vX.Y.Z`, `vX.Y.Z-rc.N`) é imutável. As flutuantes são po
 |---|---|---|---|
 | Docker Hub | `rafaelpontani/taba`, `rafaelpontani/taba-cli` | Secrets `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` | Sempre |
 | GHCR | `ghcr.io/rafaelpontani/taba`, `taba-cli` e `charts/taba` | `GITHUB_TOKEN` (`packages: write`) | Sempre |
-| GitHub Release | Binários, pacotes, chart, `SHA256SUMS` | `GITHUB_TOKEN` | Sempre |
+| GitHub Release | Binários, pacotes (inclusive os arquivos dos conectores sem registro, D70.3), chart, `SHA256SUMS` | `GITHUB_TOKEN` | Sempre |
 | crates.io | `taba-client`, depois `taba-cli` | Trusted Publishing (`rust-lang/crates-io-auth-action`); o primeiro publish de cada crate usa o secret `CARGO_REGISTRY_TOKEN` | Variável `PUBLISH_CRATES=true` |
 | nuget.org | `Taba.Client`, `.Abstractions`, `.Extensions.DependencyInjection` (+ `.snupkg`) | Trusted Publishing (`NuGet/login`) | Variável `NUGET_USER` (a conta dona da política) |
 
@@ -183,7 +184,7 @@ O que sustenta essa confiança:
 
 - 🟡 **Job de integração**: os testes de contrato dos conectores (`contract-connectors.yml`) e os do gateway (`contract-gateway.yml`) **rodam no CI**, em pull requests para `release`. `connectors/csharp/scripts/integration.sh` e `docker/validate.sh` **não rodam no CI**. Existem e funcionam à mão; rode o `validate.sh` com a imagem `rc` antes do PR `release → main`.
 - ⬜ Os casos e2e do chart (`deploy/helm/tests/run.sh 01 05 …`, com kind) rodam à mão.
-- ⬜ Publicação dos outros conectores (só existem Rust e C#).
+- ⬜ Publicação dos outros conectores nos seus registros (só Rust e C# estão automatizados; a lista está na PRB-079). Enquanto isso os arquivos deles vão para a Release (job `connector-packages`).
 - ⬜ Verificação automática da **documentação** no CI: ver `doc/pt-BR/scripts/verificar.mjs` abaixo.
 
 ## Verificação automática desta documentação
@@ -205,6 +206,6 @@ Um segundo script, `node doc/pt-BR/scripts/verificar-idiomas.mjs`, confere que a
 
 ## Fontes e provas
 
-- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,contract-connectors,contract-gateway,release,scorecard,codeql}.yml`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
+- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,contract-connectors,contract-gateway,release,scorecard,codeql}.yml`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/scripts/package-connectors.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
 - Decisões: D159 a D163 ([30-decisoes.md](30-decisoes.md)).
 - Casos de uso: não há casos `UC-` de pipeline; a validação é `docker/validate.sh` ([25-testes.md](25-testes.md)).

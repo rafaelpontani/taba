@@ -1,10 +1,10 @@
 ---
 title: Connectors
-summary: Taba's client libraries — the common contract (the nine operations, retry, errors, body), the real state of each language (Rust, C#, Java, Python and Node.js ready; five planned), how to use and how to write a new one.
+summary: Taba's client libraries — the common contract (the nine operations, retry, errors, body), the real state of each language (Rust, C#, Java, Python, Node.js, Go, PHP and Ruby ready; two planned), how to use and how to write a new one.
 type: reference
 status: partial
-verified-on: 2026-10-29 @ 6e8cdf6
-sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/omb, connectors/contract, examples/csharp-console]
+verified-on: 2026-11-05 @ db1e2d3
+sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/go, connectors/php, connectors/ruby, .github/scripts/package-connectors.sh, connectors/omb, connectors/contract, examples/csharp-console]
 ---
 
 # Connectors
@@ -21,10 +21,13 @@ sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, con
 | **Java** (`taba-client`) | `connectors/java/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
 | **Python** (`taba-client`) | `connectors/python/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
 | **Node.js** (`taba-client`) | `connectors/node/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
+| **Go** (`taba`) | `connectors/go/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
+| **PHP** (`taba/client`) | `connectors/php/` | ✅ **Ready** (unit tests and the contract tests; no automatic renewal of the invisibility, D68.3) | ⬜ Not published (D70.1, D70.2) |
+| **Ruby** (`taba-client`) | `connectors/ruby/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
 | **OpenMessaging Benchmark driver** (on top of Java) | `connectors/omb/` | ✅ **Ready** (unit and integration tests against a node) | ⬜ Not published (a tool of the repository) |
-| C, C++, PHP, Ruby, Go | — | ⬜ **Planned** (the folders do not exist) | — |
+| C, C++ | — | ⏸ **Deferred**, with no date (D68.4): the folders do not exist | — |
 
-> The goal of **ten languages** is a plan, not reality: today **5 of 10** exist. The [roadmap](32-roadmap.md) has the order. Since the API is HTTP, the other languages use their own HTTP client until the connector is out.
+> The goal of **ten languages** is a plan, not reality: today **8 of 10** exist, and the other two (C and C++) are deferred (D68.4). The [roadmap](32-roadmap.md) has the order. Since the API is HTTP, the other languages use their own HTTP client until the connector is out.
 
 ## The three principles
 
@@ -34,7 +37,7 @@ sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, con
 
 Beyond this, the connector **does not try to be clever**: it keeps no state, does no publication buffering, no reordering. The server decides (quorum, FIFO, fair delivery).
 
-> **Reach.** The 15 years apply to the languages not done yet and to C# and Rust. For **Java 11 (2018), Python 3.9 (2020) and Node.js 18 (2022)** the base was set higher (D68.2): the rule of the table below gave Python 2.7.9/3.4.3 and Node.js 0.12, which would forbid `async`/`await`, `asyncio`, classes and type hints, and which the tools of today no longer run.
+> **Reach.** The 15 years apply to the languages not done yet (C and C++) and to C#, Rust, Go and PHP (Go 1.7 is from 2016 and PHP 5.6 from 2014; Ruby 2.1 is from 2013, the 2.0 of the first plan has no Docker image left to test on, D68.3). For **Java 11 (2018), Python 3.9 (2020) and Node.js 18 (2022)** the base was set higher (D68.2): the rule of the table below gave Python 2.7.9/3.4.3 and Node.js 0.12, which would forbid `async`/`await`, `asyncio`, classes and type hints, and which the tools of today no longer run.
 
 ## The surface: nine operations
 
@@ -52,7 +55,7 @@ The same in all languages, with names adapted (`publish`, `Publish`, `publish_me
 | `ack(topic, message)` | `DELETE …/messages/{id}?receiptToken=` | — |
 | `changeVisibility(topic, message, seconds)` | `PUT …/visibility?receiptToken=` | `VisibilityResponse` |
 
-**In batch** (optional, next to the single calls, [D189](30-decisions.md)): `publishBatch(topic, messages)`, `ackBatch(topic, messages)` and `changeVisibilityBatch(topic, messages, seconds)` call `POST …/messages/batch`, `/ack` and `/visibility` and return one `BatchResult` per item, in order (`status`, `id`, `duplicate`, `matched`, `invisibleUntil`, `errorCode`, `errorMessage` and an `ok`/`isOk`); an item that failed does not throw. A message of `publishBatch` (`BatchMessage`) has the body bytes and the same options as `publish` (`contentType`, `groupId`, `deduplicationId`); the bytes go in base64, so any type fits. A network failure is not repeated, like the single publication. In C# they are in the interface `ITabaBatchClient`, which `TabaClient` also implements, so whoever implements `ITabaClient` is not broken. Names: `publish_batch`, `ack_batch`, `change_visibility_batch` in Rust and Python; `PublishBatchAsync` (and `PublishBatch`) in C#.
+**In batch** (optional, next to the single calls, [D189](30-decisions.md)): `publishBatch(topic, messages)`, `ackBatch(topic, messages)` and `changeVisibilityBatch(topic, messages, seconds)` call `POST …/messages/batch`, `/ack` and `/visibility` and return one `BatchResult` per item, in order (`status`, `id`, `duplicate`, `matched`, `invisibleUntil`, `errorCode`, `errorMessage` and an `ok`/`isOk`); an item that failed does not throw. A message of `publishBatch` (`BatchMessage`) has the body bytes and the same options as `publish` (`contentType`, `groupId`, `deduplicationId`); the bytes go in base64, so any type fits. A network failure is not repeated, like the single publication. In C# they are in the interface `ITabaBatchClient`, which `TabaClient` also implements, so whoever implements `ITabaClient` is not broken. Names: `publish_batch`, `ack_batch`, `change_visibility_batch` in Rust, Python and Ruby; `publishBatch`, `ackBatch`, `changeVisibilityBatch` in PHP; `PublishBatch`, `AckBatch`, `ChangeVisibilityBatch` in Go; `PublishBatchAsync` (and `PublishBatch`) in C#.
 
 **Outside the surface, on purpose:** tokens (`/tokens`: the operator creates them, with `curl` or `taba-cli token`), the operations API and the cluster one.
 
@@ -103,7 +106,7 @@ Plus `id`, `contentType`, `receiptToken`, `deliveryCount`, `publishedAt`, `invis
 
 **Headers.** Sends `Authorization`, `Content-Type`, `Accept: application/json`, `User-Agent` and, if informed, `X-Request-Id` and `traceparent`; reads `Retry-After` and `X-Request-Id`.
 
-**Connection and threads.** HTTP/1.1, with a persistent connection when the library offers it at no cost; **does not require HTTP/2**. The client is **safe for concurrent use** in Java, C#, Go, Rust and Node; in C, C++, Python, PHP and Ruby, **one client per thread** applies.
+**Connection and threads.** HTTP/1.1, with a persistent connection when the library offers it at no cost; **does not require HTTP/2**. The client is **safe for concurrent use** in Java, C#, Go, Rust and Node; in C, C++ and PHP, **one client per thread** (per process, in PHP) applies; Python and Ruby keep one connection per thread, so one client can be shared.
 
 ## No dependencies: the minimal JSON reader
 
@@ -161,7 +164,7 @@ using (var client = new TabaClient(config))
 - **`ConsumeAsync<T>(topic, handler)`:** 20 s long polling, one message at a time, 120 s of invisibility, deserialized body, **ack only if the handler ends without an exception**, automatic renewal of the invisibility (every third).
 - **`SubscribeAsync`:** the whole loop.
 - **Dependency injection:** `builder.Services.AddTabaClient("Taba")` reads `BaseUrl`, `Token`… from the `appsettings.json` section and registers `ITabaClient` as a *singleton*.
-- **Tests:** `cd connectors/csharp && dotnet test Taba.Client.Tests` (NUnit; the integration ones only run with `TABA_URL`). `connectors/csharp/scripts/integration.sh` starts Compose, creates tokens and queues and runs everything. Besides it, every connector (this one too) runs the **contract tests**: `connectors/csharp/contract/run.sh`, or `connectors/contract/run.sh` for all five ([contract tests](#the-contract-tests)).
+- **Tests:** `cd connectors/csharp && dotnet test Taba.Client.Tests` (NUnit; the integration ones only run with `TABA_URL`). `connectors/csharp/scripts/integration.sh` starts Compose, creates tokens and queues and runs everything. Besides it, every connector (this one too) runs the **contract tests**: `connectors/csharp/contract/run.sh`, or `connectors/contract/run.sh` for all eight ([contract tests](#the-contract-tests)).
 - **Example:** [`examples/csharp-console/`](../../examples/csharp-console/): creates a topic, publishes, consumes with long polling and confirms; reads the address and the root token from environment variables.
 
 ## Java (`io.github.rafaelpontani:taba-client`)
@@ -233,15 +236,82 @@ Tests: `cd connectors/python && python -m unittest discover -s tests -t .` (the 
 
 > **Java, Node.js and Python are not a copy of the C# one.** The contract (nine operations, retry, errors, body) is the same; the forms are each language's own, recorded in D68.2. All three run the contract tests against a real Taba ([contract tests](#the-contract-tests), D183), and none is published (PRB-079).
 
-## The planned ones: base version and publication
+## Go (`github.com/rafaelpontani/taba/connectors/go`, `package taba`)
 
-They count as a **plan** (proposals, subject to D68, D70.1, D70.2). Java, Python and Node.js left this table when they were done (D68.2). "Base version" is the oldest one that speaks TLS 1.2, has an HTTP client with `PATCH` and verifies the certificate.
+- **Go 1.7 or later**, **standard library only** (`net/http`, `encoding/json`); it builds and tests on 1.7 and on current versions. No `go.mod` features beyond the module line, so it works in a `GOPATH` too.
+- `taba.Client` is safe for concurrent use. **Every call takes a `context.Context`** and returns `(value, error)`; cancelling the context ends the call in flight (a long polling does not wait for its timeout) and the call returns the context's own error, never a `*taba.Error`. `Subscribe` returns `nil` when its context is cancelled.
+- Optional fields are pointers (`taba.Int(20)`, `taba.Bool(true)`), so `nil` means "not set" and the server default applies; in a `TopicUpdate`, `taba.SetInt(n)` / `taba.ClearInt()` / `nil` are "send `n`" / "send `null`" / "leave out". The error is a `*taba.Error` (`Status`, `Code`, `Message`, `RequestID`, `RetryAfter`, `Details`, `Body`).
+- `ConsumeWith(ctx, topic, options, func(*MessageContext) error)`: a `nil` return deletes the message (unless `Delete = false`), an error keeps it and is returned; the invisibility is renewed by another goroutine. Go 1.7 has no generics, so there is no typed `consume<T>`: the handler reads the body with `Decode(&v)`.
+
+```go
+client, _ := taba.NewClient(taba.Config{BaseURL: "http://localhost:8080", Token: os.Getenv("TABA_TOKEN")})
+ctx := context.Background()
+client.CreateTopic(ctx, &taba.TopicRequest{Name: "pedidos", Type: "queue"})
+client.PublishJSON(ctx, "pedidos", map[string]int{"pedido": 9001})
+client.ConsumeWith(ctx, "pedidos", &taba.ConsumeOptions{WaitTime: taba.Int(20)}, func(c *taba.MessageContext) error {
+	fmt.Println(c.Message.BodyText())
+	return nil
+})
+```
+
+Tests: `cd connectors/go && go test -race .` (the standard `testing` and `httptest`).
+
+## PHP (`taba/client`, namespace `Taba`)
+
+- **PHP 5.6 or later**, `ext-curl` and `ext-json` only; the same code runs on 5.6 and on 8.x. TLS 1.2 and the certificate check are always on. Autoload by Composer (`classmap`) or by `src/autoload.php`.
+- **One thread**, so **one client per process**, and **no automatic renewal of the invisibility** while a handler runs: `consumeWith` takes the message for `visibilityTimeout` (120 s by default) and the handler can call `$context->changeVisibility()`. This is the only place where a connector does less than the contract allows (D68.3); the contract scenario prints that line as `SKIP`.
+- `camelCase` methods; options are arrays (`array('waitTime' => 20)`) or the matching objects, and an unknown key is a `client.invalid-request` error. The error is a `Taba\TabaException` with `status`, `errorCode` (PHP's `getCode()` is an integer), `requestId`, `retryAfter`, `details`, `body`.
+- **Cancelling:** a `CancelToken` is checked by the `curl` transfer (about once a second) and between messages, and has `cancelAfter($seconds)`, since nothing else runs while a request is in flight; a cancelled call throws `Taba\Cancelled`.
+
+```php
+$client = new Taba\Client(new Taba\Config('http://localhost:8080', getenv('TABA_TOKEN')));
+$client->createTopic(array('name' => 'pedidos', 'type' => 'queue'));
+$client->publishJson('pedidos', array('pedido' => 9001));
+$client->consumeWith('pedidos', function (Taba\MessageContext $context) {
+    echo $context->message->bodyText();
+}, array('waitTime' => 20));
+```
+
+Tests: `cd connectors/php && php tests/run.php` (a small runner of its own, no PHPUnit: a fake `curl` for the requests, and the built-in PHP server and raw sockets for the real transport).
+
+## Ruby (`taba-client`, `require 'taba'`)
+
+- **Ruby 2.1 or later**, **standard library only** (`net/http`, `json`); the same code runs on 2.1 and on 3.x. `Taba::Client` is safe for concurrent use (one connection per thread). The 2.0 of the first plan could not be tested (its Docker image is gone), so the base is 2.1 (D68.3).
+- `snake_case`; options are keyword arguments, handlers are blocks (`consume_with`, `consume_json`, `subscribe`); `each_topic` is an `Enumerator` over the pages. In a `PATCH`, a key left out is not sent and `nil` sends `null`. The error is a `Taba::Error` (`status`, `code`, `reason`, `request_id`, `retry_after`, `details`, `body`).
+- **Cancelling:** a `Taba::CancelToken` cancelled from another thread ends the call in flight at once (the exchange runs in a helper thread when a token is given, because closing a socket does not wake a blocked read on every Ruby version) and raises `Taba::Cancelled`. `Net::HTTP` repeats an idempotent request by itself after a timeout; the connector switches that off, so only the retries of the contract happen.
+
+```ruby
+client = Taba::Client.new('http://localhost:8080', token: ENV['TABA_TOKEN'])
+client.create_topic(name: 'pedidos', type: 'queue')
+client.publish_json('pedidos', pedido: 9001)
+client.consume_with('pedidos', wait_time: 20) { |context| puts context.message.body_text }
+```
+
+Tests: `cd connectors/ruby && ruby -Ilib -Itest -e 'Dir["test/*_test.rb"].each { |f| require File.expand_path(f) }'` (minitest and a local TCP server).
+
+> **Go, PHP and Ruby are not a copy of the C# one either** (D68.3): each uses its language's own forms, and the three run the contract tests against a real Taba, on Go 1.7, PHP 5.6 and Ruby 2.1. None is published (PRB-079).
+
+## Using the connectors before they are published
+
+Until a connector reaches its registry (PRB-079), its package is a **file attached to every GitHub Release** (D70.3), built by `.github/scripts/package-connectors.sh`, listed in `SHA256SUMS` and attested like the binaries:
+
+| Connector | File of the [Release](https://github.com/rafaelpontani/taba/releases) | Install |
+|---|---|---|
+| Node.js | `taba-client-<v>.tgz` | `npm install <URL of the file>` |
+| Python | `taba_client-<v>-py3-none-any.whl` | `pip install <URL of the file>` |
+| Ruby | `taba-client-<v>.gem` | download, then `gem install ./taba-client-<v>.gem` |
+| Java | `taba-client-<v>.jar` | `mvn install:install-file`, or the jar on the classpath |
+| PHP | `taba-client-php-<v>.zip` | a Composer `package` repository whose `dist.url` is the file, or unzip and `require src/autoload.php` |
+| Go | no file | `go get github.com/rafaelpontani/taba/connectors/go@release` (the module path is the repository) |
+
+`<v>` is the version of the **connector** (the connectors version on their own, D70.2), not the Release's. Without a Release, some can also be installed from the source: Python (`pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"`), Ruby (Bundler, `glob: 'connectors/ruby/*.gemspec'`) and pnpm (`#path:/connectors/node`); npm and Composer cannot read a folder of a repository. The exact commands are in the README of each connector.
+
+## The deferred ones: base version and publication
+
+C and C++ are **deferred with no date** (D68.4): this is the design kept for when they are taken up again, not a commitment (proposals, subject to D68, D70.1, D70.2). Java, Python and Node.js left this table when they were done (D68.2), and Go, PHP and Ruby after them (D68.3). "Base version" is the oldest one that speaks TLS 1.2, has an HTTP client with `PATCH` and verifies the certificate.
 
 | Language | Base version | Why | HTTP / JSON | Publication |
 |---|---|---|---|---|
-| PHP | **5.6** | TLS 1.2 and verification on by default | `curl` / `json_decode` | Packagist |
-| Ruby | **2.0** | `Net::HTTP::Patch` and `json` in the standard library | `Net::HTTP` / `json` | RubyGems |
-| Go | **1.7** | `context.Context` and `net/http` with `PATCH` | `net/http` / `encoding/json` | Module proxy (tag `connectors/go/vX`) |
 | C | **C89** + `libcurl` ≥ 7.34 | `libcurl` 7.34 is the first that requires TLS 1.2 and does `PATCH` | `libcurl` / minimal reader | GitHub releases |
 | C++ | **C++03** | A header over `libtaba` (C) | via `libtaba` | GitHub releases |
 
@@ -259,18 +329,18 @@ They count as a **plan** (proposals, subject to D68, D70.1, D70.2). Java, Python
 
 ## The contract tests
 
-The same scenario runs against a real Taba through **every connector** (C#, Java, Node.js, Python and Rust), each with a small *driver* written in its own language that uses only the public API ([connectors/contract/README.md](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md) has the scenario language and the operations). `connectors/contract/run.sh` starts **one Taba node** in Docker (the one-node profile) and runs, one after the other, the driver of each connector **in the container of its oldest supported runtime** (Node 18, Python 3.9, JDK 11, .NET 8, Rust stable); each connector can also run alone (`connectors/<language>/contract/run.sh`).
+The same scenario runs against a real Taba through **every connector** (C#, Java, Node.js, Python, Rust, Go, PHP and Ruby), each with a small *driver* written in its own language that uses only the public API ([connectors/contract/README.md](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md) has the scenario language and the operations). `connectors/contract/run.sh` starts **one Taba node** in Docker (the one-node profile) and runs, one after the other, the driver of each connector **in the container of its oldest supported runtime** (Node 18, Python 3.9, JDK 11, .NET 8, Rust stable, Go 1.7, PHP 5.6, Ruby 2.1); each connector can also run alone (`connectors/<language>/contract/run.sh`).
 
-- **`scenarios/core.scn`**, in every connector: topics (and their `404`, `409` and `400`), publish, consume, `changeVisibility` and `ack`, and the same in batch (`publishBatch`, `settleBatch`: one result per item, a bad item and an old receipt failing alone, the order of a FIFO group); text with accents, JSON and bytes coming back byte for byte; FIFO (duplicate and order); distributor; consuming with a handler (deleted, failed, kept and **renewal of the invisibility** while a slow handler holds the message); `subscribe`; a long polling **cancelled** from outside (not in Rust, which is synchronous: the line is printed as `SKIP`); a wrong token and a refused connection.
-- **`scenarios/cross-*.scn`**, the five together: each connector publishes to a distributor and each one reads its own queue, finding what the five sent, exactly.
+- **`scenarios/core.scn`**, in every connector: topics (and their `404`, `409` and `400`), publish, consume, `changeVisibility` and `ack`, and the same in batch (`publishBatch`, `settleBatch`: one result per item, a bad item and an old receipt failing alone, the order of a FIFO group); text with accents, JSON and bytes coming back byte for byte; FIFO (duplicate and order); distributor; consuming with a handler (deleted, failed, kept and **renewal of the invisibility** while a slow handler holds the message); `subscribe`; a long polling **cancelled** from outside (not in Rust, which is synchronous: the line is printed as `SKIP`; and the `slow` handler that needs the **renewal** is also a `SKIP` in PHP, which has no threads); a wrong token and a refused connection.
+- **`scenarios/cross-*.scn`**, the eight together: each connector publishes to a distributor and each one reads its own queue, finding what the eight sent, exactly.
 - **Not covered**: `503` and the retries with a node going down, and the cluster behavior (one node cannot show them): they stay with `docker/validate.sh` and the unit tests of each connector. The job `connector-contract` of `ci.yml` runs it on every pull request to `release`.
 
 ## Pending items in this area
 
-D68 (confirm the base versions of the languages still to do), D70.1 (organization and package identifiers in each registry), D70.2 (PHP mirror; versions independent of the server's): [31-pending-items.md](31-pending-items.md).
+D68 (confirm the base versions of the languages still to do: C and C++), D70.1 (organization and package identifiers in each registry), D70.2 (PHP mirror; versions independent of the server's): [31-pending-items.md](31-pending-items.md).
 
 ## Sources and evidence
 
-- `connectors/rust/client/src` (`client`, `http`, `json`, `base64`, `transport`, `testing`), `connectors/rust/client/README.md`, `connectors/csharp/Taba.Client*`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src`, `connectors/node/src`, `connectors/python/taba`, `examples/csharp-console`, `connectors/README.md`.
-- Use cases: UC-CNT (40 cases, level `K`; connectors); see [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md). Tests: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src/test`, `connectors/node/test`, `connectors/python/tests`, `connectors/omb/src/test`; contract tests: `connectors/contract` (`run.sh`, `scenarios/`) and the drivers in `connectors/{csharp,java,node,python,rust}/contract`.
+- `connectors/rust/client/src` (`client`, `http`, `json`, `base64`, `transport`, `testing`), `connectors/rust/client/README.md`, `connectors/csharp/Taba.Client*`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src`, `connectors/node/src`, `connectors/python/taba`, `connectors/go`, `connectors/php/src`, `connectors/ruby/lib`, `examples/csharp-console`, `connectors/README.md`.
+- Use cases: UC-CNT (40 cases, level `K`; connectors); see [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md). Tests: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src/test`, `connectors/node/test`, `connectors/python/tests`, `connectors/go/*_test.go`, `connectors/php/tests`, `connectors/ruby/test`, `connectors/omb/src/test`; contract tests: `connectors/contract` (`run.sh`, `scenarios/`) and the drivers in `connectors/{csharp,java,node,python,rust,go,php,ruby}/contract`.
 - History: `19-conectores.md`, `19a-conectores-linguagens.md`.

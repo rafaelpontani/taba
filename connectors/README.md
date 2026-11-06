@@ -12,7 +12,10 @@ The Taba connectors ([doc/en-US/21-connectors.md](../doc/en-US/21-connectors.md)
 | [`node/`](node/) | `taba-client` for Node.js 18+: the nine operations as `Promise`, `subscribe`, `AbortSignal`, types included, no dependencies | Ready (unit tests, `npm test`, and the contract tests); not published yet |
 | [`omb/`](omb/) | The **OpenMessaging Benchmark driver** for Taba, on the Java connector (Java 11): `omb/build.sh`, `omb/test.sh` | Ready (unit and integration tests); a tool, not published |
 | [`contract/`](contract/) | The **contract tests**: one scenario run against a real Taba by a driver of each connector above, and then the connectors reading each other's messages. `contract/run.sh` | Ready |
-| `c/`, `cpp/`, `php/`, `ruby/`, `go/` | The rest ([plan](../doc/en-US/21-connectors.md)) | To do |
+| [`go/`](go/) | `taba` for Go 1.7+: the nine operations with `context.Context`, `Subscribe`, consuming with a handler (automatic renewal of the invisibility), its own JSON reading, standard library only | Ready (unit tests, `go test`, and the contract tests); not published yet |
+| [`php/`](php/) | `taba/client` for PHP 5.6+: the nine operations, `subscribe`, consuming with a handler, `curl`, no dependencies | Ready (unit tests, `php tests/run.php`, and the contract tests); not published yet. One thread: the invisibility is not renewed while a handler runs |
+| [`ruby/`](ruby/) | `taba-client` for Ruby 2.1+: the nine operations, blocks, `subscribe`, consuming with a handler (automatic renewal), `Net::HTTP`, no dependencies | Ready (unit tests, minitest, and the contract tests); not published yet |
+| `c/`, `cpp/` | C and C++ ([design kept](../doc/en-US/21-connectors.md)) | Deferred, no date: the folders do not exist |
 
 ## Rust
 
