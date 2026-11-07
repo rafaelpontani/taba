@@ -3,7 +3,7 @@ title: Pending items
 summary: Everything that remains open in the project — design questions (D…), problems of logic, risk or limit (PRB-…) and the known limits, each with its evidence.
 type: reference
 status: partial
-verified-on: 2026-11-07 @ d79a140
+verified-on: 2026-11-07 @ 4fbb808
 sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 ---
 
@@ -13,7 +13,7 @@ sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 >
 > **Legend:** `[ ]` open, undecided; `[~]` partially resolved (the text carries **only the questions still missing**, each with its sub-code); **Depends on** = the question can only be answered after another.
 >
-> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D216** and **PRB-105**).
+> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D221** and **PRB-109**; D212, D213, D217 and PRB-108 are taken by plans still in development).
 
 ## Known limits
 
@@ -119,6 +119,16 @@ Found while implementing `PUT /topics/{topic}` and `DELETE ?ifEmpty=true` ([16-c
 | **PRB-103** | **The emptiness of `recreate=if-empty` and of `DELETE ?ifEmpty=true` is best-effort, and a recreation is not seamless.** The node that receives the call counts the messages of every node and only then asks the owner to remove; a publication that arrives in between is lost with the topic. Between the removal and the creation of a recreation, a publication or a consumption may get `404 topic.not-found`, and the `id` changes. If the creation fails after the removal, the topic stays removed until the `PUT` is repeated | Documented, with the recipe of a new queue for a change without loss. Holding the publications of the topic during the count would need a lock that the cluster does not have today; only worth it with a real case |
 | **PRB-104** | **During a rolling upgrade, a `PUT` can fail.** The cluster runs one Taba version (D214); a `PUT` that reaches an updated node whose definition owner still runs the previous version is refused by the owner, which does not know the `upsert` operation | Repeat once every node is updated (the IaC tools repeat by themselves on the next run). If upgrades need it, a fallback to `create`/`update` when the owner refuses `upsert` |
 | **PRB-105** | **The `200` of the `PUT` does not say whether something changed** ("updated" and "unchanged" are the same answer), so a connector reports `updated` in both cases and `taba-cli` cannot print `unchanged`. The owner knows it (the `outcome` of the answer between nodes and the `info` log say `unchanged`) | A response header (`Taba-Topic-Outcome`) if an IaC tool needs to show the difference |
+
+## Terraform and OpenTofu provider (new problems and limits)
+
+Found while implementing the provider ([40-terraform.md](40-terraform.md), D211, D218 to D221).
+
+| Code | Effect | Proposal |
+|---|---|---|
+| **PRB-106** | **The adoption of a token by `create_or_update` is not atomic.** It is a list by name and then a `PATCH` on the client side, so two `apply` at the same time, with the token missing, both create it: two tokens with the same name, and the next `apply` reports the ambiguity. Topics do not have it (the `PUT` is decided by the owner) | Accepted for IaC (one state per resource). An upsert of tokens on the server would need a unique name, which the API does not have |
+| **PRB-107** | **After a lost creation answer, the provider could revoke a token someone else created.** On a `503 cluster.quorum-unavailable` of `POST /tokens`, the orphan is the equal token (name, permissions, prefixes) that was not in the list made before the call; an equal token created by another client between that list and the `503` would be revoked in its place. With two or more candidates nothing is revoked | Documented ([16-client-api.md](16-client-api.md#tokens)). A request id the server keeps with the token (an idempotency key on `POST /tokens`) would remove the guess |
+| **PRB-109** | **Only the Go connector administers tokens**, so the contract scenario of the connectors (`connectors/contract/scenarios/`) does not cover `/tokens`, and the other seven connectors cannot create a token | When a second connector needs it (the Pulumi provider uses the Terraform one), add the five calls to every connector and a contract scenario with authentication on |
 
 ## 1. Unblocked
 

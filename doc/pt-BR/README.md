@@ -88,6 +88,7 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 | [37-garantias.md](37-garantias.md) | As garantias como regras checáveis (I1 a I6) e a rodada de caos que as verifica |
 | [38-benchmarks.md](38-benchmarks.md) | O benchmark comparativo local (`bench/run.sh`): regras de justiça, níveis de durabilidade, workloads e o relatório |
 | [39-gateway.md](39-gateway.md) | O gateway para os SDKs da AWS: SQS e SNS em portas do nó, as chaves de acesso, o que é suportado e as diferenças do SQS e do SNS |
+| [40-terraform.md](40-terraform.md) | O provider Terraform e OpenTofu: filas, distribuidores e tokens como código, `force_destroy`, `create_or_update`, o segredo do token no estado, testes e publicação |
 | [26-casos-de-uso.md](26-casos-de-uso.md) | O formato `UC-…` e a regra de cobertura |
 | [26a-casos-de-uso-implementados.md](26a-casos-de-uso-implementados.md) | Casos com teste |
 | [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md) | Casos sem teste ainda |

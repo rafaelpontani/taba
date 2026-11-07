@@ -31,6 +31,9 @@ type apiCall struct {
 	retryGateway bool
 	// recover: after a 503, these responses count as success (the operation had already been applied).
 	recover []recoverRule
+	// noRetry: codes of a 503 returned at once, without a new attempt: the operation may have been applied and
+	// repeating it would apply it twice (POST /tokens, which has no unique key to recover by).
+	noRetry []string
 }
 
 type recoverRule struct {
@@ -290,7 +293,8 @@ func errorFrom(status int, headers http.Header, body []byte) *Error {
 
 // send makes the call, retrying only what the contract says to retry: 429 and 503 (waiting for the
 // Retry-After, or 1 s, 2 s, 4 s), 502 and 504 only with retryGateway, and a failure to connect (refused, DNS).
-// Never a 4xx (except 429), nor a failure after the body was sent, nor a timeout.
+// Never a 4xx (except 429), nor a failure after the body was sent, nor a timeout. Up to MaxAttempts and, with
+// RetryMaxWait, while the total of the waits stays within it.
 func (t *transport) send(ctx context.Context, call *apiCall) (*apiReply, error) {
 	timeout := call.timeout
 	if timeout <= 0 {
@@ -298,6 +302,7 @@ func (t *transport) send(ctx context.Context, call *apiCall) (*apiReply, error) 
 	}
 	maximum := t.config.MaxAttempts
 	afterRetryable := false
+	var waited time.Duration
 	for attempt := 1; ; attempt++ {
 		shift := uint(attempt - 1)
 		if shift > 6 {
@@ -305,6 +310,8 @@ func (t *transport) send(ctx context.Context, call *apiCall) (*apiReply, error) 
 		}
 		backoff := time.Duration(1<<shift) * time.Second
 		var wait time.Duration
+		// failed is what the call returns when no new attempt is made.
+		var failed error
 		status, headers, body, err := t.once(ctx, call, timeout)
 		if err != nil {
 			r, ok := err.(*retryable)
@@ -316,6 +323,7 @@ func (t *transport) send(ctx context.Context, call *apiCall) (*apiReply, error) 
 			}
 			afterRetryable = true
 			wait = backoff
+			failed = r.err
 		} else {
 			if status < 400 {
 				recreated := strings.EqualFold(strings.TrimSpace(headers.Get("Taba-Topic-Recreated")), "true")
@@ -331,6 +339,13 @@ func (t *transport) send(ctx context.Context, call *apiCall) (*apiReply, error) 
 			}
 			e := errorFrom(status, headers, body)
 			retry := status == 429 || status == 503 || ((status == 502 || status == 504) && call.retryGateway)
+			if status == 503 {
+				for _, code := range call.noRetry {
+					if code == e.Code {
+						retry = false
+					}
+				}
+			}
 			if !retry || attempt >= maximum {
 				return nil, e
 			}
@@ -339,7 +354,12 @@ func (t *transport) send(ctx context.Context, call *apiCall) (*apiReply, error) 
 			if e.hasRetryAfter {
 				wait = time.Duration(e.RetryAfter) * time.Second
 			}
+			failed = e
 		}
+		if t.config.RetryMaxWait > 0 && waited+wait > t.config.RetryMaxWait {
+			return nil, failed
+		}
+		waited += wait
 		if err := t.sleep(ctx, wait); err != nil {
 			return nil, err
 		}

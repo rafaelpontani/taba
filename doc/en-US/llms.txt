@@ -52,6 +52,7 @@
 - [37 Guarantees](37-guarantees.md): the guarantees as rules a machine can check (I1 to I6, R1), the chaos run with a recorded history that checks them, the faults it applies and what it does not cover yet
 - [38 Benchmarks](38-benchmarks.md): the local comparative benchmark (OMB in Docker against Kafka, Redpanda, RabbitMQ and NATS JetStream), the fairness rules, the durability levels, the workloads and the report
 - [39 Gateway](39-gateway.md): the gateway for the AWS SDKs (SQS queues and SNS topics on ports of the node), the access keys file, how a call becomes a client API call, what is supported and the differences from SQS and SNS
+- [40 Terraform and OpenTofu provider](40-terraform.md): the provider `rafaelpontani/taba` (queues, distributors, access tokens, four data sources), its configuration, plan, drift and import, `force_destroy`, the optional `create_or_update`, the token secret in the state and its rotation, retries while a node is down, tests and publication through a mirror repository
 - [36 Known issues](36-known-issues.md): cluster tests turned off with #[ignore] because they fail intermittently in CI, cause and planned fix
 - [26 Use cases](26-use-cases.md): the UC-AREA-NNN code and the coverage rule
 - [26a Implemented cases](26a-implemented-use-cases.md): the catalogue with a test (generated)

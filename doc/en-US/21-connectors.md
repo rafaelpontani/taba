@@ -3,7 +3,7 @@ title: Connectors
 summary: Taba's client libraries — the common contract (the nine operations, retry, errors, body), the real state of each language (Rust, C#, Java, Python, Node.js, Go, PHP and Ruby ready; two planned), how to use and how to write a new one.
 type: reference
 status: partial
-verified-on: 2026-11-07 @ d79a140
+verified-on: 2026-11-07 @ 4fbb808
 sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/go, connectors/php, connectors/ruby, .github/scripts/package-connectors.sh, connectors/omb, connectors/contract, examples/csharp-console]
 ---
 
@@ -25,6 +25,7 @@ sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, con
 | **PHP** (`taba/client`) | `connectors/php/` | ✅ **Ready** (unit tests and the contract tests; no automatic renewal of the invisibility, D68.3) | ⬜ Not published (D70.1, D70.2) |
 | **Ruby** (`taba-client`) | `connectors/ruby/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
 | **OpenMessaging Benchmark driver** (on top of Java) | `connectors/omb/` | ✅ **Ready** (unit and integration tests against a node) | ⬜ Not published (a tool of the repository) |
+| **Terraform and OpenTofu provider** (on top of Go) | `connectors/terraform/` | ✅ **Ready**: queues, distributors, tokens, `create_or_update`; unit tests and acceptance with Terraform and OpenTofu ([40-terraform.md](40-terraform.md)) | 🟡 Packaged in the Release; the registries wait for the mirror repository (D211) |
 | C, C++ | — | ⏸ **Deferred**, with no date (D68.4): the folders do not exist | — |
 
 > The goal of **ten languages** is a plan, not reality: today **8 of 10** exist, and the other two (C and C++) are deferred (D68.4). The [roadmap](32-roadmap.md) has the order. Since the API is HTTP, the other languages use their own HTTP client until the connector is out.
@@ -244,6 +245,7 @@ Tests: `cd connectors/python && python -m unittest discover -s tests -t .` (the 
 - `taba.Client` is safe for concurrent use. **Every call takes a `context.Context`** and returns `(value, error)`; cancelling the context ends the call in flight (a long polling does not wait for its timeout) and the call returns the context's own error, never a `*taba.Error`. `Subscribe` returns `nil` when its context is cancelled.
 - Optional fields are pointers (`taba.Int(20)`, `taba.Bool(true)`), so `nil` means "not set" and the server default applies; in a `TopicUpdate`, `taba.SetInt(n)` / `taba.ClearInt()` / `nil` are "send `n`" / "send `null`" / "leave out". The error is a `*taba.Error` (`Status`, `Code`, `Message`, `RequestID`, `RetryAfter`, `Details`, `Body`).
 - `ConsumeWith(ctx, topic, options, func(*MessageContext) error)`: a `nil` return deletes the message (unless `Delete = false`), an error keeps it and is returned; the invisibility is renewed by another goroutine. Go 1.7 has no generics, so there is no typed `consume<T>`: the handler reads the body with `Decode(&v)`.
+- **Only in Go so far** (the Terraform provider uses them; PRB-109): the administration of the access tokens (`CreateToken`, `GetToken`, `ListTokens`/`ListAllTokens`, `UpdateToken`, `RevokeToken`; a `503 cluster.quorum-unavailable` on `CreateToken` comes back without a new attempt, because the owner may have created the token), and `Config.RetryMaxWait`: the total of the waits between the attempts of one call; no attempt is made whose wait would pass it, and `MaxAttempts` still bounds them (D220).
 
 ```go
 client, _ := taba.NewClient(taba.Config{BaseURL: "http://localhost:8080", Token: os.Getenv("TABA_TOKEN")})
