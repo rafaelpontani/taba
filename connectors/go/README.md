@@ -47,6 +47,10 @@ Go reads the module straight from the repository, so there is nothing else to do
 
 Many messages in one request, next to the single calls (optional): `PublishBatch(ctx, topic, []taba.BatchMessage{...})`, `AckBatch(ctx, topic, messages)` and `ChangeVisibilityBatch(ctx, topic, messages, seconds)` return one `BatchResult` per item (`OK()`, `Status`, `ID`, `ErrorCode`). Each item is answered as its single call, in order, and an item that failed comes back with its `Status` and error code instead of an `error`. The bodies go in base64, so any type fits. Details: [Messages in batch](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#messages-in-batch-post-messagesbatch-ack-and-visibility).
 
+## Tokens
+
+With authentication on, the root token and the `admin` tokens administer the access tokens (only Go has this so far; the Terraform provider uses it): `CreateToken(ctx, &taba.TokenRequest{Name, Permissions, TopicPrefixes, ExpiresAt})` returns a `TokenCreated` whose `Secret` (`tb_<id>.<secret>`) the server shows **only here**; `GetToken`, `ListTokens`/`ListAllTokens(ctx, name)` (the name contains the text), `UpdateToken(ctx, id, &taba.TokenUpdate{Name, ExpiresAt})` (only the name and the deadline change; `taba.ClearString()` removes the deadline) and `RevokeToken`. An expired token is `404 token.not-found`, like a revoked one. A `503 cluster.quorum-unavailable` on `CreateToken` comes back without a new attempt: the owner of the definition may have created the token and the answer was lost, so look for it by name and revoke it before trying again. Details: [Tokens](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#tokens).
+
 ## Configuration
 
 `taba.Config{...}`; a zero field takes the default. The client does not read environment variables: `TABA_*` belongs to the server.
@@ -58,6 +62,7 @@ Many messages in one request, next to the single calls (optional): `PublishBatch
 | `ConnectTimeout` | `5s` | |
 | `RequestTimeout` | `30s` | `Consume` uses `WaitTime + 10s` |
 | `MaxAttempts` | `3` | counting the first |
+| `RetryMaxWait` | none | total of the waits between the attempts of one call: no attempt is made whose wait (the `Retry-After`, or 1, 2, 4… up to 64 s) would pass it; `MaxAttempts` still bounds them |
 | `UserAgent` | `taba-go/<version>` | |
 | `TLSConfig` | system's roots, TLS 1.2+ | an own `*tls.Config` (a private CA, for example) |
 | `HTTPClient` | the connector's own | replaces the HTTP client (then `ConnectTimeout` and `TLSConfig` are yours to set) |

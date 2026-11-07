@@ -3,8 +3,8 @@ title: Implemented use cases
 summary: The catalogue of Taba use cases that have at least one test citing them, by area, with the case, the level and the tests that prove it.
 type: reference
 status: stable
-verified-on: 2026-11-03 @ cc4da15
-sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp]
+verified-on: 2026-11-07 @ 4fbb808
+sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp, connectors/terraform]
 ---
 
 # Implemented use cases
@@ -59,6 +59,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `BKP` | Optional S3 backup | 46 | 0 |
 | `CHS` | Chaos with a verified history | 5 | 0 |
 | `BNC` | Local comparative benchmark (`bench/run.sh`) | 5 | 1 |
+| `IAC` | Terraform and OpenTofu provider | 23 | 0 |
 
 ## TOP: Topics: create, list, read, change and remove
 
@@ -3778,6 +3779,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/python/tests/test_client.py::test_create_topic_sends_only_what_was_filled`
   - `connectors/go/client_test.go::TestTheNineOperationsBuildTheExpectedRoutes`
   - `connectors/go/client_test.go::TestCreateTopicSendsOnlyWhatWasFilled`
+  - `connectors/go/client_test.go::TestATopicReadsEveryFieldTheServerReturns`
   - `connectors/php/tests/ClientTest.php::testTheNineOperationsBuildTheExpectedRoutes`
   - `connectors/php/tests/ClientTest.php::testCreateTopicSendsOnlyWhatWasFilled`
   - `connectors/php/tests/RealHttpTest.php::testTheRequestGoesOnTheWireWithTheRightVerbHeadersAndBody`
@@ -3955,6 +3957,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/python/tests/test_client.py::test_backoff_without_retry_after_is_one_two_four_seconds_up_to_max_attempts`
   - `connectors/go/client_test.go::TestRetries429And503WaitingForRetryAfterThenBackoff`
   - `connectors/go/client_test.go::TestBackoffWithoutRetryAfterIsOneTwoFourSecondsUpToMaxAttempts`
+  - `connectors/go/client_test.go::TestRetryMaxWaitStopsBeforeAWaitThatWouldPassIt`
   - `connectors/php/tests/ClientTest.php::testRetries429And503WaitingForRetryAfterThenBackoff`
   - `connectors/php/tests/ClientTest.php::testBackoffWithoutRetryAfterIsOneTwoFourSecondsUpToMaxAttempts`
   - `connectors/php/tests/RealHttpTest.php::testAnErrorResponseBecomesATabaExceptionWithItsHeaders`
@@ -4593,6 +4596,21 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/go/client_test.go::TestDeleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError`
   - `connectors/php/tests/ClientTest.php::testDeleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError`
   - `connectors/ruby/test/client_test.rb::test_delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error`
+
+### UC-CNT-044
+
+**Case:** The Go connector administers the access tokens (`CreateToken`, `GetToken`, `ListTokens`/`ListAllTokens`, `UpdateToken`, `RevokeToken`), which the Terraform provider uses  
+**Then:** `POST` and `GET /tokens` and `GET`, `PATCH` and `DELETE /tokens/{id}`, sending only what was filled in; the secret comes only in the creation answer; `UpdateToken` sends `expiresAt: null` to remove the deadline; a `503 cluster.quorum-unavailable` on the creation is returned without a new attempt (the owner may have created the token, and a second attempt could create another one), while the other `503`s are repeated; a `404` after a `503` on the revocation counts as revoked  
+**Level:** K  
+**Tests:**
+  - `connectors/go/tokens_test.go::TestTheTokenCallsBuildTheExpectedRoutes`
+  - `connectors/go/tokens_test.go::TestCreateTokenSendsOnlyWhatWasFilledAndReturnsTheSecret`
+  - `connectors/go/tokens_test.go::TestCreateTokenDoesNotRepeatA503WhoseOwnerMayHaveCreatedIt`
+  - `connectors/go/tokens_test.go::TestCreateTokenRepeatsA503ThatDidNotReachTheOwner`
+  - `connectors/go/tokens_test.go::TestACreationAnswerWithoutTheSecretIsAnInvalidResponse`
+  - `connectors/go/tokens_test.go::TestUpdateTokenSendsANullDeadlineAndADate`
+  - `connectors/go/tokens_test.go::TestListAllTokensReadsEveryPage`
+  - `connectors/go/tokens_test.go::TestAnExpiredOrRevokedTokenIsNotFoundAndARevokeAfterA503Succeeds`
 
 ---
 
@@ -11124,9 +11142,286 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+## IAC: Terraform and OpenTofu provider
+
+### UC-IAC-001
+
+**Case:** The provider configuration comes from the attributes or, when left out, from `TABA_URL`, `TABA_TOKEN`, `TABA_CA_CERT` and `TABA_CREATE_OR_UPDATE` ([40-terraform.md](40-terraform.md))  
+**Then:** The defaults are applied (`request_timeout` 30s, `retry_max_wait` 3m; `0s` turns the new attempts off); a missing endpoint, an invalid duration or certificate, or a negative wait is a configuration error; the private CA comes from the PEM, the file or the environment  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/provider_test.go::TestTheSchemasAreValid`
+  - `connectors/terraform/internal/provider/provider_test.go::TestTheConfigurationFallsBackToTheEnvironmentAndAppliesTheDefaults`
+  - `connectors/terraform/internal/provider/provider_test.go::TestAnInvalidConfigurationIsRefused`
+  - `connectors/terraform/internal/provider/provider_test.go::TestTheCertificateAuthorityComesFromThePEMTheFileOrTheEnvironment`
+
+---
+
+### UC-IAC-002
+
+**Case:** `taba_queue` creates a queue with only what was declared ([40-terraform.md](40-terraform.md))  
+**Then:** The `POST /topics` body leaves out what was not declared (the node default applies); the state is filled from the answer (`id`, `created_at`, `dead_letter_name`, `effective_*`), and the plan right after the `apply` is empty  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueue`
+  - `connectors/terraform/internal/provider/topics_test.go::TestTheQueueBodyCarriesOnlyWhatWasDeclared`
+  - `connectors/terraform/internal/provider/topics_test.go::TestCreatingAQueueFillsTheStateFromTheServer`
+
+---
+
+### UC-IAC-003
+
+**Case:** The topic configuration is checked at `plan`, before reaching the node ([40-terraform.md](40-terraform.md))  
+**Then:** Name rules (characters, length, no `-dead-letter` suffix), ranges and tags are refused at plan; `idle_timeout` needs `volatile = true`; the `effective_*` are planned from the field they follow, with no false difference; `idle_timeout` not declared is 600 on a volatile queue and `null` on the others  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/provider_test.go::TestTheTopicNameRulesAreCheckedAtPlan`
+  - `connectors/terraform/internal/provider/provider_test.go::TestIdleTimeoutNeedsAVolatileQueue`
+  - `connectors/terraform/internal/provider/provider_test.go::TestTheEffectiveValuesArePlannedFromTheFieldTheyFollow`
+  - `connectors/terraform/internal/provider/provider_test.go::TestIdleTimeoutNotDeclaredIsTheServerDefaultOnlyOnAVolatileQueue`
+
+---
+
+### UC-IAC-004
+
+**Case:** A change of a mutable field of a queue (`tags`, `ttl`, `max_deliveries`, `max_message_bytes`, `idle_timeout`) is applied in place ([40-terraform.md](40-terraform.md))  
+**Then:** The update sends the whole declared state by `PUT /topics/{topic}` (no `recreate`), so a field taken out of the configuration goes back to the node default; a `201` (someone removed the queue between the read and the `apply`) gives a warning that it was created again  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueue`
+  - `connectors/terraform/internal/provider/topics_test.go::TestUpdatingAQueueSendsTheWholeDeclaredStateByPut`
+  - `connectors/terraform/internal/provider/topics_test.go::TestUpdatingAQueueSomeoneRemovedWarnsThatItWasCreatedAgain`
+
+---
+
+### UC-IAC-005
+
+**Case:** A change of an immutable field of a queue (`name`, `fifo`, `volatile`) or of the name of a distributor ([40-terraform.md](40-terraform.md))  
+**Then:** The plan shows a replacement (`-/+`): the topic is removed (with the protection of `force_destroy`) and created again  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueue`
+
+---
+
+### UC-IAC-006
+
+**Case:** A queue changed or removed outside Terraform (drift) ([40-terraform.md](40-terraform.md))  
+**Then:** The read brings the node state, so the next plan shows the difference to put back; a queue that is gone (`404`) leaves the state and the plan proposes creating it  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueueDrift`
+  - `connectors/terraform/internal/provider/topics_test.go::TestReadingAQueueThatIsGoneRemovesItFromTheState`
+
+---
+
+### UC-IAC-007
+
+**Case:** Import of a topic by name (`terraform import` or the `import {}` block) ([40-terraform.md](40-terraform.md))  
+**Then:** The imported state gives an empty plan with the same configuration, and `force_destroy` starts as `false`; importing a distributor as `taba_queue` (or the opposite) or a dead-letter queue is an error, not a replacement  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueue`
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccImportWrongType`
+  - `connectors/terraform/internal/provider/topics_test.go::TestReadingADistributorOrADeadLetterAsAQueueIsAnError`
+  - `connectors/terraform/internal/provider/topics_test.go::TestReadingAQueueKeepsForceDestroyAndAnImportStartsWithFalse`
+
+---
+
+### UC-IAC-008
+
+**Case:** Removing or replacing a queue that still holds messages, with `force_destroy` ([40-terraform.md](40-terraform.md))  
+**Then:** Without `force_destroy` (the default) the removal uses `DELETE /topics/{topic}?ifEmpty=true`, and a queue or dead-letter with messages is an error that says how many and the two ways out (empty it, or apply `force_destroy = true` first); with `true`, a plain `DELETE`; a topic already gone counts as removed  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueueForceDestroy`
+  - `connectors/terraform/internal/provider/topics_test.go::TestRemovingAQueueOnlyIfEmptyUnlessForced`
+  - `connectors/terraform/internal/provider/topics_test.go::TestAQueueWithMessagesIsNotRemovedAndTheErrorSaysHowToProceed`
+  - `connectors/terraform/internal/provider/topics_test.go::TestRemovingATopicThatIsAlreadyGoneSucceeds`
+
+---
+
+### UC-IAC-009
+
+**Case:** Creating a topic that already exists, with `create_or_update` off ([40-terraform.md](40-terraform.md))  
+**Then:** The `409 topic.already-exists` is an error that names both ways out: `import`, or `create_or_update = true`  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithoutCreateOrUpdateAnExistingTopicIsAnErrorThatNamesBothWays`
+  - `connectors/terraform/internal/provider/topics_test.go::TestAQueueThatAlreadyExistsIsAnErrorThatPointsToImport`
+
+---
+
+### UC-IAC-010
+
+**Case:** A creation whose answer was a `503 cluster.commit-timeout` and whose new attempt gets `409 topic.already-exists` ([40-terraform.md](40-terraform.md))  
+**Then:** The provider reads the topic and takes it as its own creation only if it is what was declared (same type and fields); otherwise the `409` is the error  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/topics_test.go::TestACreationInterruptedByA503IsOursOnlyIfTheTopicIsWhatWasDeclared`
+
+---
+
+### UC-IAC-011
+
+**Case:** `taba_distributor` creates and changes a distributor ([40-terraform.md](40-terraform.md))  
+**Then:** The `prefixes` and `tags` change in place, the prefixes kept in the declared order; the plan after each `apply` is empty, and the import gives no difference  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccDistributor`
+  - `connectors/terraform/internal/provider/topics_test.go::TestADistributorIsCreatedAndUpdatedWithItsPrefixesInOrder`
+
+---
+
+### UC-IAC-012
+
+**Case:** The data sources `taba_topic`, `taba_topics`, `taba_token` and `taba_tokens` read what another configuration manages ([40-terraform.md](40-terraform.md))  
+**Then:** `taba_topics` filters by name fragment, type, tags and with or without the dead-letter queues; `taba_tokens` lists by name fragment, oldest first, and never a secret  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccDataSources`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestTheTokensAreListedOldestFirst`
+  - `connectors/terraform/internal/provider/topics_test.go::TestListingTopicsFiltersByTypeTagsAndDeadLetter`
+
+---
+
+### UC-IAC-013
+
+**Case:** `taba_token` creates an access token ([40-terraform.md](40-terraform.md))  
+**Then:** The body carries only what was declared (no deadline and no prefixes are left out); the secret (`token`, sensitive) comes only in the creation answer and is kept in the state by the reads; the declared date text is kept while it is the same instant  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccToken`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestCreatingATokenSendsTheDeclaredTokenAndKeepsTheSecret`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestATokenWithoutDeadlineOrPrefixesLeavesThemOut`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestReadingATokenKeepsTheSecretAndTheDeclaredDate`
+
+---
+
+### UC-IAC-014
+
+**Case:** Changing or losing a token managed by Terraform ([40-terraform.md](40-terraform.md))  
+**Then:** `name` and `expires_at` change in place by `PATCH` (only what changed; `null` removes the deadline) and the secret is kept; other `permissions` or `topic_prefixes` replace the token; a token revoked outside leaves the state and is created again; revoking a token already gone succeeds  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccToken`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestReadingATokenThatIsGoneRemovesItButAuthenticationOffIsAnError`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestUpdatingATokenPatchesOnlyWhatChanged`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestRevokingATokenAlreadyGoneSucceeds`
+
+---
+
+### UC-IAC-015
+
+**Case:** The token configuration is checked at `plan` ([40-terraform.md](40-terraform.md))  
+**Then:** An `expires_at` in the past (including a token that expired) and `admin` with `topic_prefixes` are refused at plan, before anything changes; the same instant written another way (`…00Z` and `…00.000Z`) is not a change  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccTokenPastDeadlineIsRefusedAtPlan`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestTheTokenConfigurationIsCheckedAtPlan`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestTheSameInstantWrittenAnotherWayIsNotAChange`
+
+---
+
+### UC-IAC-016
+
+**Case:** Tokens on a node with authentication off, or with a provider token that cannot administer tokens ([40-terraform.md](40-terraform.md))  
+**Then:** `404 route.not-found`, `401` and `403 auth.forbidden` become errors with a hint (turn authentication on, use the root token); a read with authentication off is an error and does not take the token out of the state  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/tokens_test.go::TestTokensWithAuthenticationOffOrAWeakTokenGiveAHint`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestReadingATokenThatIsGoneRemovesItButAuthenticationOffIsAnError`
+
+---
+
+### UC-IAC-017
+
+**Case:** The creation of a token gets `503 cluster.quorum-unavailable` (the owner of the definition may have created it and the answer was lost) ([40-terraform.md](40-terraform.md))  
+**Then:** The provider lists the tokens with the name before the `POST`; after the `503` it revokes the one equal token (name, permissions, prefixes) that was not on that list and tries again, within `retry_max_wait` (the `Retry-After` of the node, otherwise 1, 2, 4… s); two or more candidates: error with the ids, nothing revoked; the budget spent: error after revoking (PRB-107)  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/tokens_test.go::TestALostCreationAnswerRevokesTheOrphanAndCreatesAgain`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestALostCreationAnswerWithTwoCandidatesRevokesNothing`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestLostCreationAnswersAreRepeatedWithinRetryMaxWaitAndStopAfterRevoking`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestALostCreationAnswerThenTheNodeIsBackCreatesTheToken`
+
+---
+
+### UC-IAC-018
+
+**Case:** `create_or_update` is set on the provider (attribute or `TABA_CREATE_OR_UPDATE`) and on each resource ([40-terraform.md](40-terraform.md))  
+**Then:** The resource value wins over the provider one, which wins over the environment; off by default; another text in the variable is a configuration error  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestCreateOrUpdateComesFromTheProviderOrTheEnvironmentAndTheResourceWins`
+
+---
+
+### UC-IAC-019
+
+**Case:** With `create_or_update`, a queue or distributor is created or taken over by `PUT /topics/{topic}?recreate=if-empty` ([40-terraform.md](40-terraform.md))  
+**Then:** Missing: created with no warning. Existing: brought to the declared state (what was not declared goes back to the node default) with a "Took over" warning. A `503` says nothing was changed; a `409 cluster.conflict` is repeated  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccCreateOrUpdateTopics`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAnExistingQueueIsTakenOverWithAPut`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAMissingQueueIsCreatedWithoutAWarning`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAPutRefusedForAMissingCountSaysNothingChanged`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAConflictIsRepeated`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAnExistingDistributorIsTakenOverWithAPut`
+
+---
+
+### UC-IAC-020
+
+**Case:** With `create_or_update`, the existing topic has another type, `fifo` or `volatile` ([40-terraform.md](40-terraform.md))  
+**Then:** Empty (queue and dead-letter): recreated as declared, with a "Recreated" warning. With messages: `409 topic.not-empty` becomes an error with the counts and the hint of `import` + `force_destroy`, and the topic is not touched (adoption never uses `recreate=always`)  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccCreateOrUpdateTopics`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAnEmptyTopicOfAnotherKindIsRecreatedWithAWarning`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateATopicOfAnotherKindWithMessagesIsNotTouched`
+
+---
+
+### UC-IAC-021
+
+**Case:** With `create_or_update`, a token is created or taken over by its exact name ([40-terraform.md](40-terraform.md))  
+**Then:** No token with exactly that name: created. One with the same permissions and prefixes: taken over, its deadline patched only when it is another instant, `token` null and a warning that the secret cannot be recovered (`-replace`). A token that disappears before the `PATCH`: error asking for a new `apply`  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccCreateOrUpdateToken`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateATokenWithoutTheExactNameIsCreated`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateTheOnlyTokenWithTheNameIsTakenOverWithoutTheSecret`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestATokenTakenOverGetsTheDeclaredDeadline`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestATokenThatDisappearsWhileTakenOverIsAnError`
+
+---
+
+### UC-IAC-022
+
+**Case:** With `create_or_update`, the token name is ambiguous ([40-terraform.md](40-terraform.md))  
+**Then:** Several tokens with the name, or one with other permissions or prefixes: error listing the ids (and both versions), nothing changed (PRB-106 is the race of two `apply`)  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestSeveralTokensWithTheNameAreNotTakenOver`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestATokenWithOtherPermissionsOrPrefixesIsNotTakenOver`
+
+---
+
+### UC-IAC-023
+
+**Case:** An error answer of the node with `details` ([40-terraform.md](40-terraform.md))  
+**Then:** Each detail becomes a `- field: message` line of the diagnostic  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/topics_test.go::TestTheErrorDetailsAreShownAsLines`
+
+---
 ## Sources and evidence
 
 - The cases came from `doc/20a`, `20b` and `20c` (the historical catalogue, removed in commit `efeb47a`); the tests, from the `/// UC:` lines of the code. The test `crates/taba-node/tests/uc_coverage.rs` checks the codes.
 - The `UC-BKP` cases (S3 backup) do not come from the historical catalogue: they were written by hand in this file, in the same format, and the test list of each one is checked by `uc_coverage`.
 - The `UC-BNC` cases (local benchmark) were written by hand in this file; their tests are Node.js files in `bench/`, which `uc_coverage` also reads.
+- The `UC-IAC` cases (Terraform and OpenTofu provider) were written by hand in this file; their tests are Go files in `connectors/terraform/internal/provider/` (the units with a fake server and the acceptance tests, which run against a real node only with `TF_ACC=1`), which `uc_coverage` also reads.
 - Maintained by hand: a new test that cites a case goes into its card ([26-use-cases.md](26-use-cases.md)).

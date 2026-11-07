@@ -48,6 +48,10 @@ jobs:
     name: Go connector
     uses: ./.github/workflows/build-connector-go.yml
 
+  connector-terraform:
+    name: Terraform provider
+    uses: ./.github/workflows/build-connector-terraform.yml
+
   connector-php:
     name: PHP connector
     uses: ./.github/workflows/build-connector-php.yml

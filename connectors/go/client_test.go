@@ -442,6 +442,30 @@ func TestBackoffWithoutRetryAfterIsOneTwoFourSecondsUpToMaxAttempts(t *testing.T
 	assertEqual(t, time.Second, f.sleep.recorded()[0], "first wait")
 }
 
+// UC: UC-CNT-010
+func TestRetryMaxWaitStopsBeforeAWaitThatWouldPassIt(t *testing.T) {
+	f := newFixture(t, func(c *Config) {
+		c.MaxAttempts = 100
+		c.RetryMaxWait = 12 * time.Second
+	})
+	defer f.close()
+	f.server.setFallback(reply(503, `{"code":"cluster.quorum-unavailable","message":"owner down"}`).with("Retry-After", "5"))
+	_, err := f.client.GetTopic(ctxb, "q")
+	assertError(t, "cluster.quorum-unavailable", err)
+	assertEqual(t, "[5s 5s]", fmt.Sprint(f.sleep.recorded()), "5 + 5 fit in 12 s; a third 5 would not")
+	assertEqual(t, 3, f.server.count(), "attempts")
+
+	g := newFixture(t, func(c *Config) {
+		c.MaxAttempts = 100
+		c.RetryMaxWait = 10 * time.Second
+	})
+	defer g.close()
+	g.server.setFallback(reply(503, `{"code":"cluster.unavailable","message":"x"}`))
+	_, err = g.client.GetTopic(ctxb, "q")
+	assertError(t, "cluster.unavailable", err)
+	assertEqual(t, "[1s 2s 4s]", fmt.Sprint(g.sleep.recorded()), "without Retry-After: 1 + 2 + 4 = 7; the next 8 would pass 10")
+}
+
 // UC: UC-CNT-011
 func TestAfterA503A409OnCreateAndA404OnDeleteCountAsSuccess(t *testing.T) {
 	f := newFixture(t)
@@ -948,4 +972,39 @@ func TestARefusedRenewalMarksTheLeaseAsLostAndTheDeleteIsTolerated(t *testing.T)
 	}
 	assertEqual(t, 1, handled, "handled")
 	assertEqual(t, true, lost, "lease lost")
+}
+
+// UC: UC-CNT-001
+func TestATopicReadsEveryFieldTheServerReturns(t *testing.T) {
+	f := newFixture(t)
+	defer f.close()
+	f.server.reply(
+		reply(200, topicJSON("orders", map[string]interface{}{
+			"tags": map[string]string{"team": "a"}, "volatile": true, "idleTimeout": 60, "fifo": false,
+			"maxMessageBytes": nil, "ttl": 3600, "maxDeliveries": 5,
+			"effective": map[string]interface{}{"ttl": 3600},
+		})),
+		reply(200, topicJSON("orders.dlq", map[string]interface{}{"deadLetter": true, "source": "orders"})),
+		reply(200, topicJSON("fan", map[string]interface{}{"type": "distributor", "prefixes": []string{"orders."}})),
+	)
+
+	queue, err := f.client.GetTopic(ctxb, "orders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEqual(t, "a", queue.Tags["team"], "tags")
+	assertEqual(t, 60, *queue.IdleTimeout, "idleTimeout")
+	assertEqual(t, true, queue.MaxMessageBytes == nil, "a null maxMessageBytes follows the node default")
+	assertEqual(t, 3600, *queue.TTL, "ttl")
+	assertEqual(t, 5, *queue.MaxDeliveries, "maxDeliveries")
+	assertEqual(t, true, queue.Prefixes == nil, "a queue has no prefixes")
+	assertEqual(t, true, queue.DeadLetter == nil, "not a dead-letter")
+
+	dlq, _ := f.client.GetTopic(ctxb, "orders.dlq")
+	assertEqual(t, true, *dlq.DeadLetter, "deadLetter")
+	assertEqual(t, "orders", dlq.Source, "source")
+	assertEqual(t, 0, len(dlq.Tags), "no tags is an empty map")
+
+	fan, _ := f.client.GetTopic(ctxb, "fan")
+	assertEqual(t, "orders.", fan.Prefixes[0], "prefixes")
 }

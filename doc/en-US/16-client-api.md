@@ -3,7 +3,7 @@ title: Client API
 summary: Route-by-route manual of the API that applications use — topics, messages (publish, consume, invisibility, ack, prune), tokens, who the token is, the nodes and the statistics, and the cluster and node operations for the root token — with parameters, DTOs, statuses and examples.
 type: reference
 status: stable
-verified-on: 2026-11-07 @ d79a140
+verified-on: 2026-11-07 @ 4fbb808
 sources: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, crates/taba-node/src/http/tokens, crates/taba-node/src/http/auth, crates/taba-node/src/http/nodes, crates/taba-node/src/http/topic_stats, crates/taba-node/src/core/topic, crates/taba-node/src/core/validation, crates/taba-node/src/core/content]
 ---
 
@@ -416,7 +416,7 @@ They only exist with **authentication on** and only accept the **root token**. W
 
 `Token`: `id`, `name`, `permissions`, `topicPrefixes`, `createdAt`, `expiresAt` (`TokenCreated` = `Token` + `token`).
 
-Errors: `400` (`validation.*`: unknown permission, empty list, invalid prefix, `expiresAt` in the past), `401`/`403` (root only), `404`, `503` (register not confirmed: try again).
+Errors: `400` (`validation.*`: unknown permission, empty list, invalid prefix, `expiresAt` in the past), `401`/`403` (root only), `404`, `503` (register not confirmed). A `503 cluster.quorum-unavailable` on `POST /tokens` may come **after** the owner of the definition created the token, when its answer was lost: a plain new attempt could leave two tokens, the first one with a secret nobody has. Before trying again, look for it with `GET /tokens?name=` (a token with the same name, permissions and prefixes that was not there before the call) and revoke it, as the Terraform provider does ([40-terraform.md](40-terraform.md#tokens), PRB-107). The other routes can simply be repeated.
 
 ## Who the token is, the nodes and the statistics
 

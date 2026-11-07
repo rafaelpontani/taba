@@ -228,6 +228,29 @@ jobs:
           path: dist/*
           retention-days: 1
 
+  # The provider files the Terraform and OpenTofu registries read (connectors/terraform/scripts/package.go): one zip per
+  # platform, the manifest and their SHA256SUMS. They go to the Release (release-assets), and terraform-registry signs
+  # them and publishes them on the mirror repository (D211).
+  terraform-provider:
+    name: Terraform provider (package)
+    needs: plan
+    if: needs.plan.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: connectors/terraform/scripts/package.sh "$VERSION" dist/terraform
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: terraform-provider
+          path: dist/terraform/*
+          retention-days: 1
+
   # Pushes the images only by digest: no tag exists until the release is finalized. Provenance (SLSA, mode=max) and
   # SBOM go inside the image index; the GitHub attestation and the cosign signature are bound to the digest.
   images:
@@ -342,7 +365,7 @@ jobs:
   # have no tag yet.
   tag:
     name: Tag and draft Release
-    needs: [plan, server, connector-rust, connector-csharp, chart, connector-packages, images]
+    needs: [plan, server, connector-rust, connector-csharp, chart, connector-packages, terraform-provider, images]
     if: needs.plan.outputs.published == 'true' && needs.plan.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -415,6 +438,10 @@ jobs:
         with:
           name: connector-packages
           path: assets/connector-packages
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: terraform-provider
+          path: assets/terraform-provider
       # Name with the version and the architecture, so it is not confused with binaries of other releases.
       - name: Rename with the version and compute the checksums
         shell: bash
@@ -428,6 +455,7 @@ jobs:
           cp assets/nuget-packages/*.nupkg assets/nuget-packages/*.snupkg release/
           cp assets/helm-chart/*.tgz release/
           cp assets/connector-packages/* release/
+          cp assets/terraform-provider/* release/
           (cd release && sha256sum -- * > SHA256SUMS)
           cat release/SHA256SUMS
       # SLSA provenance of every file: `gh attestation verify <file> -R rafaelpontani/taba`.
@@ -670,6 +698,52 @@ jobs:
             git tag -f "$t" "$GITHUB_SHA"
             git push -f origin "refs/tags/$t"
           done
+
+  # The provider on the mirror repository the Terraform and OpenTofu registries read (D211), only when the
+  # TERRAFORM_PROVIDER_REPO variable names it (owner/repository). Before anything goes there, the SHA256SUMS is signed
+  # with the registry key and the signed files are checked as a user gets them (verify-release.sh: checksums,
+  # signature, installation by Terraform and OpenTofu, apply against the node image of this version). The mirror gets
+  # the source, the tag and a Release (mirror.sh, idempotent). Setup (repository, key, token): doc/pt-BR/27-ci-cd.md.
+  terraform-registry:
+    name: Terraform provider (mirror)
+    needs: [plan, terraform-provider, floating]
+    if: always() && needs.floating.result == 'success' && vars.TERRAFORM_PROVIDER_REPO != ''
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: terraform-provider
+          path: dist/terraform
+      # A detached binary signature (.sig), what the registries read; the public key goes to the check below.
+      - name: Sign the SHA256SUMS
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.TERRAFORM_GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.TERRAFORM_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          GNUPGHOME="$(mktemp -d)"
+          export GNUPGHOME
+          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --quiet --import
+          sums="dist/terraform/terraform-provider-taba_${VERSION}_SHA256SUMS"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --detach-sign --output "$sums.sig" "$sums"
+          gpg --batch --armor --export > "$RUNNER_TEMP/terraform-signing-key.asc"
+      - name: Check the signed files as a user gets them
+        env:
+          TABA_IMAGE: ${{ needs.plan.outputs.dockerhub }}/taba:${{ needs.plan.outputs.version }}
+        run: GPG_PUBLIC_KEY="$RUNNER_TEMP/terraform-signing-key.asc" connectors/terraform/scripts/verify-release.sh dist/terraform "$VERSION"
+      - name: Publish on the mirror
+        env:
+          GH_TOKEN: ${{ secrets.TERRAFORM_MIRROR_TOKEN }}
+          MIRROR: ${{ vars.TERRAFORM_PROVIDER_REPO }}
+        run: connectors/terraform/scripts/mirror.sh "$VERSION" dist/terraform "$MIRROR"
 
   # The proof, from the outside, as anyone would check it: every git tag points to github.sha; every Docker tag on
   # both registries is the same digest, with the revision label = github.sha; the signatures and attestations

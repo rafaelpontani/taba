@@ -3,7 +3,7 @@ título: Testes
 resumo: Como o Taba é testado — os níveis (unitário, um nó, cluster simulado, conectores, ponta a ponta), as ferramentas de teste (TestNode, TestCluster, rede em memória, relógio manual, coletor OTLP falso) e como escrever e rodar um teste.
 tipo: guia
 status: estável
-verificado-em: 2026-10-29 @ 6e8cdf6
+verificado-em: 2026-11-07 @ 4fbb808
 fontes: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, connectors/contract, docker/validate.sh, docker/seed-demo.sh, docker/hang-hunt.sh]
 ---
 
@@ -92,6 +92,8 @@ cd connectors/rust && cargo test --workspace --all-features
 cd connectors/csharp && dotnet test Taba.Client.Tests          # unitários; os de integração exigem TABA_URL
 connectors/csharp/scripts/integration.sh                       # sobe o Compose, cria tokens e filas, roda tudo
 connectors/contract/run.sh                                     # os oito conectores contra um nó real, e depois entre si
+connectors/terraform/scripts/test.sh                           # provider Terraform: unitários, golangci-lint, docs/ em dia, aceitação com Terraform e OpenTofu contra um nó
+connectors/terraform/scripts/cluster.sh                        # o provider contra o Compose de 3 nós com um nó morto durante um apply (≈ 5 min)
 docker/validate.sh                                             # ponta a ponta (≈ 5 min)
 docker/hang-hunt.sh nodes_api <test name>                         # a test that hangs only under load: logs + thread stacks
 ```

@@ -71,6 +71,32 @@ func (f jsonFields) integer(name string) (*int, error) {
 	return &n, nil
 }
 
+// strings is an array of strings; an absent or null field is an empty (non-nil) slice.
+func (f jsonFields) strings(name string) ([]string, error) {
+	out := []string{}
+	value := f.raw(name)
+	if value == nil {
+		return out, nil
+	}
+	if err := json.Unmarshal(value, &out); err != nil {
+		return nil, fmt.Errorf("field %q is not an array of strings", name)
+	}
+	return out, nil
+}
+
+// stringMap is an object of strings; an absent or null field is an empty (non-nil) map.
+func (f jsonFields) stringMap(name string) (map[string]string, error) {
+	out := map[string]string{}
+	value := f.raw(name)
+	if value == nil {
+		return out, nil
+	}
+	if err := json.Unmarshal(value, &out); err != nil {
+		return nil, fmt.Errorf("field %q is not an object of strings", name)
+	}
+	return out, nil
+}
+
 // arrayItems are the elements of an array fragment, each as a text fragment.
 func arrayItems(fragment []byte) ([]json.RawMessage, error) {
 	trimmed := bytes.TrimLeft(fragment, " \t\r\n")

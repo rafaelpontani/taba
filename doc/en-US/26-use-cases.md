@@ -3,7 +3,7 @@ title: Use cases and traceability
 summary: The format of the `UC-AREA-NNN` code, the test levels, how a test cites a case, the coverage rule that `uc_coverage` checks, the index of the 38 areas and how to read the two catalogues (implemented and planned).
 type: guide
 status: stable
-verified-on: 2026-10-27 @ ada9ff1
+verified-on: 2026-11-07 @ 4fbb808
 sources: [crates/taba-node/tests/uc_coverage.rs, doc/en-US/26a-implemented-use-cases.md, doc/en-US/26b-planned-use-cases.md]
 ---
 
@@ -91,6 +91,7 @@ Both are **maintained by hand**, in both languages: a new case goes in as a card
 | `CNV` | Common API conventions (format, headers, errors, status) |
 | `CNT` | Connectors |
 | `CLI` | `taba-cli` |
+| `IAC` | Terraform and OpenTofu provider: configuration, queues, distributors, tokens, drift, import, `force_destroy` and `create_or_update` |
 
 **Node and the message path:**
 

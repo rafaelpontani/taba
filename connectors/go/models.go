@@ -16,7 +16,20 @@ type Topic struct {
 	CreatedAt string
 	Fifo      *bool
 	Volatile  *bool
-	// Raw is the topic JSON, as the server returned it.
+	// Tags are the telemetry tags (never nil; empty when the topic has none).
+	Tags map[string]string
+	// Prefixes (distributor only) are the destination prefixes; nil on a queue.
+	Prefixes []string
+	// IdleTimeout (volatile queue only) is the seconds without a consumer until the queue is deleted.
+	IdleTimeout *int
+	// MaxMessageBytes, TTL and MaxDeliveries (queue only) are nil when the topic follows the node default.
+	MaxMessageBytes *int
+	TTL             *int
+	MaxDeliveries   *int
+	// DeadLetter is true only on a dead-letter queue, whose Source is the queue it belongs to.
+	DeadLetter *bool
+	Source     string
+	// Raw is the topic JSON, as the server returned it (with the effective values, in "effective").
 	Raw string
 }
 
@@ -228,13 +241,23 @@ func parseTopic(raw []byte) (Topic, error) {
 		return Topic{}, invalid("topic", err)
 	}
 	t := Topic{Raw: string(raw)}
-	var errs [6]error
+	var errs [14]error
 	t.ID, _, errs[0] = f.str("id")
 	t.Name, _, errs[1] = f.str("name")
 	t.Type, _, errs[2] = f.str("type")
 	t.CreatedAt, _, errs[3] = f.str("createdAt")
 	t.Fifo, errs[4] = f.boolean("fifo")
 	t.Volatile, errs[5] = f.boolean("volatile")
+	t.Tags, errs[6] = f.stringMap("tags")
+	if f.raw("prefixes") != nil {
+		t.Prefixes, errs[7] = f.strings("prefixes")
+	}
+	t.IdleTimeout, errs[8] = f.integer("idleTimeout")
+	t.MaxMessageBytes, errs[9] = f.integer("maxMessageBytes")
+	t.TTL, errs[10] = f.integer("ttl")
+	t.MaxDeliveries, errs[11] = f.integer("maxDeliveries")
+	t.DeadLetter, errs[12] = f.boolean("deadLetter")
+	t.Source, _, errs[13] = f.str("source")
 	if err := firstError(errs[:]...); err != nil {
 		return Topic{}, invalid("topic", err)
 	}

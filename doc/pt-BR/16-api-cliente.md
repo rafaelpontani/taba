@@ -3,7 +3,7 @@ título: API de cliente
 resumo: Manual rota a rota da API que as aplicações usam — tópicos, mensagens (publicar, consumir, invisibilidade, ack, prune), tokens, quem é o token, os nós e as estatísticas, e as operações de cluster e de nó para o token raiz — com parâmetros, DTOs, status e exemplos.
 tipo: referência
 status: estável
-verificado-em: 2026-11-07 @ d79a140
+verificado-em: 2026-11-07 @ 4fbb808
 fontes: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, crates/taba-node/src/http/tokens, crates/taba-node/src/http/auth, crates/taba-node/src/http/nodes, crates/taba-node/src/http/topic_stats, crates/taba-node/src/core/topic, crates/taba-node/src/core/validation, crates/taba-node/src/core/content]
 ---
 
@@ -416,7 +416,7 @@ Só existem com a **autenticação ligada** e só aceitam o **token raiz**. Sem 
 
 `Token`: `id`, `name`, `permissions`, `topicPrefixes`, `createdAt`, `expiresAt` (`TokenCreated` = `Token` + `token`).
 
-Erros: `400` (`validation.*`: permissão desconhecida, lista vazia, prefixo inválido, `expiresAt` no passado), `401`/`403` (só o raiz), `404`, `503` (registro não confirmado: tente de novo).
+Erros: `400` (`validation.*`: permissão desconhecida, lista vazia, prefixo inválido, `expiresAt` no passado), `401`/`403` (só o raiz), `404`, `503` (registro não confirmado). Um `503 cluster.quorum-unavailable` no `POST /tokens` pode vir **depois** de o dono da definição criar o token, quando a resposta dele se perdeu: uma nova tentativa simples pode deixar dois tokens, o primeiro com um segredo que ninguém tem. Antes de tentar de novo, procure-o com `GET /tokens?name=` (um token com o mesmo nome, permissões e prefixos que não existia antes da chamada) e revogue-o, como faz o provider Terraform ([40-terraform.md](40-terraform.md#tokens), PRB-107). As outras rotas podem ser simplesmente repetidas.
 
 ## Quem é o token, os nós e as estatísticas
 
