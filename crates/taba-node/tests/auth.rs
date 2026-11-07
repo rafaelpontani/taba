@@ -978,3 +978,40 @@ async fn the_rate_limit_counts_by_token_when_valid_and_by_ip_otherwise() {
     );
     node.shutdown().await;
 }
+
+/// UC: UC-TOP-056
+#[tokio::test]
+async fn put_needs_manage_on_the_topic_and_create_alone_is_refused() {
+    let node = start().await;
+    let (_, creator) = token(&node, &["create"], &[]).await;
+    let (_, manager) = token(&node, &["manage"], &[]).await;
+    let (_, scoped) = token(&node, &["manage"], &["orders"]).await;
+    async fn put_queue(node: &TestNode, token: &str, topic: &str) -> Response {
+        node.clock.advance(Duration::from_secs(1));
+        let path = format!("/topics/{topic}");
+        call(
+            node,
+            Method::PUT,
+            &path,
+            Some(token),
+            Some(json!({ "type": "queue" })),
+        )
+        .await
+    }
+
+    let refused = put_queue(&node, &creator, "orders").await;
+    assert_eq!(refused.status(), 403);
+    let refused: Value = refused.json().await.unwrap();
+    assert_eq!(refused["code"], "auth.forbidden");
+    assert_eq!(refused["required"], "manage");
+
+    // `manage` includes `create`.
+    assert_eq!(put_queue(&node, &manager, "orders").await.status(), 201);
+    assert_eq!(put_queue(&node, &scoped, "orders").await.status(), 200);
+    // The token's prefixes still apply.
+    assert_eq!(
+        error_code(put_queue(&node, &scoped, "billing").await, 403).await,
+        "auth.out-of-scope"
+    );
+    node.shutdown().await;
+}

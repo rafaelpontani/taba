@@ -64,6 +64,18 @@ async fn create_queue(cluster: &TestCluster) {
     assert_eq!(response.status(), 201);
 }
 
+/// The register and commit calls once they reach `expected`. The coordinator answers when the quorum confirms and the
+/// node outside it gets its commit in the background, so counting right after the answers can come up short.
+async fn settled_operations(cluster: &TestCluster, expected: usize) -> usize {
+    let count = || cluster.network.count("write-register") + cluster.network.count("write-commit");
+    common::cluster::eventually(
+        &format!("{expected} register and commit operations"),
+        || count() >= expected,
+    )
+    .await;
+    count()
+}
+
 /// UC: UC-ESC-039
 #[tokio::test(flavor = "multi_thread")]
 async fn operations_waiting_for_the_same_node_travel_in_fewer_calls_than_operations() {
@@ -73,13 +85,9 @@ async fn operations_waiting_for_the_same_node_travel_in_fewer_calls_than_operati
 
     publish_concurrently(&cluster, 300).await;
 
-    let operations =
-        cluster.network.count("write-register") + cluster.network.count("write-commit");
+    // Each publication registers and commits on other nodes.
+    let operations = settled_operations(&cluster, 600).await;
     let batches = cluster.network.count("batch");
-    assert!(
-        operations >= 600,
-        "each publication registers and commits on other nodes: {operations}"
-    );
     assert!(
         batches < operations,
         "{operations} operations went in {batches} calls: nothing was batched"
@@ -96,11 +104,15 @@ async fn with_max_items_1_every_operation_goes_in_a_call_of_its_own() {
 
     publish_concurrently(&cluster, 60).await;
 
-    let operations =
-        cluster.network.count("write-register") + cluster.network.count("write-commit");
-    assert!(operations >= 120, "{operations}");
-    // Each operation is a batch of one item (the single-operation form is never sent on its own).
-    assert_eq!(cluster.network.count("batch"), operations);
+    settled_operations(&cluster, 120).await;
+    // Each operation is a batch of one item (the single-operation form is never sent on its own). Read together
+    // until they agree: a commit still on its way counts in one before the other.
+    common::cluster::eventually("one call per operation", || {
+        let operations =
+            cluster.network.count("write-register") + cluster.network.count("write-commit");
+        cluster.network.count("batch") == operations
+    })
+    .await;
     cluster.shutdown().await;
 }
 
@@ -429,11 +441,9 @@ async fn a_batch_of_publications_goes_through_each_phase_in_one_call_per_node_an
     assert_eq!(results.len(), 100);
     assert!(results.iter().all(|r| r["status"] == 201), "{reply}");
 
-    let operations =
-        cluster.network.count("write-register") + cluster.network.count("write-commit");
-    let batches = cluster.network.count("batch");
     // Each of the 100 publications registers and commits on the two other nodes.
-    assert!(operations >= 400, "{operations}");
+    let operations = settled_operations(&cluster, 400).await;
+    let batches = cluster.network.count("batch");
     // D198: one group per order of the responsible nodes (three with three nodes); each phase of a group reaches each
     // of the two other nodes in one call.
     assert!(

@@ -224,6 +224,59 @@ public class TabaClient implements AutoCloseable {
         });
     }
 
+    /**
+     * {@code PUT /topics/{topic}}: brings the topic to the declared state, creating it if it does not exist. What is
+     * left out goes back to the server default (a full replacement, unlike {@link #updateTopic}); the name of the
+     * request is the topic of the path. Another {@code type}, {@code fifo} or {@code volatile} is
+     * {@code 409 topic.immutable-mismatch} unless {@code recreate} says otherwise. Repeated after a {@code 503} like
+     * the other calls: the route is idempotent.
+     */
+    public TopicPut createOrUpdateTopic(TopicRequest request, Recreate recreate) {
+        if (request == null) {
+            throw new NullPointerException("request");
+        }
+        String name = request.getName() == null ? "" : request.getName();
+        ApiCall call = new ApiCall("PUT", "/topics/" + segment(name)).json(request.toPutJson());
+        if (recreate != null && recreate.queryValue() != null) {
+            call.with("recreate", recreate.queryValue());
+        }
+        HttpTransport.Reply reply = send(call);
+        TopicOutcome outcome = reply.status != 201
+                ? TopicOutcome.UPDATED
+                : reply.recreated ? TopicOutcome.RECREATED : TopicOutcome.CREATED;
+        return new TopicPut(ModelParser.parseTopic(reply.text()), outcome);
+    }
+
+    /** {@link #createOrUpdateTopic(TopicRequest, Recreate)} without recreating ({@link Recreate#NEVER}). */
+    public TopicPut createOrUpdateTopic(TopicRequest request) {
+        return createOrUpdateTopic(request, Recreate.NEVER);
+    }
+
+    public CompletableFuture<TopicPut> createOrUpdateTopicAsync(TopicRequest request, Recreate recreate) {
+        return async(() -> createOrUpdateTopic(request, recreate));
+    }
+
+    public CompletableFuture<TopicPut> createOrUpdateTopicAsync(TopicRequest request) {
+        return createOrUpdateTopicAsync(request, Recreate.NEVER);
+    }
+
+    /**
+     * {@code DELETE /topics/{topic}?ifEmpty=true}: removes the queue only if it and its dead-letter hold no message on
+     * any node ({@code 409 topic.not-empty} otherwise; a distributor holds none).
+     */
+    public void deleteTopicIfEmpty(String name) {
+        ApiCall call = new ApiCall("DELETE", "/topics/" + segment(name)).with("ifEmpty", "true");
+        call.recover.add(new ApiCall.Recover(404, "topic.not-found"));
+        send(call);
+    }
+
+    public CompletableFuture<Void> deleteTopicIfEmptyAsync(String name) {
+        return async(() -> {
+            deleteTopicIfEmpty(name);
+            return null;
+        });
+    }
+
     // -----------------------------------------------------------------------------------------
     // Publishing
     // -----------------------------------------------------------------------------------------

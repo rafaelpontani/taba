@@ -114,6 +114,19 @@ namespace Taba.Contract
             return output;
         }
 
+        private static TopicRequest TopicRequestOf(Dictionary<string, string> p)
+        {
+            var request = new TopicRequest
+            {
+                Name = p["name"], Type = p["type"], Fifo = Flag(p, "fifo"), Volatile = Flag(p, "volatile"),
+                Ttl = Long(p, "ttl"), MaxDeliveries = Long(p, "maxDeliveries"), MaxMessageBytes = Long(p, "maxMessageBytes"),
+                IdleTimeout = Long(p, "idleTimeout"),
+            };
+            if (p.ContainsKey("prefixes")) request.Prefixes = Items(p["prefixes"]);
+            if (p.ContainsKey("tags")) request.Tags = Tags(p["tags"]);
+            return request;
+        }
+
         private static Dictionary<string, string> TopicFields(Topic t) =>
             Fields("id", t.Id, "name", t.Name, "type", t.Type, "fifo", Text(t.Fifo), "volatile", Text(t.Volatile), "raw", t.Raw);
 
@@ -156,17 +169,15 @@ namespace Taba.Contract
         private static Dictionary<string, Operation> Operations()
         {
             var ops = new Dictionary<string, Operation>();
-            ops["createTopic"] = async (c, p) =>
+            ops["createTopic"] = async (c, p) => TopicFields(await c.CreateTopicAsync(TopicRequestOf(p)));
+            ops["createOrUpdateTopic"] = async (c, p) =>
             {
-                var request = new TopicRequest
-                {
-                    Name = p["name"], Type = p["type"], Fifo = Flag(p, "fifo"), Volatile = Flag(p, "volatile"),
-                    Ttl = Long(p, "ttl"), MaxDeliveries = Long(p, "maxDeliveries"), MaxMessageBytes = Long(p, "maxMessageBytes"),
-                    IdleTimeout = Long(p, "idleTimeout"),
-                };
-                if (p.ContainsKey("prefixes")) request.Prefixes = Items(p["prefixes"]);
-                if (p.ContainsKey("tags")) request.Tags = Tags(p["tags"]);
-                return TopicFields(await c.CreateTopicAsync(request));
+                p.TryGetValue("recreate", out var mode);
+                Recreate recreate = mode == "if-empty" ? Recreate.IfEmpty : mode == "always" ? Recreate.Always : Recreate.Never;
+                TopicPut put = await c.CreateOrUpdateTopicAsync(TopicRequestOf(p), recreate);
+                var fields = TopicFields(put.Topic);
+                fields["outcome"] = put.Outcome == TopicOutcome.Created ? "created" : put.Outcome == TopicOutcome.Recreated ? "recreated" : "updated";
+                return fields;
             };
             ops["getTopic"] = async (c, p) => TopicFields(await c.GetTopicAsync(p["name"]));
             ops["listTopics"] = async (c, p) =>
@@ -187,7 +198,8 @@ namespace Taba.Contract
             };
             ops["deleteTopic"] = async (c, p) =>
             {
-                await c.DeleteTopicAsync(p["name"]);
+                if (Flag(p, "ifEmpty") == true) await c.DeleteTopicIfEmptyAsync(p["name"]);
+                else await c.DeleteTopicAsync(p["name"]);
                 return new Dictionary<string, string>();
             };
 

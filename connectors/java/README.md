@@ -59,6 +59,10 @@ config.jsonSerializer(new TabaJsonSerializer() {
 
 `publish(topic, bytes)`, `publishRawJson` and `publishText` need no serializer.
 
+## Declaring a topic
+
+`createOrUpdateTopic(TopicRequest, Recreate)` (`PUT /topics/{topic}`, and the `...Async` form) creates the topic or brings it to the declared state, and returns a `TopicPut` with `getTopic()` and `getOutcome()` (`TopicOutcome.CREATED`, `UPDATED` or `RECREATED`). What is left out goes back to the server default (a full replacement, unlike the update); another type, `fifo` or `volatile` is the error `409 topic.immutable-mismatch` unless `recreate` is `if-empty` (only when the queue and its dead-letter are empty, `409 topic.not-empty` otherwise) or `always` (drops the messages; new `id`). After a `503` the call is repeated like the others. `deleteTopicIfEmpty(name)` only removes a queue with no message. `createTopic` does not change (`409` when it exists). Details: [Create or update a topic](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#create-or-update-a-topic-put-topicstopic).
+
 ## Batches
 
 Many messages in one request, next to the single calls (optional): `publishBatch(topic, List<BatchMessage>)`, `ackBatch(topic, messages)` and `changeVisibilityBatch(topic, messages, seconds)` (and the `...Async` forms) return one `BatchResult` per item (`isOk()`, `getStatus()`, `getId()`, `getErrorCode()`). Each item is answered as its single call, in order, and an item that failed comes back with its `status` and error code instead of throwing. The bodies go in base64, so any type fits. Details: [Messages in batch](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#messages-in-batch-post-messagesbatch-ack-and-visibility).

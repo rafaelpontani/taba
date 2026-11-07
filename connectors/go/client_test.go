@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -476,6 +477,78 @@ func TestWithoutAPrevious503A409OrA404IsAPlainError(t *testing.T) {
 	assertError(t, "topic.already-exists", err)
 	assertError(t, "topic.not-found", f.client.DeleteTopic(ctxb, "q"))
 	assertEqual(t, 2, f.server.count(), "no retry")
+}
+
+// UC: UC-CNT-042
+func TestCreateOrUpdateTopicPutsTheBodyWithoutTheNameAndReadsTheOutcome(t *testing.T) {
+	f := newFixture(t)
+	defer f.close()
+	f.server.reply(
+		reply(201, topicJSON("a b")),
+		reply(200, topicJSON("a b")),
+		reply(201, topicJSON("a b")).with("Taba-Topic-Recreated", "true"),
+		reply(201, topicJSON("a b")),
+	)
+	fifo, ttl := true, 60
+	request := &TopicRequest{Name: "a b", Type: "queue", Fifo: &fifo, TTL: &ttl}
+	outcomes := []TopicOutcome{}
+	for _, recreate := range []Recreate{RecreateNever, RecreateNever, RecreateAlways, RecreateIfEmpty} {
+		put, err := f.client.CreateOrUpdateTopic(ctxb, request, recreate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertEqual(t, "t-a b", put.Topic.ID, "topic")
+		outcomes = append(outcomes, put.Outcome)
+	}
+	assertEqual(t, "[created updated recreated created]", fmt.Sprint(outcomes), "outcomes")
+
+	all := f.server.all()
+	assertEqual(t, "PUT /topics/a%20b", all[0].Method+" "+all[0].Path, "route")
+	assertEqual(t, `{"type":"queue","fifo":true,"ttl":60}`, all[0].text(), "body")
+	assertEqual(t, "", all[0].Raw, "no query")
+	assertEqual(t, "recreate=always", all[2].Raw, "always")
+	assertEqual(t, "recreate=if-empty", all[3].Raw, "if-empty")
+	_, err := f.client.CreateOrUpdateTopic(ctxb, request, Recreate("never"))
+	assertError(t, "client.invalid-request", err)
+	assertEqual(t, 4, f.server.count(), "a bad recreate is not sent")
+}
+
+// UC: UC-CNT-042
+func TestCreateOrUpdateTopicFailsWithTheCodeAndRepeatsAfterA503(t *testing.T) {
+	f := newFixture(t)
+	defer f.close()
+	f.server.reply(
+		reply(409, `{"code":"topic.immutable-mismatch","message":"x"}`),
+		reply(409, `{"code":"topic.not-empty","message":"x"}`),
+		reply(503, `{"code":"cluster.commit-timeout","message":"x"}`).with("Retry-After", "2"),
+		reply(200, topicJSON("q")),
+	)
+	request := &TopicRequest{Name: "q", Type: "queue"}
+	_, err := f.client.CreateOrUpdateTopic(ctxb, request, RecreateNever)
+	assertError(t, "topic.immutable-mismatch", err)
+	assertEqual(t, 409, err.(*Error).Status, "status")
+	_, err = f.client.CreateOrUpdateTopic(ctxb, request, RecreateIfEmpty)
+	assertError(t, "topic.not-empty", err)
+	put, err := f.client.CreateOrUpdateTopic(ctxb, request, RecreateNever)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEqual(t, TopicUpdated, put.Outcome, "outcome")
+	assertEqual(t, 4, f.server.count(), "requests")
+	assertEqual(t, "[2s]", fmt.Sprint(f.sleep.recorded()), "waits")
+}
+
+// UC: UC-CNT-043
+func TestDeleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError(t *testing.T) {
+	f := newFixture(t)
+	defer f.close()
+	f.server.reply(reply(409, `{"code":"topic.not-empty","message":"x"}`), reply(204, ""))
+	assertError(t, "topic.not-empty", f.client.DeleteTopicIfEmpty(ctxb, "a b"))
+	if err := f.client.DeleteTopicIfEmpty(ctxb, "a b"); err != nil {
+		t.Fatal(err)
+	}
+	second := f.server.all()[1]
+	assertEqual(t, "DELETE /topics/a%20b?ifEmpty=true", second.Method+" "+second.Path+"?"+second.Raw, "route")
 }
 
 // UC: UC-CNT-012

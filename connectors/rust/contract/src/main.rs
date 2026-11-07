@@ -10,7 +10,8 @@ use std::time::{Duration, Instant};
 use taba_client::base64;
 use taba_client::{
     BatchMessage, BatchResult, Client, Config, ConsumeError, ConsumeOptions, Error, Message,
-    Nullable, PublishOptions, PublishResponse, Topic, TopicRequest, TopicUpdate,
+    Nullable, PublishOptions, PublishResponse, Recreate, Topic, TopicOutcome, TopicRequest,
+    TopicUpdate,
 };
 
 type Fields = HashMap<String, String>;
@@ -203,6 +204,21 @@ fn fields(pairs: &[(&str, String)]) -> Fields {
         .collect()
 }
 
+fn topic_request(p: &Fields) -> TopicRequest {
+    TopicRequest {
+        name: p.get("name").cloned().unwrap_or_default(),
+        topic_type: p.get("type").cloned().unwrap_or_default(),
+        tags: tags(p, "tags").unwrap_or_default(),
+        prefixes: items(p, "prefixes").unwrap_or_default(),
+        volatile: flag(p, "volatile"),
+        idle_timeout: num(p, "idleTimeout"),
+        fifo: flag(p, "fifo"),
+        max_message_bytes: num(p, "maxMessageBytes"),
+        ttl: num(p, "ttl"),
+        max_deliveries: num(p, "maxDeliveries"),
+    }
+}
+
 fn topic_fields(t: &Topic) -> Fields {
     fields(&[
         ("id", t.id.clone()),
@@ -275,6 +291,7 @@ fn supported(op: &str) -> bool {
     matches!(
         op,
         "createTopic"
+            | "createOrUpdateTopic"
             | "getTopic"
             | "listTopics"
             | "updateTopic"
@@ -297,20 +314,23 @@ fn supported(op: &str) -> bool {
 fn run(op: &str, c: &Client, p: &Fields) -> Result<Fields, Error> {
     let get = |key: &str| p.get(key).cloned().unwrap_or_default();
     match op {
-        "createTopic" => c
-            .create_topic(&TopicRequest {
-                name: get("name"),
-                topic_type: get("type"),
-                tags: tags(p, "tags").unwrap_or_default(),
-                prefixes: items(p, "prefixes").unwrap_or_default(),
-                volatile: flag(p, "volatile"),
-                idle_timeout: num(p, "idleTimeout"),
-                fifo: flag(p, "fifo"),
-                max_message_bytes: num(p, "maxMessageBytes"),
-                ttl: num(p, "ttl"),
-                max_deliveries: num(p, "maxDeliveries"),
-            })
-            .map(|t| topic_fields(&t)),
+        "createTopic" => c.create_topic(&topic_request(p)).map(|t| topic_fields(&t)),
+        "createOrUpdateTopic" => {
+            let recreate = match p.get("recreate").map(String::as_str) {
+                Some("if-empty") => Recreate::IfEmpty,
+                Some("always") => Recreate::Always,
+                _ => Recreate::Never,
+            };
+            let put = c.create_or_update_topic(&topic_request(p), recreate)?;
+            let mut out = topic_fields(&put.topic);
+            let outcome = match put.outcome {
+                TopicOutcome::Created => "created",
+                TopicOutcome::Updated => "updated",
+                TopicOutcome::Recreated => "recreated",
+            };
+            out.insert("outcome".to_owned(), outcome.to_owned());
+            Ok(out)
+        }
         "getTopic" => c.get_topic(&get("name")).map(|t| topic_fields(&t)),
         "listTopics" => {
             let topics = c.list_all_topics(p.get("name").map(String::as_str))?;
@@ -334,6 +354,9 @@ fn run(op: &str, c: &Client, p: &Fields) -> Result<Fields, Error> {
                 },
             )
             .map(|t| topic_fields(&t)),
+        "deleteTopic" if flag(p, "ifEmpty") == Some(true) => c
+            .delete_topic_if_empty(&get("name"))
+            .map(|_| Fields::new()),
         "deleteTopic" => c.delete_topic(&get("name")).map(|_| Fields::new()),
 
         "publishText" => c

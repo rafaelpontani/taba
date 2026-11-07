@@ -11,7 +11,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["topic", "create"],
             args: "<name>",
-            summary: "Creates a topic (POST /topics). --type is required.",
+            summary: "Creates a topic (POST /topics). --type is required. --or-update declares it (PUT):                       creates or brings it to the options given, the others back to the default.",
             min_pos: 1,
             max_pos: 1,
             opts: vec![
@@ -24,6 +24,9 @@ pub fn commands() -> Vec<Command> {
                 val("max-message-bytes"),
                 val("ttl"),
                 val("max-deliveries"),
+                flag("or-update"),
+                val("recreate"),
+                flag("yes"),
             ],
             run: create,
         },
@@ -72,11 +75,10 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["topic", "delete"],
             args: "<name>",
-            summary:
-                "Removes a topic and all its messages (asks for confirmation; --yes skips it).",
+            summary: "Removes a topic and all its messages (asks for confirmation; --yes skips it).                       --if-empty only removes a queue with no message.",
             min_pos: 1,
             max_pos: 1,
-            opts: vec![flag("yes")],
+            opts: vec![flag("yes"), flag("if-empty")],
             run: delete,
         },
     ]
@@ -97,6 +99,12 @@ fn create(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         ttl: number(p, "ttl")?,
         max_deliveries: number(p, "max-deliveries")?,
     };
+    if p.flag("or-update") {
+        return create_or_update(ctx, p, &request);
+    }
+    if p.value("recreate").is_some() {
+        return Err(CliError::usage("--recreate only goes with --or-update"));
+    }
     let client = ctx.api_client()?;
     let mut c = call(ctx, "POST", "/topics").json_body(request.to_json());
     c.recover = vec![(409, "topic.already-exists")];
@@ -112,6 +120,49 @@ fn create(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         ))?;
     }
     emit(ctx, &reply.text())
+}
+
+/// `PUT /topics/{topic}`: the topic goes to standard output as in `create`, and the outcome (`created`,
+/// `updated` or `recreated`) to the error output, so a pipe still reads only the topic. The `200` does not
+/// tell "changed" from "the same": both are `updated`.
+fn create_or_update(ctx: &mut Ctx<'_>, p: &Parsed, request: &TopicRequest) -> Result<(), CliError> {
+    let recreate = one_of(p, "recreate", &["if-empty", "always"])?;
+    if recreate.as_deref() == Some("always") {
+        ctx.require_confirmation(
+            p.flag("yes"),
+            &format!(
+                "If an immutable option differs, `{}` is recreated and all its messages are lost. Go on?",
+                request.name
+            ),
+        )?;
+    }
+    let client = ctx.api_client()?;
+    let mut c = call(
+        ctx,
+        "PUT",
+        format!(
+            "/topics/{}",
+            taba_client::http::percent_encode(&request.name)
+        ),
+    )
+    .json_body(request.to_put_json());
+    if let Some(value) = &recreate {
+        c = c.query("recreate", value);
+    }
+    let reply = client.call(&c)?;
+    let recreated = reply.headers.iter().any(|(k, v)| {
+        k.eq_ignore_ascii_case("taba-topic-recreated") && v.trim().eq_ignore_ascii_case("true")
+    });
+    let outcome = match reply.status {
+        201 if recreated => "recreated",
+        201 => "created",
+        _ => "updated",
+    };
+    emit(ctx, &reply.text())?;
+    if !ctx.globals.quiet {
+        let _ = writeln!(ctx.err, "{outcome}");
+    }
+    Ok(())
 }
 
 fn list(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
@@ -208,16 +259,22 @@ fn update(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
 
 fn delete(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     let name = &p.positional[0];
-    ctx.require_confirmation(
-        p.flag("yes"),
-        &format!("Remove the topic `{name}` and all its messages?"),
-    )?;
+    let if_empty = p.flag("if-empty");
+    let question = if if_empty {
+        format!("Remove the topic `{name}` if it holds no message?")
+    } else {
+        format!("Remove the topic `{name}` and all its messages?")
+    };
+    ctx.require_confirmation(p.flag("yes"), &question)?;
     let client = ctx.api_client()?;
     let mut c = call(
         ctx,
         "DELETE",
         format!("/topics/{}", taba_client::http::percent_encode(name)),
     );
+    if if_empty {
+        c = c.query("ifEmpty", "true");
+    }
     c.recover = vec![(404, "topic.not-found")];
     client.call(&c)?;
     Ok(())

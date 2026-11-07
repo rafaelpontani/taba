@@ -232,7 +232,12 @@ namespace Taba
                             int status = (int)response.StatusCode;
                             if (status < 400)
                             {
-                                return new ApiReply { Status = status, Body = body };
+                                return new ApiReply
+                                {
+                                    Status = status,
+                                    Body = body,
+                                    Recreated = string.Equals((Header(response, "Taba-Topic-Recreated") ?? string.Empty).Trim(), "true", StringComparison.OrdinalIgnoreCase),
+                                };
                             }
                             if (afterRetryable && Recovers(call, status, body))
                             {

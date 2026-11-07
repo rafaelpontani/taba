@@ -14,7 +14,7 @@ Needs Docker. `run.sh` starts **one Taba node** from the image `taba:local` (bui
 
 | Scenario | What |
 |---|---|
-| `scenarios/core.scn` (every connector) | topics (create, get, list, update, delete, the `404`/`409`/`400` errors); publish, consume, `changeVisibility`, `ack`; the same in batch (one result per item, a bad item or an old receipt failing alone, the order of a FIFO group); text with accents, JSON and bytes coming back byte for byte; FIFO (duplicate reported, order inside a group); distributor; consuming with a handler (deleted, failed, kept, **invisibility renewed** while a slow handler holds the message); `subscribe` (acknowledges what the handler accepted, gives back what it refused); a **long polling cancelled** from outside; a wrong token and a refused connection (`client.network`) |
+| `scenarios/core.scn` (every connector) | topics (create, get, list, update, delete, the `404`/`409`/`400` errors); create or update with `PUT` (the outcome, what is left out going back to the default, `topic.immutable-mismatch`, `recreate` `if-empty` and `always`) and the `DELETE` with `ifEmpty`; publish, consume, `changeVisibility`, `ack`; the same in batch (one result per item, a bad item or an old receipt failing alone, the order of a FIFO group); text with accents, JSON and bytes coming back byte for byte; FIFO (duplicate reported, order inside a group); distributor; consuming with a handler (deleted, failed, kept, **invisibility renewed** while a slow handler holds the message); `subscribe` (acknowledges what the handler accepted, gives back what it refused); a **long polling cancelled** from outside; a wrong token and a refused connection (`client.network`) |
 | `scenarios/cross-*.scn` (all eight together) | `setup` creates one queue per connector and a distributor over them; every connector **publishes** a text with accents, a JSON and bytes to the distributor; every connector **drains its own queue** and finds what each of the eight published, exactly |
 
 A line the connector cannot do is printed as `SKIP`, never silently ignored (today: `cancelConsume` in Rust, whose client is synchronous and has no cancellation, and the `slow` mode of `handle` in PHP, which runs one thread and cannot renew the invisibility while a handler runs; the PHP driver takes the message out of the queue before printing the `SKIP`, so the next lines still hold).
@@ -40,7 +40,8 @@ op key=value key=value ... [as=name] [=> expectation expectation ...]
 | `getTopic` | `name` | same |
 | `listTopics` | `name` (prefix) | `count names` (sorted) |
 | `updateTopic` | `name prefixes tags idleTimeout ttl maxDeliveries maxMessageBytes` (`null` = back to the server default) | same as `createTopic` |
-| `deleteTopic` | `name` | |
+| `createOrUpdateTopic` | the parameters of `createTopic` and `recreate` (`if-empty` or `always`) | the fields of `createTopic` and `outcome` (`created`, `updated` or `recreated`) |
+| `deleteTopic` | `name [ifEmpty=true]` | |
 | `publishText` / `publishJson` / `publishBytes` | `topic body` / `topic body` (raw JSON) / `topic base64 [contentType]`; all: `groupId deduplicationId fifo` | `id duplicate matched` |
 | `consume` | `topic max wait visibility` | `count bodies` and, of the first message, `id receiptToken deliveryCount contentType body` |
 | `ack` | `topic id receipt` | |

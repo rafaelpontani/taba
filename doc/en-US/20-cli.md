@@ -3,7 +3,7 @@ title: Command lines (`taba` and `taba-cli`)
 summary: The project's two CLIs — `taba` (starts the node and creates secrets) and `taba-cli` (client — topics, messages, tokens, health, drain; profiles, output, exit codes, TUI, image and build).
 type: reference
 status: stable
-verified-on: 2026-10-16 @ ddb087a
+verified-on: 2026-11-07 @ d79a140
 sources: [crates/taba-node/src/cli/mod.rs, crates/taba-node/src/main.rs, crates/taba-node/src/secrets, connectors/rust/cli/src, connectors/rust/cli/Dockerfile, connectors/rust/cli/scripts]
 ---
 
@@ -80,10 +80,11 @@ There are no `--url` or `--token` in the commands: the connection is chosen by t
 | Command | Route | Options |
 |---|---|---|
 | `topic create <name>` | `POST /topics` | `--type queue\|distributor` (**required**), `--tag k=v` (repeatable), `--prefix p` (repeatable), `--volatile`, `--idle-timeout s`, `--fifo`, `--max-message-bytes n`, `--ttl s`, `--max-deliveries n` |
+| `topic create <name> --or-update` | [`PUT /topics/{topic}`](16-client-api.md#create-or-update-a-topic-put-topicstopic) | The same options, as a declaration: creates the topic or brings it to the options given, and what was **left out goes back to the default** (a full replacement, unlike `update`). Another `--type`, `--fifo` or `--volatile` is `409 topic.immutable-mismatch`, unless `--recreate if-empty` (only when the queue and its dead-letter are empty, `409 topic.not-empty` otherwise) or `--recreate always` (**drops the messages**; asks for confirmation like `delete`, `--yes` skips it). The topic goes to standard output as in `create`, and `created`, `updated` or `recreated` to the error output (`updated` also when nothing changed); `--recreate` without `--or-update` is a usage error (`2`) |
 | `topic list` | `GET /topics` | `--name`, `--sort`, `--limit`, `--cursor`, `--all` (walks all pages) |
 | `topic get <name>` | `GET /topics/{topic}` | — |
 | `topic update <name>` | `PATCH` | `--tag` (replaces the map) or `--clear-tags`, `--prefix`/`--clear-prefixes`, `--idle-timeout`, `--max-message-bytes`/`--ttl`/`--max-deliveries` (`n` or `default`). Only what was given is sent |
-| `topic delete <name>` | `DELETE` | `--yes` (without it, on a terminal, asks for confirmation; off a terminal, refuses with `2`). Removes **all messages** |
+| `topic delete <name>` | `DELETE` | `--yes` (without it, on a terminal, asks for confirmation; off a terminal, refuses with `2`). Removes **all messages**. `--if-empty` only removes a queue (and its dead-letter) with no message: otherwise `409 topic.not-empty` and the topic stays |
 
 **Messages:**
 
@@ -231,6 +232,7 @@ Success: the response goes to **standard output** (`204`s print nothing). API er
 
 ```bash
 taba-cli topic create pedidos --type queue --fifo --tag time=financeiro --ttl 86400
+taba-cli topic create pedidos --type queue --fifo --tag time=financeiro --ttl 86400 --or-update
 echo '{"pedido": 9001}' | taba-cli publish pedidos --stdin --group-id cliente-42 --deduplication-id pedido-9001
 taba-cli consume pedidos --max 5 --wait 20 --visibility 60
 taba-cli consume pedidos --max 1 --ack -o raw
@@ -252,5 +254,5 @@ taba-cli drain status --node 01a1…
 
 - **`taba`:** `crates/taba-node/src/cli/mod.rs` (`USAGE` and `parse`), `main.rs`, `secrets/`.
 - **`taba-cli`:** `connectors/rust/cli/src/{args,commands,profile,settings,output,tui,yaml}` (the full-screen interface is in `tui/`, with the language catalogs in `connectors/rust/cli/locales/`); the command list and the options were checked against `taba-cli --help` and `taba-cli <command> --help` of the compiled binary.
-- Use cases: UC-CLI (36 cases, level `K`), UC-SEG; see [26a](26a-implemented-use-cases.md). Tests: `connectors/rust/cli/src/**/tests.rs`, `connectors/rust/cli/tests/commands.rs` and `packaging.rs`.
+- Use cases: UC-CLI (38 cases, level `K`), UC-SEG; see [26a](26a-implemented-use-cases.md). Tests: `connectors/rust/cli/src/**/tests.rs`, `connectors/rust/cli/tests/commands.rs` and `packaging.rs`.
 - History: `19b-cli.md`.

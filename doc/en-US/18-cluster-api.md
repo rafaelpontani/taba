@@ -3,7 +3,7 @@ title: Cluster API
 summary: The routes the nodes use among themselves — members and channel, definitions, messages, synchronization, recovery, observability and forwarding — with the two-phase protocol, the NDJSON streams and the DTOs.
 type: reference
 status: stable
-verified-on: 2026-11-02 @ ccbb961
+verified-on: 2026-11-07 @ d79a140
 sources: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/protocol/http.rs, crates/taba-node/src/cluster/protocol, crates/taba-node/src/http/cluster_api, crates/taba-node/src/cluster/service, crates/taba-node/src/cluster/channel]
 ---
 
@@ -108,8 +108,8 @@ Each definition has an **owner** on the ring (the first active node at the posit
 
 | Route | Does |
 |---|---|
-| `POST /cluster/definitions/propose` | From the node that received the client **to the owner**. Body `DefinitionProposal`: `kind` (`topic`/`token`), `operation` (`create`/`update`/`delete`), `key`, `body`, `expectedId?` (used by the volatile queue manager to only delete the expected `id`) |
-| `POST /cluster/definitions/apply` | From the owner to each node and to the heir. `DefinitionApply`: `kind`, `key`, `version`, `deleted`, `body`, `relay?` |
+| `POST /cluster/definitions/propose` | From the node that received the client **to the owner**. Body `DefinitionProposal`: `kind` (`topic`/`token`), `operation` (`create`/`update`/`delete`/`upsert`), `key`, `body`, `expectedId?` (used by the volatile queue manager and by `DELETE ?ifEmpty=true` to only delete the expected `id`, and by an `upsert` to only recreate the `id` that was counted empty), `recreate?` (`upsert` only: `if-empty` or `always`; absent is `never`) |
+| `POST /cluster/definitions/apply` | From the owner to each node and to the heir. `DefinitionApply`: `kind`, `key`, `version`, `deleted`, `body`, `relay?`, `outcome?` (only in the owner's answer to an `upsert`: `created`, `updated`, `recreated` or `unchanged`) |
 | `GET /cluster/topics`, `GET /cluster/tokens` | **Streams** of the definitions, ordered by `id`, for the bootstrap |
 | `GET /cluster/definitions/tombstones` | **Stream** of the tombstones (removed definitions, the version of the removal and, for a topic, its `topicId`), so a late creation does not resurrect what was removed |
 | `GET /cluster/topics/{id}/idle` | How long ago the topic's last `GET` was **on this node** (`IdleResponse`: `topicId`, `idleSeconds`, `sinceStart`). Used by the volatile queue manager |

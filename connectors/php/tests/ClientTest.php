@@ -12,6 +12,7 @@ use Taba\MessageContext;
 use Taba\NetworkFailure;
 use Taba\PublishOptions;
 use Taba\TabaException;
+use Taba\TopicPut;
 use Taba\TopicRequest;
 use Taba\TopicUpdate;
 
@@ -420,6 +421,69 @@ class ClientTest extends ClientTestCase
             $this->client->deleteTopic('q');
         });
         $this->assertSame(2, count($this->http->requests));
+    }
+
+    /// UC: UC-CNT-042
+    public function testCreateOrUpdateTopicPutsTheBodyWithoutTheNameAndReadsTheOutcome()
+    {
+        $this->http->reply(
+            reply(201, topicJson('a b')),
+            reply(200, topicJson('a b')),
+            reply(201, topicJson('a b'), array('Taba-Topic-Recreated' => 'true')),
+            reply(201, topicJson('a b'))
+        );
+        $request = array('name' => 'a b', 'type' => 'queue', 'fifo' => true, 'ttl' => 60);
+        $created = $this->client->createOrUpdateTopic($request);
+        $this->assertSame(TopicPut::CREATED, $created->outcome);
+        $this->assertSame('t-a b', $created->topic->id);
+        $this->assertSame('updated', $this->client->createOrUpdateTopic($request)->outcome);
+        $this->assertSame('recreated', $this->client->createOrUpdateTopic($request, 'always')->outcome);
+        $this->assertSame('created', $this->client->createOrUpdateTopic($request, 'if-empty')->outcome);
+
+        $first = $this->http->requests[0];
+        $this->assertSame('PUT /topics/a%20b', $first->method . ' ' . $first->path);
+        $this->assertSame('{"type":"queue","fifo":true,"ttl":60}', $first->body);
+        $this->assertSame('', $first->rawQuery);
+        $this->assertSame('recreate=always', $this->http->requests[2]->rawQuery);
+        $this->assertSame('recreate=if-empty', $this->http->requests[3]->rawQuery);
+        $this->assertError('client.invalid-request', function () use ($request) {
+            $this->client->createOrUpdateTopic($request, 'never');
+        });
+        $this->assertSame(4, count($this->http->requests));
+    }
+
+    /// UC: UC-CNT-042
+    public function testCreateOrUpdateTopicFailsWithTheCodeAndRepeatsAfterA503()
+    {
+        $this->http->reply(
+            reply(409, '{"code":"topic.immutable-mismatch","message":"x"}'),
+            reply(409, '{"code":"topic.not-empty","message":"x"}'),
+            reply(503, '{"code":"cluster.commit-timeout","message":"x"}', array('Retry-After' => '2')),
+            reply(200, topicJson('q'))
+        );
+        $request = new TopicRequest('q', 'queue');
+        $e = $this->assertError('topic.immutable-mismatch', function () use ($request) {
+            $this->client->createOrUpdateTopic($request);
+        });
+        $this->assertSame(409, $e->status);
+        $this->assertError('topic.not-empty', function () use ($request) {
+            $this->client->createOrUpdateTopic($request, 'if-empty');
+        });
+        $this->assertSame('updated', $this->client->createOrUpdateTopic($request)->outcome);
+        $this->assertSame(4, count($this->http->requests));
+        $this->assertSame(array(2.0), $this->sleep->waits);
+    }
+
+    /// UC: UC-CNT-043
+    public function testDeleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError()
+    {
+        $this->http->reply(reply(409, '{"code":"topic.not-empty","message":"x"}'), reply(204));
+        $this->assertError('topic.not-empty', function () {
+            $this->client->deleteTopicIfEmpty('a b');
+        });
+        $this->client->deleteTopicIfEmpty('a b');
+        $second = $this->http->requests[1];
+        $this->assertSame('DELETE /topics/a%20b?ifEmpty=true', $second->method . ' ' . $second->path . '?' . $second->rawQuery);
     }
 
     /// UC: UC-CNT-012

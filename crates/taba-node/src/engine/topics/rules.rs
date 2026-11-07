@@ -2,7 +2,10 @@
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::config::Config;
+use crate::core::topic::TopicDefinition;
 
 /// The configuration values the topics depend on (doc 10).
 #[derive(Debug, Clone)]
@@ -62,6 +65,60 @@ pub struct CreateTopic {
     pub max_message_bytes: Option<i64>,
     pub ttl: Option<i64>,
     pub max_deliveries: Option<i64>,
+}
+
+/// What a `PUT /topics/{topic}` does when the topic exists with another type, `fifo` or `volatile` (D216): those
+/// cannot change in place, only by removing the topic (and its messages) and creating it again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Recreate {
+    /// `409 topic.immutable-mismatch`: nothing changes.
+    #[default]
+    Never,
+    /// Only if the queue and its dead-letter hold no message. Whoever receives the call counts them and sends
+    /// `Always` with the `id` it counted; an `IfEmpty` that reaches the owner was not counted (the receiving
+    /// node saw no difference), so a difference there is `409 cluster.conflict`.
+    IfEmpty,
+    /// Removes the topic, its messages and its dead-letter, and creates it again.
+    Always,
+}
+
+impl Recreate {
+    pub fn is_never(&self) -> bool {
+        *self == Recreate::Never
+    }
+}
+
+/// What a `PUT /topics/{topic}` did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PutOutcome {
+    Created,
+    Updated,
+    Recreated,
+    Unchanged,
+}
+
+impl PutOutcome {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            PutOutcome::Created => "created",
+            PutOutcome::Updated => "updated",
+            PutOutcome::Recreated => "recreated",
+            PutOutcome::Unchanged => "unchanged",
+        }
+    }
+}
+
+/// What the owner of a topic's definition decided for a `PUT`, from the table it holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PutPlan {
+    Create(TopicDefinition),
+    /// The current topic with the requested mutable fields (same `id` and `createdAt`).
+    Update(TopicDefinition),
+    /// Remove the current topic, then create this one (a new `id`).
+    Recreate(TopicDefinition),
+    Unchanged(TopicDefinition),
 }
 
 /// A `PATCH` field: absent (does not touch), `null` (goes back to the default) or a value.

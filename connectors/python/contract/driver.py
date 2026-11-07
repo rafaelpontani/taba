@@ -132,17 +132,24 @@ def publish_options(p):
     return {"group_id": p.get("groupId"), "deduplication_id": p.get("deduplicationId"), "fifo": flag(p.get("fifo")) or False}
 
 
-def op_create_topic(c, p):
-    return topic_fields(
-        c.create_topic(
-            TopicRequest(
-                name=p["name"], type=p["type"], fifo=flag(p.get("fifo")), prefixes=items(p.get("prefixes")),
-                tags=tags(p.get("tags")), volatile=flag(p.get("volatile")), ttl=num(p.get("ttl")),
-                max_deliveries=num(p.get("maxDeliveries")), max_message_bytes=num(p.get("maxMessageBytes")),
-                idle_timeout=num(p.get("idleTimeout")),
-            )
-        )
+def topic_request(p):
+    return TopicRequest(
+        name=p["name"], type=p["type"], fifo=flag(p.get("fifo")), prefixes=items(p.get("prefixes")),
+        tags=tags(p.get("tags")), volatile=flag(p.get("volatile")), ttl=num(p.get("ttl")),
+        max_deliveries=num(p.get("maxDeliveries")), max_message_bytes=num(p.get("maxMessageBytes")),
+        idle_timeout=num(p.get("idleTimeout")),
     )
+
+
+def op_create_topic(c, p):
+    return topic_fields(c.create_topic(topic_request(p)))
+
+
+def op_create_or_update_topic(c, p):
+    put = c.create_or_update_topic(topic_request(p), recreate=p.get("recreate"))
+    fields = topic_fields(put.topic)
+    fields["outcome"] = put.outcome
+    return fields
 
 
 def op_list_topics(c, p):
@@ -164,7 +171,7 @@ def op_update_topic(c, p):
 
 
 def op_delete_topic(c, p):
-    c.delete_topic(p["name"])
+    c.delete_topic(p["name"], if_empty=flag(p.get("ifEmpty")) is True)
     return {}
 
 
@@ -283,6 +290,7 @@ def op_sleep(c, p):
 
 OPERATIONS = {
     "createTopic": op_create_topic,
+    "createOrUpdateTopic": op_create_or_update_topic,
     "getTopic": lambda c, p: topic_fields(c.get_topic(p["name"])),
     "listTopics": op_list_topics,
     "updateTopic": op_update_topic,

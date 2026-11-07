@@ -488,6 +488,57 @@ class TabaClientTest {
         assertEquals(2, server.requests.size());
     }
 
+    /// UC: UC-CNT-042
+    @Test
+    void createOrUpdateTopicPutsTheBodyWithoutTheNameAndReadsTheOutcome() throws Exception {
+        server.reply(
+                reply(201, topicJson("a b")),
+                reply(200, topicJson("a b")),
+                reply(201, topicJson("a b")).header("Taba-Topic-Recreated", "true"),
+                reply(201, topicJson("a b")));
+        TopicRequest request = TopicRequest.queue("a b").fifo(true).ttl(60L);
+        TopicPut created = client.createOrUpdateTopic(request);
+        assertEquals(TopicOutcome.CREATED, created.getOutcome());
+        assertEquals("t-a b", created.getTopic().getId());
+        assertEquals(TopicOutcome.UPDATED, client.createOrUpdateTopicAsync(request).get().getOutcome());
+        assertEquals(TopicOutcome.RECREATED, client.createOrUpdateTopic(request, Recreate.ALWAYS).getOutcome());
+        assertEquals(TopicOutcome.CREATED, client.createOrUpdateTopic(request, Recreate.IF_EMPTY).getOutcome());
+
+        assertEquals("PUT /topics/a%20b", server.requests.get(0).method + " " + server.requests.get(0).url);
+        assertEquals("{\"type\":\"queue\",\"fifo\":true,\"ttl\":60}", server.requests.get(0).text());
+        assertEquals("/topics/a%20b?recreate=always", server.requests.get(2).url);
+        assertEquals("/topics/a%20b?recreate=if-empty", server.requests.get(3).url);
+    }
+
+    /// UC: UC-CNT-042
+    @Test
+    void createOrUpdateTopicFailsWithTheCodeAndRepeatsAfterA503() {
+        server.reply(
+                reply(409, "{\"code\":\"topic.immutable-mismatch\",\"message\":\"x\"}"),
+                reply(409, "{\"code\":\"topic.not-empty\",\"message\":\"x\"}"),
+                reply(503, "{\"code\":\"cluster.commit-timeout\",\"message\":\"x\"}").header("Retry-After", "2"),
+                reply(200, topicJson("orders")));
+        TopicRequest request = TopicRequest.queue("orders");
+        TabaException mismatch = error(() -> client.createOrUpdateTopic(request));
+        assertEquals(409, mismatch.getStatus());
+        assertEquals("topic.immutable-mismatch", mismatch.getCode());
+        assertEquals("topic.not-empty", error(() -> client.createOrUpdateTopic(request, Recreate.IF_EMPTY)).getCode());
+        assertEquals(TopicOutcome.UPDATED, client.createOrUpdateTopic(request).getOutcome());
+        assertEquals(4, server.requests.size());
+        assertEquals(Arrays.asList(Duration.ofSeconds(2)), waits);
+    }
+
+    /// UC: UC-CNT-043
+    @Test
+    void deleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError() {
+        server.reply(
+                reply(409, "{\"code\":\"topic.not-empty\",\"message\":\"x\"}"),
+                reply(204, ""));
+        assertEquals("topic.not-empty", error(() -> client.deleteTopicIfEmpty("a b")).getCode());
+        client.deleteTopicIfEmpty("a b");
+        assertEquals("DELETE /topics/a%20b?ifEmpty=true", server.requests.get(1).method + " " + server.requests.get(1).url);
+    }
+
     /// UC: UC-CNT-012
     @Test
     void gatewayErrorsAreOnlyRepeatedWhenPublishingToAFifo() {

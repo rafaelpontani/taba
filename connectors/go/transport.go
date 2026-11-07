@@ -52,6 +52,8 @@ type apiReply struct {
 	status    int
 	body      []byte
 	recovered bool
+	// recreated: the response carries Taba-Topic-Recreated: true (PUT /topics/{topic}).
+	recreated bool
 }
 
 // segment percent-encodes a path segment or a query component (a space is %20, never +).
@@ -316,7 +318,8 @@ func (t *transport) send(ctx context.Context, call *apiCall) (*apiReply, error) 
 			wait = backoff
 		} else {
 			if status < 400 {
-				return &apiReply{status: status, body: body}, nil
+				recreated := strings.EqualFold(strings.TrimSpace(headers.Get("Taba-Topic-Recreated")), "true")
+				return &apiReply{status: status, body: body, recreated: recreated}, nil
 			}
 			if afterRetryable {
 				code := errorCodeOf(body)

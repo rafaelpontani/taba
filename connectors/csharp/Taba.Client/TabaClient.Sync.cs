@@ -46,6 +46,16 @@ namespace Taba
             Wait(DeleteTopicAsync(name));
         }
 
+        public TopicPut CreateOrUpdateTopic(TopicRequest request, Recreate recreate = Recreate.Never)
+        {
+            return Wait(CreateOrUpdateTopicAsync(request, recreate));
+        }
+
+        public void DeleteTopicIfEmpty(string name)
+        {
+            Wait(DeleteTopicIfEmptyAsync(name));
+        }
+
         public PublishResponse Publish(string topic, byte[] body, PublishOptions options = null)
         {
             return Wait(PublishAsync(topic, body, options));

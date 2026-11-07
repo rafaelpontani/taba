@@ -39,7 +39,8 @@ module Taba
     end
   end
 
-  ApiReply = Struct.new(:status, :body, :recovered)
+  # +recreated+: the response carries +Taba-Topic-Recreated: true+ (+PUT /topics/{topic}+).
+  ApiReply = Struct.new(:status, :body, :recovered, :recreated)
 
   # The client's HTTP transport: builds the request, sends it, reads the body, turns the API error into a
   # Taba::Error and does the call retries of the common contract (doc 21).
@@ -110,7 +111,10 @@ module Taba
         backoff = (1 << [attempt - 1, 6].min).to_f
         begin
           status, headers, body = once(call, timeout, cancel, cancellable)
-          return ApiReply.new(status, body, false) if status < 400
+          if status < 400
+            recreated = headers['taba-topic-recreated'].to_s.strip.downcase == 'true'
+            return ApiReply.new(status, body, false, recreated)
+          end
           if after_retryable && call.recover.any? { |s, c| s == status && c == error_code_of(body) }
             return ApiReply.new(status, body, true)
           end

@@ -2,11 +2,14 @@ import io.github.rafaelpontani.taba.ConsumeOptions;
 import io.github.rafaelpontani.taba.Message;
 import io.github.rafaelpontani.taba.PublishOptions;
 import io.github.rafaelpontani.taba.PublishResponse;
+import io.github.rafaelpontani.taba.Recreate;
 import io.github.rafaelpontani.taba.Subscription;
 import io.github.rafaelpontani.taba.TabaClient;
 import io.github.rafaelpontani.taba.TabaConfig;
 import io.github.rafaelpontani.taba.TabaException;
 import io.github.rafaelpontani.taba.Topic;
+import io.github.rafaelpontani.taba.TopicOutcome;
+import io.github.rafaelpontani.taba.TopicPut;
 import io.github.rafaelpontani.taba.TopicRequest;
 import io.github.rafaelpontani.taba.TopicUpdate;
 import java.io.ByteArrayOutputStream;
@@ -160,6 +163,19 @@ public final class ContractDriver {
         return out;
     }
 
+    private static TopicRequest topicRequest(Map<String, String> p) {
+        TopicRequest request = new TopicRequest().name(p.get("name")).type(p.get("type")).fifo(flag(p, "fifo"))
+                .volatileTopic(flag(p, "volatile")).ttl(lng(p, "ttl")).maxDeliveries(lng(p, "maxDeliveries"))
+                .maxMessageBytes(lng(p, "maxMessageBytes")).idleTimeout(lng(p, "idleTimeout"));
+        if (p.containsKey("prefixes")) {
+            request.prefixes(items(p.get("prefixes")));
+        }
+        if (p.containsKey("tags")) {
+            request.tags(tags(p.get("tags")));
+        }
+        return request;
+    }
+
     private static Map<String, String> topicFields(Topic t) {
         return fields("id", t.getId(), "name", t.getName(), "type", t.getType(), "fifo", text(t.getFifo()),
                 "volatile", text(t.isVolatile()), "raw", t.getRaw());
@@ -196,17 +212,15 @@ public final class ContractDriver {
 
     private static Map<String, Operation> operations() {
         Map<String, Operation> ops = new HashMap<>();
-        ops.put("createTopic", (c, p) -> {
-            TopicRequest request = new TopicRequest().name(p.get("name")).type(p.get("type")).fifo(flag(p, "fifo"))
-                    .volatileTopic(flag(p, "volatile")).ttl(lng(p, "ttl")).maxDeliveries(lng(p, "maxDeliveries"))
-                    .maxMessageBytes(lng(p, "maxMessageBytes")).idleTimeout(lng(p, "idleTimeout"));
-            if (p.containsKey("prefixes")) {
-                request.prefixes(items(p.get("prefixes")));
-            }
-            if (p.containsKey("tags")) {
-                request.tags(tags(p.get("tags")));
-            }
-            return topicFields(c.createTopic(request));
+        ops.put("createTopic", (c, p) -> topicFields(c.createTopic(topicRequest(p))));
+        ops.put("createOrUpdateTopic", (c, p) -> {
+            String mode = p.get("recreate");
+            Recreate recreate = "if-empty".equals(mode) ? Recreate.IF_EMPTY : "always".equals(mode) ? Recreate.ALWAYS : Recreate.NEVER;
+            TopicPut put = c.createOrUpdateTopic(topicRequest(p), recreate);
+            Map<String, String> out = topicFields(put.getTopic());
+            out.put("outcome", put.getOutcome() == TopicOutcome.CREATED ? "created"
+                    : put.getOutcome() == TopicOutcome.RECREATED ? "recreated" : "updated");
+            return out;
         });
         ops.put("getTopic", (c, p) -> topicFields(c.getTopic(p.get("name"))));
         ops.put("listTopics", (c, p) -> {
@@ -250,7 +264,11 @@ public final class ContractDriver {
             return topicFields(c.updateTopic(p.get("name"), update));
         });
         ops.put("deleteTopic", (c, p) -> {
-            c.deleteTopic(p.get("name"));
+            if (Boolean.TRUE.equals(flag(p, "ifEmpty"))) {
+                c.deleteTopicIfEmpty(p.get("name"));
+            } else {
+                c.deleteTopic(p.get("name"));
+            }
             return new HashMap<>();
         });
 

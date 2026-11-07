@@ -121,7 +121,16 @@ function renewalInterval(leaseSeconds) {
 }
 
 function createJson(request) {
-  const out = { name: request.name || '', type: request.type || '' };
+  return topicJson(request, true);
+}
+
+/** The body of `PUT /topics/{topic}`: the same fields without `name` (it goes in the path). */
+function putJson(request) {
+  return topicJson(request, false);
+}
+
+function topicJson(request, withName) {
+  const out = withName ? { name: request.name || '', type: request.type || '' } : { type: request.type || '' };
   if (request.tags && Object.keys(request.tags).length > 0) out.tags = request.tags;
   if (request.prefixes && request.prefixes.length > 0) out.prefixes = request.prefixes;
   for (const key of ['volatile', 'idleTimeout', 'fifo', 'maxMessageBytes', 'ttl', 'maxDeliveries']) {
@@ -214,8 +223,37 @@ class TabaClient {
     return parseTopic(reply.text);
   }
 
-  async deleteTopic(name, { signal } = {}) {
+  /**
+   * `PUT /topics/{topic}`: brings the topic to the declared state, creating it if it does not exist. What is left
+   * out goes back to the server default (a full replacement, unlike `updateTopic`); `request.name` is the topic of
+   * the path. Another `type`, `fifo` or `volatile` is `409 topic.immutable-mismatch` unless `recreate`
+   * (`'if-empty'` or `'always'`) says otherwise. Repeated after a 503 like the other calls: the route is idempotent.
+   * Resolves to `{ topic, outcome }`, `outcome` being `'created'`, `'updated'` or `'recreated'`.
+   */
+  async createOrUpdateTopic(request, { recreate, signal } = {}) {
+    if (!request) {
+      throw TabaError.client('client.invalid-request', 'request is required');
+    }
+    if (recreate !== undefined && recreate !== null && recreate !== 'if-empty' && recreate !== 'always') {
+      throw TabaError.client('client.invalid-request', "recreate must be 'if-empty' or 'always'");
+    }
+    const c = withJson(call('PUT', `/topics/${segment(request.name || '')}`), putJson(request));
+    if (recreate) withQuery(c, 'recreate', recreate);
+    const reply = await this._send(c, signal);
+    const header = reply.headers ? reply.headers['taba-topic-recreated'] : undefined;
+    const recreated = String(header || '').trim().toLowerCase() === 'true';
+    let outcome = 'updated';
+    if (reply.status === 201) outcome = recreated ? 'recreated' : 'created';
+    return { topic: parseTopic(reply.text), outcome };
+  }
+
+  /**
+   * `DELETE /topics/{topic}`. With `ifEmpty: true`, removes the queue only if it and its dead-letter hold no message
+   * on any node (`409 topic.not-empty` otherwise; a distributor holds none).
+   */
+  async deleteTopic(name, { ifEmpty, signal } = {}) {
     const c = call('DELETE', `/topics/${segment(name)}`);
+    if (ifEmpty) withQuery(c, 'ifEmpty', 'true');
     c.recover.push([404, 'topic.not-found']);
     await this._send(c, signal);
   }

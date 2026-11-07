@@ -50,6 +50,10 @@ Straight from the source, with no Release (a branch, a tag or a commit after the
 pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"
 ```
 
+## Declaring a topic
+
+`create_or_update_topic(request, recreate=None)` (`PUT /topics/{topic}`, also on `AsyncClient`) creates the topic or brings it to the declared state, and returns a `TopicPut` with the `topic` and the `outcome` (`created`, `updated` or `recreated`). What is left out goes back to the server default (a full replacement, unlike the update); another type, `fifo` or `volatile` is the error `409 topic.immutable-mismatch` unless `recreate` is `if-empty` (only when the queue and its dead-letter are empty, `409 topic.not-empty` otherwise) or `always` (drops the messages; new `id`). After a `503` the call is repeated like the others. `delete_topic(name, if_empty=True)` only removes a queue with no message. `create_topic` does not change (`409` when it exists). Details: [Create or update a topic](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#create-or-update-a-topic-put-topicstopic).
+
 ## Batches
 
 Many messages in one request, next to the single calls (optional): `publish_batch(topic, [BatchMessage(body, content_type=...)])`, `ack_batch(topic, messages)` and `change_visibility_batch(topic, messages, seconds)` (also on `AsyncClient`) return one `BatchResult` per item (`ok`, `status`, `id`, `error_code`). Each item is answered as its single call, in order, and an item that failed comes back with its `status` and error code instead of throwing. The bodies go in base64, so any type fits. Details: [Messages in batch](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#messages-in-batch-post-messagesbatch-ack-and-visibility).

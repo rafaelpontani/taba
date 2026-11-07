@@ -337,6 +337,56 @@ class RetryTest < ClientCase
     assert_equal 2, @server.count
   end
 
+  # UC: UC-CNT-042
+  def test_create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome
+    @server.reply(
+      reply(201, topic_json('a b')),
+      reply(200, topic_json('a b')),
+      reply(201, topic_json('a b'), 'Taba-Topic-Recreated' => 'true'),
+      reply(201, topic_json('a b'))
+    )
+    created = @client.create_or_update_topic(name: 'a b', type: 'queue', fifo: true, ttl: 60)
+    assert_equal Taba::TopicPut::CREATED, created.outcome
+    assert_equal 't-a b', created.topic.id
+    request = Taba::TopicRequest.new(name: 'a b', type: 'queue', fifo: true, ttl: 60)
+    assert_equal 'updated', @client.create_or_update_topic(request).outcome
+    assert_equal 'recreated', @client.create_or_update_topic(request, recreate: 'always').outcome
+    assert_equal 'created', @client.create_or_update_topic(request, recreate: 'if-empty').outcome
+
+    first = @server.all[0]
+    assert_equal 'PUT /topics/a%20b', "#{first.method} #{first.path}"
+    assert_equal '{"type":"queue","fifo":true,"ttl":60}', first.text
+    assert_equal 'recreate=always', @server.all[2].raw_query
+    assert_equal 'recreate=if-empty', @server.all[3].raw_query
+    assert_error('client.invalid-request') { @client.create_or_update_topic(request, recreate: 'never') }
+    assert_equal 4, @server.count
+  end
+
+  # UC: UC-CNT-042
+  def test_create_or_update_topic_fails_with_the_code_and_repeats_after_a_503
+    @server.reply(
+      reply(409, '{"code":"topic.immutable-mismatch","message":"x"}'),
+      reply(409, '{"code":"topic.not-empty","message":"x"}'),
+      reply(503, '{"code":"cluster.commit-timeout","message":"x"}', 'Retry-After' => '2'),
+      reply(200, topic_json('q'))
+    )
+    error = assert_error('topic.immutable-mismatch') { @client.create_or_update_topic(name: 'q', type: 'queue') }
+    assert_equal 409, error.status
+    assert_error('topic.not-empty') { @client.create_or_update_topic(name: 'q', type: 'queue', recreate: 'if-empty') }
+    assert_equal 'updated', @client.create_or_update_topic(name: 'q', type: 'queue').outcome
+    assert_equal 4, @server.count
+    assert_equal [2.0], @sleep.waits
+  end
+
+  # UC: UC-CNT-043
+  def test_delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error
+    @server.reply(reply(409, '{"code":"topic.not-empty","message":"x"}'), reply(204))
+    assert_error('topic.not-empty') { @client.delete_topic('a b', if_empty: true) }
+    @client.delete_topic('a b', if_empty: true)
+    second = @server.all[1]
+    assert_equal 'DELETE /topics/a%20b?ifEmpty=true', "#{second.method} #{second.path}?#{second.raw_query}"
+  end
+
   # UC: UC-CNT-012
   def test_gateway_errors_are_only_repeated_when_publishing_to_a_fifo
     @server.fallback(reply(502, '{"code":"cluster.bad-gateway","message":"x"}'))

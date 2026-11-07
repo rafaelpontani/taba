@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::time;
 use crate::core::token::{PERMISSIONS_SCHEMA, Permission, TokenRecord};
+use crate::engine::topics::{PutOutcome, Recreate};
 
 /// The type of a definition shared by all nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -36,6 +37,9 @@ pub enum DefinitionOperation {
     Update,
     /// Removes the topic or revokes the token.
     Delete,
+    /// `PUT /topics/{topic}`: the owner decides whether to create, change, recreate or leave the topic as it is,
+    /// from its own table (topics only).
+    Upsert,
 }
 
 /// A change proposal, from whoever received the client's call to the definition's owner.
@@ -49,9 +53,13 @@ pub struct DefinitionProposal {
     /// The full `TopicDefinition` or `TokenRecord` (the token's carries the salt and the salted hash,
     /// **never the secret**); on `delete`, the topic carries `name` and `id`, and the token, `id`.
     pub body: Value,
-    /// On `delete` by the managing node of a volatile queue: the `id` the topic must have.
+    /// On `delete` by the managing node of a volatile queue (or a `DELETE ?ifEmpty=true`): the `id` the topic must
+    /// have. On `upsert` with `recreate: always`, the `id` whoever received the call found empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_id: Option<String>,
+    /// On `upsert`: what to do when the type, `fifo` or `volatile` differ (D216).
+    #[serde(default, skip_serializing_if = "Recreate::is_never")]
+    pub recreate: Recreate,
 }
 
 /// The change already decided by the owner, with the version it gave, as each node applies it. It only applies if the
@@ -70,6 +78,9 @@ pub struct DefinitionApply {
     /// for all peers in the channel's `definition` frame (D127). The owner does the same.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub relay: bool,
+    /// Only in the owner's answer to an `upsert`: what it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<PutOutcome>,
 }
 
 /// The doc 06c `TokenRecord`, as JSON.

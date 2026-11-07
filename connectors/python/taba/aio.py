@@ -24,6 +24,7 @@ from .models import (
     Page,
     PublishResponse,
     Topic,
+    TopicPut,
     TopicRequest,
     TopicUpdate,
     VisibilityResponse,
@@ -97,8 +98,11 @@ class AsyncClient:
     async def update_topic(self, name: str, update: TopicUpdate) -> Topic:
         return await self._run(self._client.update_topic, name, update)
 
-    async def delete_topic(self, name: str) -> None:
-        await self._run(self._client.delete_topic, name)
+    async def create_or_update_topic(self, request: TopicRequest, *, recreate: Optional[str] = None) -> TopicPut:
+        return await self._run(self._client.create_or_update_topic, request, recreate=recreate)
+
+    async def delete_topic(self, name: str, *, if_empty: bool = False) -> None:
+        await self._run(self._client.delete_topic, name, if_empty=if_empty)
 
     # -- publishing ----------------------------------------------------------------------------------------
 

@@ -3,7 +3,7 @@ título: Armazenamento
 resumo: Onde cada dado do nó mora — memória primeiro, overflow para o disco, um banco SQLite por tópico, o banco do nó, o banco de eventos — e o que acontece num reinício.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-31 @ 5188786
+verificado-em: 2026-11-07 @ d79a140
 fontes: [crates/taba-node/src/storage, crates/taba-node/src/engine/messages/mod.rs, crates/taba-node/src/engine/messages/rates, crates/taba-node/src/engine/topics/mod.rs, crates/taba-node/src/engine/tokens/mod.rs]
 ---
 
@@ -91,9 +91,10 @@ Ele responde: a mensagem mais antiga, as próximas a vencer, as mensagens de um 
 Uma definição de tópico ou de token é um dado **pequeno, raro de mudar e do interesse do cluster inteiro**. **Todo nó conhece todas**; não são particionadas pelo anel.
 
 - **Dono da definição.** Cada definição tem um **dono** no anel: o primeiro nó ativo na posição do hash de `topic:<nome>` (ou `token:<id>`). Criação, alteração e remoção são **propostas ao dono** (`POST /cluster/definitions/propose`). Ele confere com o próprio estado (nome já existe, `expectedId`), dá a **próxima versão**, grava num **herdeiro** (o próximo dono da posição que responde; se há outros donos e nenhum responde, a mudança é **recusada com `503`**) e aplica em si. Em seguida manda a mudança decidida a todos os outros (`POST /cluster/definitions/apply`) e responde ao cliente depois dos que respondem dentro de `write.commit.timeout`; os demais a recebem pelo quadro `definition` do canal.
+- **Criar ou atualizar (`PUT /topics/{topic}`):** a proposta (`upsert`) leva a definição declarada e o dono decide, com a tabela dele e sob o bloqueio do nome, se cria, altera, recria ou não faz nada, de modo que a escolha e a mudança são um passo só. Nada a mudar não gera versão nova ([16-api-cliente.md](16-api-cliente.md#criar-ou-atualizar-um-tópico-put-topicstopic)).
 - **Versão:** um nó só aplica uma versão **maior ou igual** à que já tem.
 - **Falha:** nunca há alteração parcial visível; um nó só serve a nova definição **no commit**.
-- **Remoção:** `DELETE /topics/{topic}` **sempre funciona**, mesmo com mensagens pendentes: cada nó apaga todas as mensagens do tópico que tem (memória, disco e metadados).
+- **Remoção:** `DELETE /topics/{topic}` **sempre funciona**, mesmo com mensagens pendentes: cada nó apaga todas as mensagens do tópico que tem (memória, disco e metadados). Com `?ifEmpty=true`, só remove uma fila sem nenhuma mensagem em nenhum nó, e só o `id` que contou.
 - **Dead-letter:** não tem definição própria; é derivada da fila de origem, criada e excluída com ela, e não gera linha em `topics`.
 - **Tokens:** o segredo **nunca trafega entre nós**: só o sal e o hash. A validação é uma consulta **local em memória**. O nó **não confia** nos tokens que acha no disco (podem estar desatualizados); eles vêm do cluster.
 - **Dados de consumo** (profundidade, taxas, histogramas) **nunca vão ao disco**: ficam em memória, por nó.

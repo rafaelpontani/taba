@@ -44,6 +44,38 @@ type TopicRequest struct {
 	MaxDeliveries   *int
 }
 
+// Recreate is what CreateOrUpdateTopic does when the topic exists with another type, fifo or volatile (fields that
+// do not change in place).
+type Recreate string
+
+const (
+	// RecreateNever refuses with 409 topic.immutable-mismatch; nothing changes.
+	RecreateNever Recreate = ""
+	// RecreateIfEmpty removes and creates it again only if the queue and its dead-letter hold no message on any
+	// node (409 topic.not-empty otherwise).
+	RecreateIfEmpty Recreate = "if-empty"
+	// RecreateAlways removes it with its messages and dead-letter and creates it again (new ID).
+	RecreateAlways Recreate = "always"
+)
+
+// TopicOutcome is what PUT /topics/{topic} did.
+type TopicOutcome string
+
+const (
+	// TopicCreated: it did not exist (201).
+	TopicCreated TopicOutcome = "created"
+	// TopicUpdated: it existed; the mutable fields are now the declared ones, or already were (200).
+	TopicUpdated TopicOutcome = "updated"
+	// TopicRecreated: it was removed and created again with a new ID (201 with Taba-Topic-Recreated: true).
+	TopicRecreated TopicOutcome = "recreated"
+)
+
+// TopicPut is the answer of CreateOrUpdateTopic: the topic as it is now and what was done.
+type TopicPut struct {
+	Topic   Topic
+	Outcome TopicOutcome
+}
+
 // TopicUpdate is PATCH /topics/{topic}: only what was filled in is sent.
 type TopicUpdate struct {
 	// Tags replaces the whole map (an empty, non-nil map clears the tags).

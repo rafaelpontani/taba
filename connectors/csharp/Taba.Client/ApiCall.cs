@@ -78,6 +78,9 @@ namespace Taba
 
         public bool Recovered { get; set; }
 
+        /// <summary>The response carries <c>Taba-Topic-Recreated: true</c> (<c>PUT /topics/{topic}</c>).</summary>
+        public bool Recreated { get; set; }
+
         public string Text
         {
             get { return Utf8.Encoding.GetString(Body); }
