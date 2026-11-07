@@ -41,6 +41,12 @@ trap 'contract_node_down $?' EXIT
 contract_node_up
 
 work="$(mktemp -d)"
+# The CLIs run as root in their container, so what they leave in $work (.terraform, the state) belongs to root on a
+# Linux host and the user running this script cannot remove it: the cleanup runs in a container too.
+clean() {
+  docker run --rm -v "$(contract_hostpath "$work"):/work" alpine:3.20 \
+    sh -c 'rm -rf /work/.terraform /work/.terraform.lock.hcl /work/terraform.tfstate*'
+}
 # The packed layout of a filesystem mirror, under the host each CLI uses for "rafaelpontani/taba".
 for host in registry.terraform.io registry.opentofu.org; do
   mkdir -p "$work/mirror/$host/rafaelpontani/taba"
@@ -84,7 +90,7 @@ for cli in $TF_CLIS; do
     *) contract_die "unknown CLI: $cli (terraform, tofu)" ;;
   esac
   contract_step "$cli: install $version from the files, apply, plan, destroy"
-  rm -rf "$work/.terraform" "$work/.terraform.lock.hcl" "$work"/terraform.tfstate*
+  clean
   run() {
     docker run --rm --network "$TABA_CONTRACT_NETWORK" -v "$(contract_hostpath "$work"):/work" \
       -v taba-terraform-tools:/tools:ro -w /work -e TF_CLI_CONFIG_FILE=/work/cli.tfrc -e TF_IN_AUTOMATION=1 \
@@ -98,4 +104,5 @@ for cli in $TF_CLIS; do
   echo "  plan after the apply: no changes"
   run destroy -input=false -no-color -auto-approve | grep -E '^Destroy complete'
 done
+clean
 rm -rf "$work"
