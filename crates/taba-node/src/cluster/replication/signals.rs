@@ -594,6 +594,7 @@ impl Signals {
                 deleted,
                 body,
                 relay: false,
+                outcome: None,
             }),
         }
     }

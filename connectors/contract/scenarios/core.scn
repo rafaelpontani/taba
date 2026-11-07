@@ -15,6 +15,21 @@ deleteTopic name={p}-gone
 deleteTopic name={p}-gone => error=topic.not-found status=404
 getTopic name={p}-gone => error=topic.not-found status=404
 
+# --- create or update (PUT): the declared state, the immutable fields and recreate; DELETE ifEmpty (UC-CNT-042, UC-CNT-043)
+createOrUpdateTopic name={p}-put type=queue ttl=60 as=put => outcome=created name={p}-put raw~"ttl":60
+createOrUpdateTopic name={p}-put type=queue ttl=60 => outcome=updated id=$put.id raw~"ttl":60
+createOrUpdateTopic name={p}-put type=queue maxDeliveries=5 => outcome=updated id=$put.id raw~"ttl":null raw~"maxDeliveries":5
+createOrUpdateTopic name={p}-put type=queue fifo=true => error=topic.immutable-mismatch status=409
+createOrUpdateTopic name={p}-put type=distributor => error=topic.immutable-mismatch status=409
+publishText topic={p}-put body=kept
+createOrUpdateTopic name={p}-put type=queue fifo=true recreate=if-empty => error=topic.not-empty status=409
+deleteTopic name={p}-put ifEmpty=true => error=topic.not-empty status=409
+createOrUpdateTopic name={p}-put type=queue fifo=true recreate=always => outcome=recreated fifo=true
+consume topic={p}-put wait=0 => count=0
+createOrUpdateTopic name={p}-put type=queue recreate=if-empty => outcome=recreated fifo=false
+deleteTopic name={p}-put ifEmpty=true
+getTopic name={p}-put => error=topic.not-found status=404
+
 # --- publish, consume, visibility, ack ------------------------------------------------------------------------
 publishText topic={p}-q body=hello%20world => id=*
 consume topic={p}-q max=1 wait=2 visibility=30 as=m => count=1 body=hello%20world deliveryCount=1

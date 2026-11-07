@@ -3,7 +3,7 @@ título: API do cluster
 resumo: As rotas que os nós usam entre si — membros e canal, definições, mensagens, sincronização, recuperação, observabilidade e repasse — com o protocolo de duas fases, os streams NDJSON e os DTOs.
 tipo: referência
 status: estável
-verificado-em: 2026-11-02 @ ccbb961
+verificado-em: 2026-11-07 @ d79a140
 fontes: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/protocol/http.rs, crates/taba-node/src/cluster/protocol, crates/taba-node/src/http/cluster_api, crates/taba-node/src/cluster/service, crates/taba-node/src/cluster/channel]
 ---
 
@@ -108,8 +108,8 @@ Cada definição tem um **dono** no anel (o primeiro nó ativo na posição de `
 
 | Rota | Faz |
 |---|---|
-| `POST /cluster/definitions/propose` | Do nó que recebeu o cliente **ao dono**. Corpo `DefinitionProposal`: `kind` (`topic`/`token`), `operation` (`create`/`update`/`delete`), `key`, `body`, `expectedId?` (usado pelo gestor de fila volátil para só apagar o `id` esperado) |
-| `POST /cluster/definitions/apply` | Do dono a cada nó e ao herdeiro. `DefinitionApply`: `kind`, `key`, `version`, `deleted`, `body`, `relay?` |
+| `POST /cluster/definitions/propose` | Do nó que recebeu o cliente **ao dono**. Corpo `DefinitionProposal`: `kind` (`topic`/`token`), `operation` (`create`/`update`/`delete`/`upsert`), `key`, `body`, `expectedId?` (usado pelo gestor de filas voláteis e pelo `DELETE ?ifEmpty=true` para só apagar o `id` esperado, e por um `upsert` para só recriar o `id` contado vazio), `recreate?` (só no `upsert`: `if-empty` ou `always`; ausente é `never`) |
+| `POST /cluster/definitions/apply` | Do dono a cada nó e ao herdeiro. `DefinitionApply`: `kind`, `key`, `version`, `deleted`, `body`, `relay?`, `outcome?` (só na resposta do dono a um `upsert`: `created`, `updated`, `recreated` ou `unchanged`) |
 | `GET /cluster/topics`, `GET /cluster/tokens` | **Streams** das definições, ordenadas por `id`, para o bootstrap |
 | `GET /cluster/definitions/tombstones` | **Stream** das lápides (definições removidas, a versão da remoção e, para um tópico, o `topicId` dele), para uma criação atrasada não ressuscitar o que foi removido |
 | `GET /cluster/topics/{id}/idle` | Há quanto tempo foi o último `GET` do tópico **neste nó** (`IdleResponse`: `topicId`, `idleSeconds`, `sinceStart`). Usado pelo gestor da fila volátil |

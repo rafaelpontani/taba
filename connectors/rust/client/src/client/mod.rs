@@ -680,10 +680,20 @@ pub struct TopicRequest {
 
 impl TopicRequest {
     pub fn to_json(&self) -> String {
-        let mut fields = vec![
-            format!("\"name\":{}", json::quote(&self.name)),
-            format!("\"type\":{}", json::quote(&self.topic_type)),
-        ];
+        let mut fields = vec![format!("\"name\":{}", json::quote(&self.name))];
+        self.push_fields(&mut fields);
+        format!("{{{}}}", fields.join(","))
+    }
+
+    /// The body of `PUT /topics/{topic}`: the same fields without `name` (it goes in the path).
+    pub fn to_put_json(&self) -> String {
+        let mut fields = Vec::new();
+        self.push_fields(&mut fields);
+        format!("{{{}}}", fields.join(","))
+    }
+
+    fn push_fields(&self, fields: &mut Vec<String>) {
+        fields.push(format!("\"type\":{}", json::quote(&self.topic_type)));
         if !self.tags.is_empty() {
             fields.push(format!("\"tags\":{}", json_map(&self.tags)));
         }
@@ -708,8 +718,49 @@ impl TopicRequest {
         if let Some(v) = self.max_deliveries {
             fields.push(format!("\"maxDeliveries\":{v}"));
         }
-        format!("{{{}}}", fields.join(","))
     }
+}
+
+/// What `create_or_update_topic` does when the topic exists with another `type`, `fifo` or `volatile`
+/// (fields that do not change in place).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Recreate {
+    /// Refuses with `409 topic.immutable-mismatch`; nothing changes.
+    #[default]
+    Never,
+    /// Removes and creates it again only if the queue and its dead-letter hold no message on any node
+    /// (`409 topic.not-empty` otherwise).
+    IfEmpty,
+    /// Removes it with its messages and dead-letter and creates it again (new `id`).
+    Always,
+}
+
+impl Recreate {
+    fn query_value(self) -> Option<&'static str> {
+        match self {
+            Recreate::Never => None,
+            Recreate::IfEmpty => Some("if-empty"),
+            Recreate::Always => Some("always"),
+        }
+    }
+}
+
+/// What `PUT /topics/{topic}` did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TopicOutcome {
+    /// It did not exist (`201`).
+    Created,
+    /// It existed: the mutable fields are now the declared ones, or already were (`200`).
+    Updated,
+    /// It was removed and created again with a new `id` (`201` with `Taba-Topic-Recreated: true`).
+    Recreated,
+}
+
+/// The answer of `create_or_update_topic`: the topic as it is now and what was done.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TopicPut {
+    pub topic: Topic,
+    pub outcome: TopicOutcome,
 }
 
 /// A `PATCH` field that accepts going back to the server default (`null`).
@@ -856,9 +907,47 @@ impl Client {
         Topic::parse(&self.call(&call)?.text())
     }
 
+    /// `PUT /topics/{topic}`: brings the topic to the declared state, creating it if it does not exist. What is
+    /// left out goes back to the server default (a full replacement, unlike `update_topic`); `request.name` is the
+    /// topic of the path. Another `type`, `fifo` or `volatile` is `409 topic.immutable-mismatch` unless `recreate`
+    /// says otherwise. Repeated after a `503` like the other calls: the route is idempotent.
+    pub fn create_or_update_topic(
+        &self,
+        request: &TopicRequest,
+        recreate: Recreate,
+    ) -> Result<TopicPut, Error> {
+        let mut call = Call::new("PUT", format!("/topics/{}", segment(&request.name)))
+            .json_body(request.to_put_json());
+        if let Some(value) = recreate.query_value() {
+            call = call.query("recreate", value);
+        }
+        let reply = self.call(&call)?;
+        let recreated = reply.headers.iter().any(|(k, v)| {
+            k.eq_ignore_ascii_case("taba-topic-recreated") && v.trim().eq_ignore_ascii_case("true")
+        });
+        let outcome = match reply.status {
+            201 if recreated => TopicOutcome::Recreated,
+            201 => TopicOutcome::Created,
+            _ => TopicOutcome::Updated,
+        };
+        Ok(TopicPut {
+            topic: Topic::parse(&reply.text())?,
+            outcome,
+        })
+    }
+
     /// `DELETE /topics/{topic}`.
     pub fn delete_topic(&self, name: &str) -> Result<(), Error> {
         let mut call = Call::new("DELETE", format!("/topics/{}", segment(name)));
+        call.recover = vec![(404, "topic.not-found")];
+        self.call(&call).map(|_| ())
+    }
+
+    /// `DELETE /topics/{topic}?ifEmpty=true`: removes the queue only if it and its dead-letter hold no message on
+    /// any node (`409 topic.not-empty` otherwise; a distributor holds none).
+    pub fn delete_topic_if_empty(&self, name: &str) -> Result<(), Error> {
+        let mut call =
+            Call::new("DELETE", format!("/topics/{}", segment(name))).query("ifEmpty", "true");
         call.recover = vec![(404, "topic.not-found")];
         self.call(&call).map(|_| ())
     }

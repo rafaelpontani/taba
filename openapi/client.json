@@ -2078,11 +2078,148 @@
           }
         }
       },
+      "put": {
+        "tags": [
+          "Topics"
+        ],
+        "summary": "Takes a topic to the declared state: creates it if it does not exist, otherwise applies the body as the whole\nstate (what is absent goes back to the default). Nothing to change: `200` without a new version. Another `type`,\n`fifo` or `volatile` cannot change in place: `409 topic.immutable-mismatch`, unless `recreate` asks to remove the\ntopic (with its messages and dead-letter queue) and create it again. The owner of the definition decides, so two\n`PUT`s at the same time do not step on each other; repeating a `PUT` is harmless.",
+        "description": "Permission: `manage` (which includes `create`), within the token's prefixes (on a distributor, each prefix too).",
+        "operationId": "putTopic",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The topic name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recreate",
+            "in": "query",
+            "description": "Only when the `type`, `fifo` or `volatile` differ: `if-empty` recreates only if the queue and its dead-letter hold no message (`409 topic.not-empty` otherwise); `always` recreates and loses the messages. Absent: `409 topic.immutable-mismatch`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicPutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "It already existed and is now as declared (also when nothing changed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Topic"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created, or recreated (then with `Taba-Topic-Recreated: true` and a new `id`).",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "`/topics/{name}`"
+              },
+              "Taba-Topic-Recreated": {
+                "schema": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "description": "`true` when the topic was removed and created again."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Topic"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body or query: `validation.failed`, `required`, `invalid-name`, `reserved-name`, `not-applicable`, `out-of-range`, `max-bytes-above-hard-limit` or `unknown-field` (`name` included).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`topic.immutable-mismatch` (another `type`, `fifo` or `volatile`, with each in `details`), `topic.not-empty` (`recreate=if-empty` on a queue with messages) or `cluster.conflict` (the topic changed during the request: repeat it).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "Topics"
         ],
-        "summary": "Removes the topic and **all its messages, even the pending ones**, and its dead-letter queue. It always works, with\nno check. On `503 cluster.commit-timeout` the removal will complete.",
+        "summary": "Removes the topic and **all its messages, even the pending ones**, and its dead-letter queue. Without `ifEmpty`\nit always works, with no check. On `503 cluster.commit-timeout` the removal will complete.",
         "description": "Permission: `manage`, within the token's prefixes.",
         "operationId": "deleteTopic",
         "parameters": [
@@ -2094,11 +2231,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "ifEmpty",
+            "in": "query",
+            "description": "`true`: only removes a queue whose messages and dead-letter are empty on every node (`409 topic.not-empty` otherwise; `503` if a node does not answer the count). A distributor holds no messages.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Removed."
+          },
+          "400": {
+            "description": "`validation.failed`: `ifEmpty` is not `true` or `false`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
@@ -2131,7 +2287,7 @@
             }
           },
           "409": {
-            "description": "`topic.read-only`: remove the source queue instead.",
+            "description": "`topic.read-only` (remove the source queue instead) or `topic.not-empty` (with `ifEmpty=true`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5030,6 +5186,91 @@
               "null"
             ],
             "description": "Absent on the last page; pass it as `cursor` to read the next one."
+          }
+        }
+      },
+      "TopicPutRequest": {
+        "type": "object",
+        "description": "Body of `PUT /topics/{topic}`: the whole declared state, without `name` (it is the path's). What is absent goes\nback to the default: `tags` `{}`, `prefixes` `[]`, `maxMessageBytes`, `ttl` and `maxDeliveries` the node default,\n`idleTimeout` 600 on a volatile queue, `fifo` and `volatile` `false`.",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "fifo": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Queue only. Changing it needs `recreate`. Needs `replication.factor` of at least 2."
+          },
+          "idleTimeout": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Volatile queue only: 60 to 604800 seconds. Default 600.",
+            "minimum": 0
+          },
+          "maxDeliveries": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue only: 1 to 1000.",
+            "minimum": 0
+          },
+          "maxMessageBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue only: 1 up to `message.hard-limit`.",
+            "minimum": 0
+          },
+          "prefixes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Distributor only: up to 20 prefixes of 1 to 100 characters (`A-Za-z0-9_-`)."
+          },
+          "tags": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Up to 20 tags: key of 1 to 64 and value of 0 to 128 characters of `A-Za-z0-9_-.:`.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "ttl": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue only: 60 to 31536000 seconds.",
+            "minimum": 0
+          },
+          "type": {
+            "$ref": "#/components/schemas/TopicType"
+          },
+          "volatile": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Queue only. Changing it needs `recreate`."
           }
         }
       },

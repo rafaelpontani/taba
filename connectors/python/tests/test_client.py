@@ -435,6 +435,73 @@ class RetryTests(ClientTestCase):
         self.assert_error("topic.not-found", lambda: self.client.delete_topic("a"))
         self.assertEqual(len(self.server.requests), 2)
 
+    # UC: UC-CNT-042
+    def test_create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome(self) -> None:
+        self.server.reply(
+            reply(201, topic_json("a b")),
+            reply(200, topic_json("a b")),
+            reply(201, topic_json("a b"), {"Taba-Topic-Recreated": "true"}),
+            reply(201, topic_json("a b")),
+        )
+        request = TopicRequest("a b", "queue", fifo=True, ttl=60)
+        created = self.client.create_or_update_topic(request)
+        self.assertEqual(created.outcome, "created")
+        self.assertEqual(created.topic.id, topic_json("a b")["id"])
+        self.assertEqual(self.client.create_or_update_topic(request).outcome, "updated")
+        self.assertEqual(self.client.create_or_update_topic(request, recreate="always").outcome, "recreated")
+        self.assertEqual(self.client.create_or_update_topic(request, recreate="if-empty").outcome, "created")
+
+        first = self.server.requests[0]
+        self.assertEqual(first.method + " " + first.url, "PUT /topics/a%20b")
+        self.assertEqual(first.text, '{"type":"queue","fifo":true,"ttl":60}')
+        self.assertEqual(self.server.requests[2].url, "/topics/a%20b?recreate=always")
+        self.assertEqual(self.server.requests[3].url, "/topics/a%20b?recreate=if-empty")
+        self.assert_error("client.invalid-request", lambda: self.client.create_or_update_topic(request, recreate="never"))
+        self.assertEqual(len(self.server.requests), 4)
+
+    # UC: UC-CNT-042
+    def test_create_or_update_topic_fails_with_the_code_and_repeats_after_a_503(self) -> None:
+        self.server.reply(
+            reply(409, {"code": "topic.immutable-mismatch", "message": "x"}),
+            reply(409, {"code": "topic.not-empty", "message": "x"}),
+            reply(503, {"code": "cluster.commit-timeout", "message": "x"}, {"Retry-After": "2"}),
+            reply(200, topic_json("orders")),
+        )
+        request = TopicRequest("orders", "queue")
+        mismatch = self.assert_error("topic.immutable-mismatch", lambda: self.client.create_or_update_topic(request))
+        self.assertEqual(mismatch.status, 409)
+        self.assert_error("topic.not-empty", lambda: self.client.create_or_update_topic(request, recreate="if-empty"))
+        self.assertEqual(self.client.create_or_update_topic(request).outcome, "updated")
+        self.assertEqual(len(self.server.requests), 4)
+        self.assertEqual(self.sleep.waits, [2.0])
+
+    # UC: UC-CNT-042, UC-CNT-043
+    def test_the_async_client_creates_or_updates_and_deletes_only_if_empty(self) -> None:
+        self.server.reply(
+            reply(201, topic_json("orders"), {"Taba-Topic-Recreated": "true"}),
+            reply(409, {"code": "topic.not-empty", "message": "x"}),
+        )
+
+        async def run() -> Any:
+            async with AsyncClient(base_url=self.server.url) as client:
+                put = await client.create_or_update_topic(TopicRequest("orders", "queue"), recreate="always")
+                with self.assertRaises(TabaError) as context:
+                    await client.delete_topic("orders", if_empty=True)
+                return put, context.exception
+
+        put, error = asyncio.run(run())
+        self.assertEqual(put.outcome, "recreated")
+        self.assertEqual(error.code, "topic.not-empty")
+        self.assertEqual(self.server.requests[1].url, "/topics/orders?ifEmpty=true")
+
+    # UC: UC-CNT-043
+    def test_delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error(self) -> None:
+        self.server.reply(reply(409, {"code": "topic.not-empty", "message": "x"}), reply(204))
+        self.assert_error("topic.not-empty", lambda: self.client.delete_topic("a b", if_empty=True))
+        self.client.delete_topic("a b", if_empty=True)
+        second = self.server.requests[1]
+        self.assertEqual(second.method + " " + second.url, "DELETE /topics/a%20b?ifEmpty=true")
+
     # UC: UC-CNT-012
     def test_gateway_errors_are_only_repeated_when_publishing_to_a_fifo(self) -> None:
         self.server.reply(reply(502, "bad gateway"), reply(504, "timeout"), reply(200, {"id": "m1"}))

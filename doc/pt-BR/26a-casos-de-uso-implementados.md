@@ -531,6 +531,111 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-TOP-050
+
+**Caso:** `PUT /topics/{topic}` de um tópico que não existe e, depois, o mesmo `PUT` de novo  
+**Então:** `201` com `Location` e o tópico; o segundo responde `200` com o mesmo tópico (mesmo `id`, `createdAt` e versão: nada mudou, nada é replicado). O corpo é validado como no `POST` (o nome vem do caminho; o nome da dead-letter é `400 validation.reserved-name`).  
+**Nível:** U, I  
+**Testes:**
+  - `src/engine/topics/tests.rs::put_creates_and_an_equal_put_changes_nothing_and_keeps_the_id`
+  - `src/engine/topics/tests.rs::put_validates_like_create_and_refuses_the_dead_letter_name`
+  - `tests/topics.rs::put_creates_with_201_changes_with_200_and_an_equal_put_keeps_the_version`
+
+---
+
+### UC-TOP-051
+
+**Caso:** `PUT` de um tópico existente com outros campos mutáveis, deixando alguns de fora  
+**Então:** `200`: o tópico fica como declarado, o que ficou de fora volta ao padrão (`ttl`, `maxDeliveries`, `maxMessageBytes` para `null`, `tags` para `{}`), `id` e `createdAt` ficam (D215). Os prefixos de um distribuidor são substituídos.  
+**Nível:** U, I  
+**Testes:**
+  - `src/engine/topics/tests.rs::put_replaces_the_mutable_fields_and_what_is_absent_goes_back_to_the_default`
+  - `tests/topics.rs::put_creates_with_201_changes_with_200_and_an_equal_put_keeps_the_version`
+
+---
+
+### UC-TOP-052
+
+**Caso:** `PUT` com outro `type`, `fifo` ou `volatile`, sem `recreate`; `name` no corpo; sem `type`; `recreate` com outro valor  
+**Então:** `409 topic.immutable-mismatch` com cada campo diferente em `details` (só `type` quando o tipo difere) e nada muda; `400 validation.unknown-field`; `400`; `400 validation.failed` em `query.recreate`.  
+**Nível:** U, I  
+**Testes:**
+  - `src/engine/topics/tests.rs::put_with_another_type_fifo_or_volatile_is_refused_naming_each_field`
+  - `tests/topics.rs::put_refuses_another_type_fifo_or_volatile_and_bad_bodies`
+
+---
+
+### UC-TOP-053
+
+**Caso:** `PUT ?recreate=always` com outro `type`, `fifo` ou `volatile`  
+**Então:** `201` com `Taba-Topic-Recreated: true` e `Location`: o tópico foi removido (com as mensagens e a dead-letter) e criado de novo com `id` novo, em todos os nós. Sem diferença nos imutáveis, `recreate` não muda nada. O dono recusa com `409 cluster.conflict` (`Retry-After: 1`) quando o tópico mudou entre a contagem e a decisão.  
+**Nível:** U, I, C  
+**Testes:**
+  - `src/engine/topics/tests.rs::put_with_recreate_always_gives_a_new_id_with_the_new_shape`
+  - `src/engine/topics/tests.rs::the_owner_refuses_a_recreation_of_a_topic_that_changed_in_the_meantime`
+  - `src/engine/topics/tests.rs::needs_recreate_names_the_current_id_only_when_an_immutable_field_differs`
+  - `tests/topics.rs::put_with_recreate_always_drops_the_messages_and_gives_a_new_id`
+  - `tests/definitions.rs::a_recreation_reaches_every_node_and_drops_the_messages_everywhere`
+
+---
+
+### UC-TOP-054
+
+**Caso:** `PUT ?recreate=if-empty` com outro campo imutável, numa fila com mensagens (visíveis ou em voo) ou vazia  
+**Então:** Com mensagens: `409 topic.not-empty` (`details` em `messages`) e nada muda; vazia: recriada como no `always`. O nó que recebe a chamada conta em todos os nós e o dono só recria o `id` que foi contado.  
+**Nível:** U, I, C  
+**Testes:**
+  - `src/engine/topics/tests.rs::the_owner_refuses_a_recreation_of_a_topic_that_changed_in_the_meantime`
+  - `src/engine/topics/tests.rs::needs_recreate_names_the_current_id_only_when_an_immutable_field_differs`
+  - `tests/topics.rs::put_with_recreate_if_empty_refuses_while_there_are_messages`
+  - `tests/definitions.rs::if_empty_counts_the_messages_of_every_node_and_a_silent_node_is_503`
+
+---
+
+### UC-TOP-055
+
+**Caso:** `DELETE /topics/{topic}?ifEmpty=true` numa fila com mensagens, numa vazia e num distribuidor  
+**Então:** Com mensagens: `409 topic.not-empty`, a fila fica; vazia ou distribuidor: `204`; `ifEmpty=false` é o `DELETE` comum; outro valor é `400 validation.failed`.  
+**Nível:** I, C  
+**Testes:**
+  - `tests/topics.rs::delete_if_empty_refuses_a_queue_with_messages`
+  - `tests/definitions.rs::if_empty_counts_the_messages_of_every_node_and_a_silent_node_is_503`
+
+---
+
+### UC-TOP-056
+
+**Caso:** `PUT` com um token de `create`, com um de `manage` e fora dos prefixos do token  
+**Então:** Só `create`: `403 auth.forbidden` com `required: "manage"`; `manage` (que inclui `create`): `201` e `200`; outro prefixo: `403 auth.out-of-scope`.  
+**Nível:** I  
+**Testes:**
+  - `tests/auth.rs::put_needs_manage_on_the_topic_and_create_alone_is_refused`
+
+---
+
+### UC-TOP-057
+
+**Caso:** Dois `PUT` ao mesmo tempo em nós diferentes: criando o mesmo nome, ou alterando um tópico com corpos diferentes  
+**Então:** O dono decide um de cada vez: um tópico é criado (um `201`, um `200`, mesmo `id`); com corpos diferentes, todos os nós terminam num dos dois corpos, nunca numa mistura.  
+**Nível:** C  
+**Testes:**
+  - `tests/definitions.rs::two_puts_creating_the_same_name_at_once_create_one_topic`
+  - `tests/definitions.rs::two_puts_changing_a_topic_at_once_leave_the_same_state_on_every_node`
+
+---
+
+### UC-TOP-058
+
+**Caso:** `PUT` num cluster: recebido por um nó que não é o dono, com um nó que não responde ou com o dono inalcançável  
+**Então:** A recriação chega a todos os nós e nenhum nó entrega as mensagens antigas; `if-empty` conta as mensagens guardadas em qualquer nó; um nó que não responde à contagem dá `503`, e o `DELETE` com `ifEmpty` também, sem mudar nada; o dono inalcançável dá `503 cluster.quorum-unavailable` e nada é aplicado.  
+**Nível:** C  
+**Testes:**
+  - `tests/definitions.rs::a_recreation_reaches_every_node_and_drops_the_messages_everywhere`
+  - `tests/definitions.rs::if_empty_counts_the_messages_of_every_node_and_a_silent_node_is_503`
+  - `tests/definitions.rs::a_put_whose_owner_is_unreachable_fails_with_503`
+
+---
+
 
 ## MSG: Publicação e o corpo da mensagem
 
@@ -4447,6 +4552,50 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-CNT-042
+
+**Caso:** Um conector declara um tópico com `createOrUpdateTopic` (`create_or_update_topic`, `CreateOrUpdateTopicAsync`...), com ou sem `recreate` (`if-empty`, `always`)  
+**Então:** `PUT /topics/{topic}` com o nome no caminho codificado e o corpo do `createTopic` sem `name`; `recreate` na query só quando dado (outro valor é `client.invalid-request`, nada é enviado); a resposta traz o tópico e o desfecho (`created` no `201`, `updated` no `200`, `recreated` no `201` com `Taba-Topic-Recreated: true`); `409 topic.immutable-mismatch` e `topic.not-empty` são erros com o código; depois de um `503` o `PUT` é repetido como as outras chamadas, sem regra `recover`; o `createTopic` não muda  
+**Nível:** K  
+**Testes:**
+  - `connectors/rust/client/src/client/tests.rs::create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome`
+  - `connectors/rust/client/src/client/tests.rs::create_or_update_topic_fails_with_the_code_and_repeats_after_a_503`
+  - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome`
+  - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::create_or_update_topic_fails_with_the_code_and_repeats_after_a_503`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::createOrUpdateTopicPutsTheBodyWithoutTheNameAndReadsTheOutcome`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::createOrUpdateTopicFailsWithTheCodeAndRepeatsAfterA503`
+  - `connectors/node/test/client.test.js::create or update topic puts the body without the name and reads the outcome`
+  - `connectors/node/test/client.test.js::create or update topic fails with the code and repeats after a 503`
+  - `connectors/python/tests/test_client.py::test_create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome`
+  - `connectors/python/tests/test_client.py::test_create_or_update_topic_fails_with_the_code_and_repeats_after_a_503`
+  - `connectors/python/tests/test_client.py::test_the_async_client_creates_or_updates_and_deletes_only_if_empty`
+  - `connectors/go/client_test.go::TestCreateOrUpdateTopicPutsTheBodyWithoutTheNameAndReadsTheOutcome`
+  - `connectors/go/client_test.go::TestCreateOrUpdateTopicFailsWithTheCodeAndRepeatsAfterA503`
+  - `connectors/php/tests/ClientTest.php::testCreateOrUpdateTopicPutsTheBodyWithoutTheNameAndReadsTheOutcome`
+  - `connectors/php/tests/ClientTest.php::testCreateOrUpdateTopicFailsWithTheCodeAndRepeatsAfterA503`
+  - `connectors/ruby/test/client_test.rb::test_create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome`
+  - `connectors/ruby/test/client_test.rb::test_create_or_update_topic_fails_with_the_code_and_repeats_after_a_503`
+
+---
+
+### UC-CNT-043
+
+**Caso:** Um conector remove um tópico só se estiver vazio (`deleteTopic(name, {ifEmpty: true})`, `delete_topic(name, if_empty=True)`, `DeleteTopicIfEmpty`...)  
+**Então:** `DELETE /topics/{topic}?ifEmpty=true`; uma fila com mensagens é o erro `409 topic.not-empty` e fica; o `deleteTopic` sem a opção não muda  
+**Nível:** K  
+**Testes:**
+  - `connectors/rust/client/src/client/tests.rs::delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error`
+  - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::deleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError`
+  - `connectors/node/test/client.test.js::delete topic if empty sends if empty and a queue with messages is an error`
+  - `connectors/python/tests/test_client.py::test_the_async_client_creates_or_updates_and_deletes_only_if_empty`
+  - `connectors/python/tests/test_client.py::test_delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error`
+  - `connectors/go/client_test.go::TestDeleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError`
+  - `connectors/php/tests/ClientTest.php::testDeleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError`
+  - `connectors/ruby/test/client_test.rb::test_delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error`
+
+---
+
 
 ## CLI: O `taba-cli`, a linha de comando do cliente
 
@@ -4909,6 +5058,27 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** K  
 **Testes:**
   - `connectors/rust/cli/tests/commands.rs::outside_a_terminal_the_profile_command_prints_help_and_exits_2`
+
+---
+
+### UC-CLI-037
+
+**Caso:** `topic create <nome> --or-update` declara o tópico com `PUT /topics/{topic}` (corpo sem `name`), com `--recreate if-empty|always`  
+**Então:** imprime o tópico como o `create` e o desfecho (`created`, `updated`, `recreated`) na saída de erro (nada com `-q`); `--recreate` sem `--or-update` ou com outro valor é erro de uso (`2`) sem nada enviado; `--recreate always` pede confirmação (fora de um terminal só com `--yes`); `409 topic.immutable-mismatch` é mostrado com o código.  
+**Nível:** K  
+**Testes:**
+  - `connectors/rust/cli/tests/commands.rs::topic_create_or_update_puts_the_body_without_the_name_and_says_the_outcome`
+  - `connectors/rust/cli/tests/commands.rs::topic_create_or_update_checks_recreate_and_asks_before_always`
+
+---
+
+### UC-CLI-038
+
+**Caso:** `topic delete <nome> --if-empty`  
+**Então:** envia `DELETE /topics/{topic}?ifEmpty=true`; uma fila com mensagens é `409 topic.not-empty` (saída `1`); a confirmação continua sendo pedida (fora de um terminal só com `--yes`).  
+**Nível:** K  
+**Testes:**
+  - `connectors/rust/cli/tests/commands.rs::topic_delete_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error`
 
 ---
 

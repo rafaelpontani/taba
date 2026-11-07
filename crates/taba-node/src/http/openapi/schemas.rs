@@ -149,6 +149,33 @@ pub struct TopicCreateRequest {
     pub max_deliveries: Option<u64>,
 }
 
+/// Body of `PUT /topics/{topic}`: the whole declared state, without `name` (it is the path's). What is absent goes
+/// back to the default: `tags` `{}`, `prefixes` `[]`, `maxMessageBytes`, `ttl` and `maxDeliveries` the node default,
+/// `idleTimeout` 600 on a volatile queue, `fifo` and `volatile` `false`.
+#[derive(ToSchema)]
+#[schema(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct TopicPutRequest {
+    #[schema(rename = "type")]
+    pub kind: TopicType,
+    /// Up to 20 tags: key of 1 to 64 and value of 0 to 128 characters of `A-Za-z0-9_-.:`.
+    pub tags: Option<BTreeMap<String, String>>,
+    /// Distributor only: up to 20 prefixes of 1 to 100 characters (`A-Za-z0-9_-`).
+    pub prefixes: Option<Vec<String>>,
+    /// Queue only. Changing it needs `recreate`.
+    pub volatile: Option<bool>,
+    /// Volatile queue only: 60 to 604800 seconds. Default 600.
+    pub idle_timeout: Option<u64>,
+    /// Queue only. Changing it needs `recreate`. Needs `replication.factor` of at least 2.
+    pub fifo: Option<bool>,
+    /// Queue only: 1 up to `message.hard-limit`.
+    pub max_message_bytes: Option<u64>,
+    /// Queue only: 60 to 31536000 seconds.
+    pub ttl: Option<u64>,
+    /// Queue only: 1 to 1000.
+    pub max_deliveries: Option<u64>,
+}
+
 /// Body of `PATCH /topics/{topic}`: only what is sent changes. `tags` replaces the whole map, and `null` in
 /// `maxMessageBytes`, `ttl` or `maxDeliveries` goes back to the node default. `name`, `id`, `type`, `volatile` and
 /// `fifo` are immutable: sending them, even with the current value, is `400 validation.immutable-field`.

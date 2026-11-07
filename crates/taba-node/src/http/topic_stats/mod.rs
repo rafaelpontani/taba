@@ -343,6 +343,30 @@ async fn gather(state: &AppState, node_only: bool) -> Source {
     Source::of(nodes, missing)
 }
 
+/// How many messages every member holds of a queue and its dead-letter (the `if-empty` of `PUT ?recreate` and of
+/// `DELETE ?ifEmpty`, D216). A member that does not answer is `503`: an empty answer would not prove anything.
+/// It is a snapshot: a publication that arrives right after it is not counted.
+pub(super) async fn messages_held(state: &AppState, queue: &str) -> Result<u64, TabaError> {
+    let source = gather(state, false).await;
+    if source.partial() {
+        let nodes: Vec<&str> = source.missing.iter().map(|m| m.node_id.as_str()).collect();
+        return Err(TabaError::new(
+            ErrorCode::ClusterQuorumUnavailable,
+            format!(
+                "Not every node answered how many messages the queue holds ({}); nothing was changed.",
+                nodes.join(", ")
+            ),
+        )
+        .with_retry_after(5));
+    }
+    let dead_letter = format!("{queue}{}", state.topics.rules().dead_letter_suffix);
+    Ok([queue, dead_letter.as_str()]
+        .iter()
+        .filter_map(|name| source.queues.get(*name))
+        .map(|q| q.visible + q.invisible)
+        .sum())
+}
+
 /// The groups of a queue, joined across the nodes (each group adds its messages). Also says who did not answer.
 async fn gather_groups(
     state: &AppState,

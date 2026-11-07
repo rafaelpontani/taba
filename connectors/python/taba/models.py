@@ -77,6 +77,15 @@ class TopicRequest:
     max_deliveries: Optional[int] = None
 
 
+@dataclass(frozen=True)
+class TopicPut:
+    """What `create_or_update_topic` did and the topic as it is now."""
+
+    topic: Topic
+    #: `created` (`201`), `updated` (`200`: changed, or already as declared) or `recreated` (a new `id`).
+    outcome: str
+
+
 class _Unset:
     def __repr__(self) -> str:
         return "UNSET"

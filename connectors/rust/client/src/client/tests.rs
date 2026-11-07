@@ -236,6 +236,103 @@ fn list_all_topics_follows_next_cursor_until_the_last_page() {
     assert_eq!(rig.request(1).target, "/topics?cursor=p2");
 }
 
+/// UC: UC-CNT-042
+#[test]
+fn create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome() {
+    let rig = simple(vec![
+        response(201, &[("Location", "/topics/a%20b")], TOPIC),
+        response(200, &[], TOPIC),
+        response(201, &[("taba-topic-recreated", "true")], TOPIC),
+        response(201, &[], TOPIC),
+    ]);
+    let c = &rig.client;
+    let request = TopicRequest {
+        name: "a b".into(),
+        topic_type: "queue".into(),
+        fifo: Some(true),
+        ttl: Some(60),
+        ..TopicRequest::default()
+    };
+    let created = c.create_or_update_topic(&request, Recreate::Never).unwrap();
+    assert_eq!(created.outcome, TopicOutcome::Created);
+    assert_eq!(created.topic.id, "i1");
+    let updated = c.create_or_update_topic(&request, Recreate::Never).unwrap();
+    assert_eq!(updated.outcome, TopicOutcome::Updated);
+    let recreated = c
+        .create_or_update_topic(&request, Recreate::Always)
+        .unwrap();
+    assert_eq!(recreated.outcome, TopicOutcome::Recreated);
+    let empty = c
+        .create_or_update_topic(&request, Recreate::IfEmpty)
+        .unwrap();
+    assert_eq!(empty.outcome, TopicOutcome::Created);
+
+    let first = rig.request(0);
+    assert_eq!(
+        (first.method.as_str(), first.target.as_str()),
+        ("PUT", "/topics/a%20b")
+    );
+    assert_eq!(
+        String::from_utf8(first.body).unwrap(),
+        "{\"type\":\"queue\",\"fifo\":true,\"ttl\":60}"
+    );
+    assert_eq!(rig.request(2).target, "/topics/a%20b?recreate=always");
+    assert_eq!(rig.request(3).target, "/topics/a%20b?recreate=if-empty");
+}
+
+/// UC: UC-CNT-042
+#[test]
+fn create_or_update_topic_fails_with_the_code_and_repeats_after_a_503() {
+    let rig = simple(vec![
+        response(409, &[], &error_body("topic.immutable-mismatch")),
+        response(409, &[], &error_body("topic.not-empty")),
+        response(
+            503,
+            &[("Retry-After", "2")],
+            &error_body("cluster.commit-timeout"),
+        ),
+        response(200, &[], TOPIC),
+    ]);
+    let c = &rig.client;
+    let request = TopicRequest {
+        name: "orders".into(),
+        topic_type: "queue".into(),
+        ..TopicRequest::default()
+    };
+    let error = c
+        .create_or_update_topic(&request, Recreate::Never)
+        .unwrap_err();
+    assert_eq!(
+        (error.status, error.code.as_str()),
+        (409, "topic.immutable-mismatch")
+    );
+    let error = c
+        .create_or_update_topic(&request, Recreate::IfEmpty)
+        .unwrap_err();
+    assert_eq!(
+        (error.status, error.code.as_str()),
+        (409, "topic.not-empty")
+    );
+    let again = c.create_or_update_topic(&request, Recreate::Never).unwrap();
+    assert_eq!(again.outcome, TopicOutcome::Updated);
+    assert_eq!(rig.calls(), 4);
+    assert_eq!(rig.sleeps(), vec![2]);
+}
+
+/// UC: UC-CNT-043
+#[test]
+fn delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error() {
+    let rig = simple(vec![
+        response(409, &[], &error_body("topic.not-empty")),
+        response(204, &[], ""),
+    ]);
+    let error = rig.client.delete_topic_if_empty("a b").unwrap_err();
+    assert_eq!(error.code, "topic.not-empty");
+    rig.client.delete_topic_if_empty("a b").unwrap();
+    assert_eq!(rig.request(0).method, "DELETE");
+    assert_eq!(rig.request(0).target, "/topics/a%20b?ifEmpty=true");
+}
+
 /// UC: UC-CNT-041
 #[test]
 fn the_batches_send_one_json_and_read_one_result_per_item() {

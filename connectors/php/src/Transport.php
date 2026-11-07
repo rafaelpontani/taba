@@ -55,12 +55,15 @@ class ApiReply
     public $status;
     public $body;
     public $recovered;
+    /** The response carries `Taba-Topic-Recreated: true` (`PUT /topics/{topic}`). */
+    public $recreated;
 
-    public function __construct($status, $body, $recovered = false)
+    public function __construct($status, $body, $recovered = false, $recreated = false)
     {
         $this->status = $status;
         $this->body = $body;
         $this->recovered = $recovered;
+        $this->recreated = $recreated;
     }
 }
 
@@ -371,7 +374,9 @@ final class Transport
             }
             list($status, $headers, $body) = $reply;
             if ($status < 400) {
-                return new ApiReply($status, $body);
+                $recreated = isset($headers['taba-topic-recreated'])
+                    && strtolower(trim($headers['taba-topic-recreated'])) === 'true';
+                return new ApiReply($status, $body, false, $recreated);
             }
             if ($afterRetryable) {
                 $code = $this->errorCodeOf($body);

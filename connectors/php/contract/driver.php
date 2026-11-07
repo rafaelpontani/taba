@@ -142,6 +142,15 @@ function text($value)
     return is_bool($value) ? ($value ? 'true' : 'false') : (string) $value;
 }
 
+function topicRequest($p)
+{
+    return new TopicRequest($p['name'], $p['type'], array(
+        'fifo' => flag($p, 'fifo'), 'prefixes' => items($p, 'prefixes'), 'tags' => tagsOf($p, 'tags'),
+        'volatile' => flag($p, 'volatile'), 'ttl' => num($p, 'ttl'), 'maxDeliveries' => num($p, 'maxDeliveries'),
+        'maxMessageBytes' => num($p, 'maxMessageBytes'), 'idleTimeout' => num($p, 'idleTimeout'),
+    ));
+}
+
 function topicFields($t)
 {
     return array('id' => $t->id, 'name' => $t->name, 'type' => $t->type, 'fifo' => text($t->fifo), 'volatile' => text($t->volatile), 'raw' => $t->raw);
@@ -197,11 +206,13 @@ function statuses($results)
 
 $OPERATIONS = array(
     'createTopic' => function (Client $c, $p) {
-        return topicFields($c->createTopic(new TopicRequest($p['name'], $p['type'], array(
-            'fifo' => flag($p, 'fifo'), 'prefixes' => items($p, 'prefixes'), 'tags' => tagsOf($p, 'tags'),
-            'volatile' => flag($p, 'volatile'), 'ttl' => num($p, 'ttl'), 'maxDeliveries' => num($p, 'maxDeliveries'),
-            'maxMessageBytes' => num($p, 'maxMessageBytes'), 'idleTimeout' => num($p, 'idleTimeout'),
-        ))));
+        return topicFields($c->createTopic(topicRequest($p)));
+    },
+    'createOrUpdateTopic' => function (Client $c, $p) {
+        $put = $c->createOrUpdateTopic(topicRequest($p), isset($p['recreate']) ? $p['recreate'] : null);
+        $fields = topicFields($put->topic);
+        $fields['outcome'] = $put->outcome;
+        return $fields;
     },
     'getTopic' => function (Client $c, $p) {
         return topicFields($c->getTopic($p['name']));
@@ -229,7 +240,11 @@ $OPERATIONS = array(
         return topicFields($c->updateTopic($p['name'], new TopicUpdate($fields)));
     },
     'deleteTopic' => function (Client $c, $p) {
-        $c->deleteTopic($p['name']);
+        if (flag($p, 'ifEmpty') === true) {
+            $c->deleteTopicIfEmpty($p['name']);
+        } else {
+            $c->deleteTopic($p['name']);
+        }
         return array();
     },
     'publishText' => function (Client $c, $p) {

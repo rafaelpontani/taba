@@ -14,6 +14,6 @@ pub mod transport;
 
 pub use client::{
     BatchMessage, BatchResult, Call, Client, Config, ConsumeError, ConsumeOptions, Delivery, Error,
-    HandlerError, Message, Nullable, Page, PublishOptions, PublishResponse, Reply, Topic,
-    TopicRequest, TopicUpdate, VisibilityResponse, CONTRACT_VERSION,
+    HandlerError, Message, Nullable, Page, PublishOptions, PublishResponse, Recreate, Reply, Topic,
+    TopicOutcome, TopicPut, TopicRequest, TopicUpdate, VisibilityResponse, CONTRACT_VERSION,
 };

@@ -4,6 +4,23 @@ require 'taba/json_fields'
 module Taba
   # The models of the client API and the reading of its JSON responses.
 
+  # What +create_or_update_topic+ did and the topic as it is now.
+  class TopicPut
+    # It did not exist (+201+).
+    CREATED = 'created'.freeze
+    # It existed: the mutable fields are now the declared ones, or already were (+200+).
+    UPDATED = 'updated'.freeze
+    # It was removed and created again with a new +id+ (+201+ with +Taba-Topic-Recreated: true+).
+    RECREATED = 'recreated'.freeze
+
+    # +topic+ (a Taba::Topic) and +outcome+ (+created+, +updated+ or +recreated+).
+    attr_reader :topic, :outcome
+
+    def initialize(topic, outcome)
+      @topic, @outcome = topic, outcome
+    end
+  end
+
   class Topic
     attr_reader :id, :name, :type, :created_at, :fifo, :volatile, :raw
     # id, name, type (+queue+ or +distributor+), created_at (RFC 3339 text), fifo, volatile, and raw (the topic

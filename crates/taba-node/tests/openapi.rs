@@ -358,6 +358,40 @@ async fn the_answers_of_the_client_api_match_the_document() {
         400,
     )
     .await;
+    for status in [201, 200] {
+        api.send_json(
+            Method::PUT,
+            "/topics/{topic}",
+            "/topics/jobs",
+            json!({ "type": "queue", "ttl": 60 }),
+            status,
+        )
+        .await;
+    }
+    api.send_json(
+        Method::PUT,
+        "/topics/{topic}",
+        "/topics/jobs",
+        json!({ "type": "queue", "fifo": true }),
+        409,
+    )
+    .await;
+    api.send_json(
+        Method::PUT,
+        "/topics/{topic}",
+        "/topics/jobs?recreate=always",
+        json!({ "type": "queue", "fifo": true }),
+        201,
+    )
+    .await;
+    api.send_json(
+        Method::PUT,
+        "/topics/{topic}",
+        "/topics/jobs",
+        json!({ "name": "jobs", "type": "queue" }),
+        400,
+    )
+    .await;
 
     // Messages: JSON, text and binary bodies, and a distributor.
     let published = api

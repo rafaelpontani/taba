@@ -27,7 +27,9 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard}
 use serde_json::{Value, json};
 
 pub use list::ListResult;
-pub use rules::{CreateTopic, Kind, ListQuery, Patch, TopicRules, UpdateTopic};
+pub use rules::{
+    CreateTopic, Kind, ListQuery, Patch, PutOutcome, PutPlan, Recreate, TopicRules, UpdateTopic,
+};
 
 use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
@@ -102,6 +104,16 @@ pub trait TopicReplicator: Send + Sync + 'static {
         &self,
         change: TopicChange,
     ) -> Pin<Box<dyn Future<Output = Result<(), TabaError>> + Send + '_>>;
+
+    /// A `PUT`: the definition's owner decides, from its own table and under the definition's lock, whether to
+    /// create, change, recreate or leave the topic as it is ([`Topics::plan_put`]), and propagates it. At the end
+    /// the result already applies on this node too.
+    fn put(
+        &self,
+        desired: TopicDefinition,
+        recreate: Recreate,
+        expected_id: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<PutOutcome, TabaError>> + Send + '_>>;
 }
 
 /// What changed in this node's topic table (the commit of a creation, change or removal).
@@ -154,6 +166,35 @@ fn not_applicable(field: &str, what: &str) -> TabaError {
 
 fn out_of_range(field: &str, message: &str) -> TabaError {
     field_error(ErrorCode::ValidationOutOfRange, field, message)
+}
+
+/// The fields that cannot change in place and differ: `(field, current, requested)`.
+fn immutable_differences(
+    current: &TopicDefinition,
+    desired: &TopicDefinition,
+) -> Vec<(&'static str, String, String)> {
+    let mut out = Vec::new();
+    if current.type_name() != desired.type_name() {
+        out.push((
+            "type",
+            current.type_name().to_owned(),
+            desired.type_name().to_owned(),
+        ));
+        return out;
+    }
+    if let (Some(now), Some(wanted)) = (current.queue(), desired.queue()) {
+        if now.fifo != wanted.fifo {
+            out.push(("fifo", now.fifo.to_string(), wanted.fifo.to_string()));
+        }
+        if now.volatile != wanted.volatile {
+            out.push((
+                "volatile",
+                now.volatile.to_string(),
+                wanted.volatile.to_string(),
+            ));
+        }
+    }
+    out
 }
 
 /// A number within the range; negative is also outside the range.
@@ -550,6 +591,128 @@ impl Topics {
             None => self.apply_save(updated.clone()).await?,
         }
         Ok(self.view(&Arc::new(updated)))
+    }
+
+    /// `PUT /topics/{topic}`: takes the topic to the declared state (D215: what is absent goes back to the default).
+    /// Creates it if it does not exist; changes the mutable fields if it does; with another type, `fifo` or
+    /// `volatile`, refuses or recreates it as `recreate` says (D216). In the cluster the owner of the definition
+    /// decides, so two `PUT`s at the same time do not step on each other.
+    pub async fn put(
+        &self,
+        request: CreateTopic,
+        recreate: Recreate,
+        expected_id: Option<String>,
+    ) -> Result<(TopicView, PutOutcome), TabaError> {
+        let (spec, tags) = self.validate_create(&request)?;
+        let _writer = self.writer.lock().await;
+        let now = self.clock.now_millis();
+        let desired = TopicDefinition {
+            id: id::new_at(now),
+            name: request.name,
+            created_ms: now,
+            tags,
+            spec,
+        };
+        let name = desired.name.clone();
+        let outcome = match self.replicator.get() {
+            Some(replicator) => replicator.put(desired, recreate, expected_id).await?,
+            None => match self.plan_put(desired, recreate, expected_id.as_deref())? {
+                PutPlan::Create(d) => {
+                    self.apply_save(d).await?;
+                    PutOutcome::Created
+                }
+                PutPlan::Update(d) => {
+                    self.apply_save(d).await?;
+                    PutOutcome::Updated
+                }
+                PutPlan::Recreate(d) => {
+                    self.apply_delete(&d.name).await?;
+                    self.apply_save(d).await?;
+                    PutOutcome::Recreated
+                }
+                PutPlan::Unchanged(_) => PutOutcome::Unchanged,
+            },
+        };
+        let definition = self.read().get(&name).cloned().ok_or_else(|| {
+            TabaError::new(
+                ErrorCode::ClusterConflict,
+                "The topic was removed while the request was in flight; repeat it.",
+            )
+        })?;
+        Ok((self.view(&definition), outcome))
+    }
+
+    /// Decides a `PUT` against this node's table (on the definition's owner, under the definition's lock).
+    /// `expected_id`: with `Recreate::Always`, the `id` whoever received the call found empty; another `id`
+    /// means the topic changed in the meantime.
+    pub fn plan_put(
+        &self,
+        desired: TopicDefinition,
+        recreate: Recreate,
+        expected_id: Option<&str>,
+    ) -> Result<PutPlan, TabaError> {
+        let Some(current) = self.definition(&desired.name) else {
+            return Ok(PutPlan::Create(desired));
+        };
+        let differences = immutable_differences(&current, &desired);
+        if differences.is_empty() {
+            let merged = TopicDefinition {
+                id: current.id.clone(),
+                created_ms: current.created_ms,
+                ..desired
+            };
+            return Ok(if merged == current {
+                PutPlan::Unchanged(current)
+            } else {
+                PutPlan::Update(merged)
+            });
+        }
+        let changed_meanwhile = || {
+            TabaError::new(
+                ErrorCode::ClusterConflict,
+                "The topic changed while the request was in flight; repeat it.",
+            )
+            .with_retry_after(1)
+        };
+        match recreate {
+            Recreate::Never => {
+                let mut error = TabaError::new(
+                    ErrorCode::TopicImmutableMismatch,
+                    "The topic exists with another type, fifo or volatile, which cannot change in place. \
+                     Use recreate=if-empty or recreate=always to remove it and create it again.",
+                );
+                for (field, now, wanted) in differences {
+                    error = error.with_detail(
+                        field,
+                        ErrorCode::TopicImmutableMismatch,
+                        format!("It is {now}; the request asks for {wanted}."),
+                    );
+                }
+                Err(error)
+            }
+            Recreate::IfEmpty => Err(changed_meanwhile()),
+            Recreate::Always if expected_id.is_some_and(|id| id != current.id) => {
+                Err(changed_meanwhile())
+            }
+            Recreate::Always => Ok(PutPlan::Recreate(desired)),
+        }
+    }
+
+    /// The `id` of the current topic when the `PUT` would need to recreate it (another type, `fifo` or `volatile`
+    /// in this node's table); `None` when it does not exist or only mutable fields change. Validates the request.
+    pub fn needs_recreate(&self, request: &CreateTopic) -> Result<Option<String>, TabaError> {
+        let (spec, tags) = self.validate_create(request)?;
+        let Some(current) = self.definition(&request.name) else {
+            return Ok(None);
+        };
+        let desired = TopicDefinition {
+            id: current.id.clone(),
+            name: current.name.clone(),
+            created_ms: current.created_ms,
+            tags,
+            spec,
+        };
+        Ok((!immutable_differences(&current, &desired).is_empty()).then_some(current.id))
     }
 
     /// Removes the topic. The messages go with it, when there are any. Always works,

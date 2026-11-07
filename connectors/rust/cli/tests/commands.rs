@@ -550,6 +550,188 @@ fn the_server_refusal_for_a_field_that_does_not_fit_the_type_is_shown() {
     );
 }
 
+/// UC: UC-CLI-037
+#[test]
+fn topic_create_or_update_puts_the_body_without_the_name_and_says_the_outcome() {
+    let rig = Rig::new();
+    rig.mock().reply(201, &[], TOPIC);
+    rig.mock().reply(200, &[], TOPIC);
+    rig.mock()
+        .reply(201, &[("Taba-Topic-Recreated", "true")], TOPIC);
+    let out = rig.run(&[
+        "topic",
+        "create",
+        "a b",
+        "--type",
+        "queue",
+        "--ttl",
+        "60",
+        "--or-update",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.err);
+    assert_eq!(
+        out.out,
+        format!(
+            "{}
+",
+            pretty(TOPIC)
+        )
+    );
+    assert_eq!(
+        out.err,
+        "created
+"
+    );
+    let seen = rig.seen();
+    assert_eq!(
+        (
+            seen[0].request.method.as_str(),
+            seen[0].request.target.as_str()
+        ),
+        ("PUT", "/topics/a%20b")
+    );
+    assert_eq!(seen[0].body_text(), "{\"type\":\"queue\",\"ttl\":60}");
+
+    let out = rig.run(&[
+        "topic",
+        "create",
+        "a b",
+        "--type",
+        "queue",
+        "--or-update",
+        "-q",
+    ]);
+    assert_eq!((out.code, out.out.as_str(), out.err.as_str()), (0, "", ""));
+
+    let out = rig.run(&[
+        "topic",
+        "create",
+        "a b",
+        "--type",
+        "queue",
+        "--fifo",
+        "--or-update",
+        "--recreate",
+        "if-empty",
+    ]);
+    assert_eq!(
+        (out.code, out.err.as_str()),
+        (
+            0,
+            "recreated
+"
+        )
+    );
+    assert_eq!(
+        rig.seen()[2].request.target,
+        "/topics/a%20b?recreate=if-empty"
+    );
+}
+
+/// UC: UC-CLI-037
+#[test]
+fn topic_create_or_update_checks_recreate_and_asks_before_always() {
+    let rig = Rig::new();
+    let out = rig.run(&[
+        "topic",
+        "create",
+        "x",
+        "--type",
+        "queue",
+        "--recreate",
+        "if-empty",
+    ]);
+    assert_eq!(out.code, 2, "--recreate without --or-update");
+    assert!(out.err.contains("--or-update"), "{}", out.err);
+    let out = rig.run(&[
+        "topic",
+        "create",
+        "x",
+        "--type",
+        "queue",
+        "--or-update",
+        "--recreate",
+        "sometimes",
+    ]);
+    assert_eq!(out.code, 2);
+    let out = rig.run(&[
+        "topic",
+        "create",
+        "x",
+        "--type",
+        "queue",
+        "--or-update",
+        "--recreate",
+        "always",
+    ]);
+    assert_eq!(
+        out.code, 2,
+        "always drops the messages: off a terminal it needs --yes"
+    );
+    assert!(out.err.contains("--yes"), "{}", out.err);
+    assert!(rig.seen().is_empty());
+
+    rig.mock().reply(409, &[], "{\"code\":\"topic.immutable-mismatch\",\"message\":\"An immutable option differs.\",\"requestId\":\"r\"}");
+    let out = rig.run(&[
+        "topic",
+        "create",
+        "x",
+        "--type",
+        "queue",
+        "--fifo",
+        "--or-update",
+    ]);
+    assert_eq!(out.code, 1);
+    assert!(out.err.contains("topic.immutable-mismatch"), "{}", out.err);
+
+    rig.mock()
+        .reply(201, &[("Taba-Topic-Recreated", "true")], TOPIC);
+    let out = rig.run(&[
+        "topic",
+        "create",
+        "x",
+        "--type",
+        "queue",
+        "--fifo",
+        "--or-update",
+        "--recreate",
+        "always",
+        "--yes",
+    ]);
+    assert_eq!(
+        (out.code, out.err.as_str()),
+        (
+            0,
+            "recreated
+"
+        )
+    );
+    assert_eq!(rig.seen()[1].request.target, "/topics/x?recreate=always");
+}
+
+/// UC: UC-CLI-038
+#[test]
+fn topic_delete_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error() {
+    let rig = Rig::new();
+    rig.mock().reply(204, &[], "");
+    let out = rig.run(&["topic", "delete", "orders", "--if-empty", "--yes"]);
+    assert_eq!(out.code, 0, "{}", out.err);
+    assert_eq!(
+        (
+            rig.seen()[0].request.method.as_str(),
+            rig.seen()[0].request.target.as_str()
+        ),
+        ("DELETE", "/topics/orders?ifEmpty=true")
+    );
+    rig.mock().reply(409, &[], "{\"code\":\"topic.not-empty\",\"message\":\"The topic holds messages.\",\"requestId\":\"r\"}");
+    let out = rig.run(&["topic", "delete", "orders", "--if-empty", "--yes"]);
+    assert_eq!(out.code, 1);
+    assert!(out.err.contains("topic.not-empty"), "{}", out.err);
+    let out = rig.run(&["topic", "delete", "orders", "--if-empty"]);
+    assert_eq!(out.code, 2, "off a terminal it still needs --yes");
+    assert!(out.err.contains("if it holds no message"), "{}", out.err);
+}
+
 /// UC: UC-CLI-007
 #[test]
 fn topic_list_passes_name_sort_limit_and_cursor() {

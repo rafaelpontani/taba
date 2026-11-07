@@ -26,7 +26,24 @@ module Taba
     end
 
     def create_topic(request)
-      body = { 'name' => request.name.to_s, 'type' => request.type.to_s }
+      body = { 'name' => request.name.to_s }.merge(topic_fields(request))
+      call = ApiCall.new('POST', '/topics').with_json(encode(body))
+      call.recover << [409, 'topic.already-exists']
+      call
+    end
+
+    # +PUT /topics/{topic}+: the fields of +POST /topics+ without +name+ (it goes in the path).
+    def put_topic(request, recreate)
+      unless recreate.nil? || %w[if-empty always].include?(recreate.to_s)
+        raise Error.client('client.invalid-request', "recreate must be 'if-empty' or 'always'")
+      end
+      call = ApiCall.new('PUT', "/topics/#{segment(request.name.to_s)}").with_json(encode(topic_fields(request)))
+      call.with_query('recreate', recreate.to_s) unless recreate.nil?
+      call
+    end
+
+    def topic_fields(request)
+      body = { 'type' => request.type.to_s }
       body['tags'] = request.tags if request.tags && !request.tags.empty?
       body['prefixes'] = request.prefixes.to_a if request.prefixes && !request.prefixes.empty?
       [[:volatile, 'volatile'], [:idle_timeout, 'idleTimeout'], [:fifo, 'fifo'],
@@ -34,9 +51,7 @@ module Taba
         value = request.send(attribute)
         body[name] = value unless value.nil?
       end
-      call = ApiCall.new('POST', '/topics').with_json(encode(body))
-      call.recover << [409, 'topic.already-exists']
-      call
+      body
     end
 
     def get_topic(name)
@@ -64,8 +79,9 @@ module Taba
       ApiCall.new('PATCH', "/topics/#{segment(name)}").with_json(encode(body))
     end
 
-    def delete_topic(name)
+    def delete_topic(name, if_empty = false)
       call = ApiCall.new('DELETE', "/topics/#{segment(name)}")
+      call.with_query('ifEmpty', 'true') if if_empty
       call.recover << [404, 'topic.not-found']
       call
     end

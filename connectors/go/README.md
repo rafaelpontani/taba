@@ -39,6 +39,10 @@ _, err = client.ConsumeWith(ctx, "orders", &taba.ConsumeOptions{WaitTime: taba.I
 
 Go reads the module straight from the repository, so there is nothing else to download: `go get github.com/rafaelpontani/taba/connectors/go@release` (a branch, or a commit; with Go 1.7, which has no modules, the plain `go get` above). A fixed version needs a tag `connectors/go/vX.Y.Z`, which is not created yet because the connector is not published (the identifiers are still open).
 
+## Declaring a topic
+
+`CreateOrUpdateTopic(ctx, request, recreate)` (`PUT /topics/{topic}`) creates the topic or brings it to the declared state, and returns a `TopicPut` with the `Topic` and the `Outcome` (`taba.TopicCreated`, `TopicUpdated` or `TopicRecreated`); `recreate` is `taba.RecreateNever`, `RecreateIfEmpty` or `RecreateAlways`. What is left out goes back to the server default (a full replacement, unlike the update); another type, `fifo` or `volatile` is the error `409 topic.immutable-mismatch` unless `recreate` is `if-empty` (only when the queue and its dead-letter are empty, `409 topic.not-empty` otherwise) or `always` (drops the messages; new `id`). After a `503` the call is repeated like the others. `DeleteTopicIfEmpty(ctx, name)` only removes a queue with no message. `CreateTopic` does not change (`409` when it exists). Details: [Create or update a topic](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#create-or-update-a-topic-put-topicstopic).
+
 ## Batches
 
 Many messages in one request, next to the single calls (optional): `PublishBatch(ctx, topic, []taba.BatchMessage{...})`, `AckBatch(ctx, topic, messages)` and `ChangeVisibilityBatch(ctx, topic, messages, seconds)` return one `BatchResult` per item (`OK()`, `Status`, `ID`, `ErrorCode`). Each item is answered as its single call, in order, and an item that failed comes back with its `Status` and error code instead of an `error`. The bodies go in base64, so any type fits. Details: [Messages in batch](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#messages-in-batch-post-messagesbatch-ack-and-visibility).

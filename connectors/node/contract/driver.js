@@ -73,6 +73,13 @@ function render(message) {
   return type === 'application/octet-stream' ? 'b64:' + message.body.toString('base64') : message.bodyText;
 }
 
+function topicRequest(p) {
+  return {
+    name: p.name, type: p.type, fifo: flag(p.fifo), prefixes: list(p.prefixes), tags: tags(p.tags), volatile: flag(p.volatile),
+    ttl: num(p.ttl), maxDeliveries: num(p.maxDeliveries), maxMessageBytes: num(p.maxMessageBytes), idleTimeout: num(p.idleTimeout),
+  };
+}
+
 function topicFields(t) {
   return { id: t.id, name: t.name, type: t.type, fifo: t.fifo === null ? '' : String(t.fifo), volatile: t.volatile === null ? '' : String(t.volatile), raw: t.raw };
 }
@@ -95,11 +102,10 @@ function messageFields(messages) {
 }
 
 const operations = {
-  async createTopic(c, p) {
-    return topicFields(await c.createTopic({
-      name: p.name, type: p.type, fifo: flag(p.fifo), prefixes: list(p.prefixes), tags: tags(p.tags), volatile: flag(p.volatile),
-      ttl: num(p.ttl), maxDeliveries: num(p.maxDeliveries), maxMessageBytes: num(p.maxMessageBytes), idleTimeout: num(p.idleTimeout),
-    }));
+  async createTopic(c, p) { return topicFields(await c.createTopic(topicRequest(p))); },
+  async createOrUpdateTopic(c, p) {
+    const put = await c.createOrUpdateTopic(topicRequest(p), { recreate: p.recreate });
+    return Object.assign(topicFields(put.topic), { outcome: put.outcome });
   },
   async getTopic(c, p) { return topicFields(await c.getTopic(p.name)); },
   async listTopics(c, p) {
@@ -112,7 +118,7 @@ const operations = {
       ttl: nullable(p.ttl), maxDeliveries: nullable(p.maxDeliveries), maxMessageBytes: nullable(p.maxMessageBytes),
     }));
   },
-  async deleteTopic(c, p) { await c.deleteTopic(p.name); return {}; },
+  async deleteTopic(c, p) { await c.deleteTopic(p.name, { ifEmpty: flag(p.ifEmpty) === true }); return {}; },
 
   async publishText(c, p) {
     return publishFields(await c.publishText(p.topic, p.body, { groupId: p.groupId, deduplicationId: p.deduplicationId, fifo: flag(p.fifo) }));

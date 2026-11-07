@@ -69,6 +69,8 @@ class ApiReply:
     status: int
     body: bytes
     recovered: bool = False
+    #: The response carries `Taba-Topic-Recreated: true` (`PUT /topics/{topic}`).
+    recreated: bool = False
 
     @property
     def text(self) -> str:
@@ -288,7 +290,8 @@ class Transport:
             try:
                 status, headers, body = self._once(call, timeout, cancel)
                 if status < 400:
-                    return ApiReply(status, body)
+                    recreated = (headers.get("taba-topic-recreated") or "").strip().lower() == "true"
+                    return ApiReply(status, body, recreated=recreated)
                 if after_retryable and any(
                     s == status and c == _error_code_of(body) for s, c in call.recover
                 ):

@@ -34,6 +34,8 @@ fn every_code_has_the_documented_status() {
         ("topic.already-exists", 409),
         ("topic.wrong-type", 409),
         ("topic.read-only", 409),
+        ("topic.immutable-mismatch", 409),
+        ("topic.not-empty", 409),
         ("message.stale-receipt", 409),
         ("drain.conflict", 409),
         ("cluster.conflict", 409),

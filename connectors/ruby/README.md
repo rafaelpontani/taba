@@ -41,6 +41,10 @@ gem 'taba-client', git: 'https://github.com/rafaelpontani/taba.git', branch: 're
                    glob: 'connectors/ruby/*.gemspec'
 ```
 
+## Declaring a topic
+
+`create_or_update_topic(request, recreate: nil)` (`PUT /topics/{topic}`; the fields can also go as options) creates the topic or brings it to the declared state, and returns a `Taba::TopicPut` with `topic` and `outcome` (`created`, `updated` or `recreated`). What is left out goes back to the server default (a full replacement, unlike the update); another type, `fifo` or `volatile` is the error `409 topic.immutable-mismatch` unless `recreate` is `if-empty` (only when the queue and its dead-letter are empty, `409 topic.not-empty` otherwise) or `always` (drops the messages; new `id`). After a `503` the call is repeated like the others. `delete_topic(name, if_empty: true)` only removes a queue with no message. `create_topic` does not change (`409` when it exists). Details: [Create or update a topic](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#create-or-update-a-topic-put-topicstopic).
+
 ## Batches
 
 Many messages in one request, next to the single calls (optional): `publish_batch(topic, [Taba::BatchMessage.new(body, content_type: ...)])`, `ack_batch(topic, messages)` and `change_visibility_batch(topic, messages, seconds)` return one `BatchResult` per item (`ok?`, `status`, `id`, `error_code`). Each item is answered as its single call, in order, and an item that failed comes back with its `status` and error code instead of raising. The bodies go in base64, so any type fits. Details: [Messages in batch](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#messages-in-batch-post-messagesbatch-ack-and-visibility).
