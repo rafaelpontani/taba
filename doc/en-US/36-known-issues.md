@@ -3,8 +3,8 @@ title: Known issues
 summary: Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts.
 type: reference
 status: partial
-verified-on: 2026-11-05 @ 29af16e
-sources: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+verified-on: 2026-11-07 @ 4fbb808
+sources: [crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Known issues
@@ -35,6 +35,21 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## A batch test that counted the calls before the background commit
+
+**Status:** Fixed · **Found on:** 2026-11-07 · **Fixed on:** 2026-11-07
+
+- **Test:** `tests/batch.rs::a_batch_of_publications_goes_through_each_phase_in_one_call_per_node_and_group` (and, with the same pattern, `operations_waiting_for_the_same_node_travel_in_fewer_calls_than_operations` and `with_max_items_1_every_operation_goes_in_a_call_of_its_own`).
+- **Symptom:** in the arm64 server job of pull request #62, `batch.rs:436` failed with `362`: the test expected at least 400 register and commit calls between nodes for 100 publications. The other 9 tests of the file passed.
+- **Cause:** the test, not the batch. The coordinator answers when the quorum confirms the commit (the primary and one more node); the third node gets its commit in the background ([doc 10](10-publishing.md)). The test counted the calls of the in-memory network right after the answer, so on a slow runner some commits had not been sent yet.
+- **Fix:** the three tests wait (`eventually`, up to 30 s) until the expected number of calls has gone through before comparing it with the number of batches. What they prove stays the same. The server code did not change.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-07 | One failure on arm64 in #62. Tests fixed; 0 failures in 40 runs of the whole file (10 rounds of 4 processes) on Windows. |
 
 ## A second channel that is not closed first
 
