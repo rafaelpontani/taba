@@ -1,9 +1,9 @@
 ---
 title: Terraform and OpenTofu provider
-summary: The Taba provider for Terraform and OpenTofu (`rafaelpontani/taba`), in `connectors/terraform`: what it manages (queues, distributors, access tokens and four data sources), the provider configuration, how plan, drift and import work, `force_destroy`, the optional `create_or_update` (when to use it and its risks), the token secret in the state and its rotation, the retries while a node is down, how it is tested and published, and its limits.
+summary: "The Taba provider for Terraform and OpenTofu (`rafaelpontani/taba`), in `connectors/terraform`: what it manages (queues, distributors, access tokens and four data sources), the provider configuration, how plan, drift and import work, `force_destroy`, the optional `create_or_update` (when to use it and its risks), the token secret in the state and its rotation, the retries while a node is down, how it is tested and published, and its limits."
 type: guide
 status: partial
-verified-on: 2026-11-07 @ 4fbb808
+verified-on: 2026-11-07 @ 689495f
 sources: [connectors/terraform/internal/provider/provider.go, connectors/terraform/internal/provider/queue_resource.go, connectors/terraform/internal/provider/distributor_resource.go, connectors/terraform/internal/provider/token_resource.go, connectors/terraform/internal/provider/topic_data_sources.go, connectors/terraform/internal/provider/token_data_sources.go, connectors/terraform/internal/provider/common.go, connectors/terraform/internal/provider/planmodifiers.go, connectors/terraform/internal/provider/acceptance_test.go, connectors/terraform/scripts/test.sh, connectors/terraform/scripts/cluster.sh, connectors/terraform/scripts/package.go, connectors/terraform/scripts/verify-release.sh, connectors/terraform/scripts/mirror.sh, connectors/go/tokens.go, connectors/go/transport.go, .github/workflows/release.yml]
 ---
 
@@ -13,7 +13,7 @@ sources: [connectors/terraform/internal/provider/provider.go, connectors/terrafo
 
 The provider manages as code what is otherwise created with the client API or with `taba-cli`: **queues, distributors and access tokens**, with `plan`, drift detection, `import` and a controlled removal. It is a Go program in `connectors/terraform` (terraform-plugin-framework) that calls the client API through the Go connector (`connectors/go`), so it needs nothing on the node besides the client API. The same binary serves **Terraform** and **OpenTofu**, and the Pulumi provider will be generated from it.
 
-**Status.** The provider is done and tested (units, acceptance against a real node with Terraform and OpenTofu, a three-node run with a node down). The release pipeline packages it with every version, but publishing it on the registries waits for the maintainer to create the mirror repository, the signing key and the secrets ([Publication](#publication)). Until then the zips are in the GitHub Release of each version.
+**Status.** The provider is done and tested (units, acceptance against a real node with Terraform and OpenTofu, a three-node run with a node down). It is published on the [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba) as `rafaelpontani/taba` since `v0.3.8-rc.3`; the submission to the OpenTofu Registry (the provider and its signing key) was validated and waits for the review of the OpenTofu team ([Publication](#publication)). The zips of each version are also in its GitHub Release.
 
 ```hcl
 terraform {
@@ -177,6 +177,7 @@ The Terraform Registry and the OpenTofu Registry only read a public repository n
 
 1. `scripts/package.go` builds the 13 platforms (`-trimpath`, no cgo, zips with a fixed date: the same commit gives the same files), the `_manifest.json` (protocol 6.0) and the `_SHA256SUMS`. The zips go to the Taba GitHub Release of the version.
 2. Only when the variable `TERRAFORM_PROVIDER_REPO` exists, the `terraform-registry` job signs the `SHA256SUMS` (a detached binary `.sig`, with an **RSA** key: the Terraform Registry refuses ECC keys), runs `scripts/verify-release.sh` against the `taba:<version>` image (sums, signature, installation of the exact version from the files with Terraform and OpenTofu, apply, empty plan, destroy) and only then `scripts/mirror.sh`: the source of `connectors/terraform` with the Go connector in `go/`, a commit, the tag `v<version>` and a Release with the files (a pre-release for `-rc.N`).
+3. The registries read the mirror by themselves: the Terraform Registry through the namespace `rafaelpontani`, claimed in HCP Terraform (organization `taba`, Registry → Public namespaces), which holds the public key and a webhook on the mirror; the OpenTofu Registry through the entry of the provider and of the key in `opentofu/registry`. A new Release in the mirror is a new version in both, with no step by hand. `terraform init` checks the signature against that key (`self-signed, key ID 9CF9BC950E956E3F`).
 
 What the maintainer creates is listed in [27-ci-cd.md](27-ci-cd.md#terraform-provider).
 
