@@ -1,0 +1,96 @@
+{
+    "auto-aliasing": {
+        "resources": {
+            "taba_distributor": {
+                "current": "taba:index/distributor:Distributor",
+                "fields": {
+                    "prefixes": {
+                        "maxItemsOne": false
+                    }
+                }
+            },
+            "taba_queue": {
+                "current": "taba:index/queue:Queue"
+            },
+            "taba_token": {
+                "current": "taba:index/token:Token",
+                "fields": {
+                    "permissions": {
+                        "maxItemsOne": false
+                    },
+                    "topic_prefixes": {
+                        "maxItemsOne": false
+                    }
+                }
+            }
+        },
+        "datasources": {
+            "taba_token": {
+                "current": "taba:index/getToken:getToken",
+                "fields": {
+                    "permissions": {
+                        "maxItemsOne": false
+                    },
+                    "topic_prefixes": {
+                        "maxItemsOne": false
+                    }
+                }
+            },
+            "taba_tokens": {
+                "current": "taba:index/getTokens:getTokens",
+                "fields": {
+                    "ids": {
+                        "maxItemsOne": false
+                    },
+                    "tokens": {
+                        "maxItemsOne": false,
+                        "elem": {
+                            "fields": {
+                                "permissions": {
+                                    "maxItemsOne": false
+                                },
+                                "topic_prefixes": {
+                                    "maxItemsOne": false
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "taba_topic": {
+                "current": "taba:index/getTopic:getTopic",
+                "fields": {
+                    "prefixes": {
+                        "maxItemsOne": false
+                    }
+                }
+            },
+            "taba_topics": {
+                "current": "taba:index/getTopics:getTopics",
+                "fields": {
+                    "names": {
+                        "maxItemsOne": false
+                    },
+                    "topics": {
+                        "maxItemsOne": false,
+                        "elem": {
+                            "fields": {
+                                "prefixes": {
+                                    "maxItemsOne": false
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "auto-settings": {},
+    "default-resource-schema-fixups": {
+        "resources": {
+            "taba_distributor": {},
+            "taba_queue": {},
+            "taba_token": {}
+        }
+    }
+}

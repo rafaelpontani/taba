@@ -1,0 +1,3 @@
+name: taba
+description: A Pulumi resource provider for taba.
+language: python

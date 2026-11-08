@@ -1,0 +1,1041 @@
+{
+    "name": "taba",
+    "displayName": "Taba",
+    "description": "Queues, distributors and access tokens of the Taba messaging system.",
+    "keywords": [
+        "pulumi",
+        "taba",
+        "messaging",
+        "queue",
+        "category/infrastructure"
+    ],
+    "homepage": "https://github.com/rafaelpontani/taba",
+    "license": "Apache-2.0",
+    "attribution": "This Pulumi package is based on the [`taba` Terraform Provider](https://github.com/rafaelpontani/terraform-provider-taba).",
+    "repository": "https://github.com/rafaelpontani/pulumi-taba",
+    "pluginDownloadURL": "github://api.github.com/rafaelpontani/pulumi-taba",
+    "publisher": "rafaelpontani",
+    "meta": {
+        "moduleFormat": "(.*)(?:/[^/]*)"
+    },
+    "language": {
+        "csharp": {
+            "packageReferences": {
+                "Pulumi": "3.*"
+            },
+            "namespaces": {
+                "taba": "Pulumi"
+            },
+            "compatibility": "tfbridge20",
+            "rootNamespace": "Taba"
+        },
+        "go": {
+            "importBasePath": "github.com/rafaelpontani/pulumi-taba/sdk/go/taba",
+            "generateResourceContainerTypes": true,
+            "generateExtraInputTypes": true
+        },
+        "nodejs": {
+            "packageName": "@rafaelpontani/pulumi-taba",
+            "packageDescription": "Queues, distributors and access tokens of the Taba messaging system.",
+            "compatibility": "tfbridge20",
+            "disableUnionOutputTypes": true
+        },
+        "python": {
+            "packageName": "pulumi_taba",
+            "compatibility": "tfbridge20",
+            "pyproject": {
+                "enabled": true
+            }
+        }
+    },
+    "config": {
+        "variables": {
+            "caCertFile": {
+                "type": "string",
+                "description": "Path of a PEM file with a private certificate authority. Conflicts with \u003cspan pulumi-lang-nodejs=\"`caCertPem`\" pulumi-lang-dotnet=\"`CaCertPem`\" pulumi-lang-go=\"`caCertPem`\" pulumi-lang-python=\"`ca_cert_pem`\" pulumi-lang-yaml=\"`caCertPem`\" pulumi-lang-java=\"`caCertPem`\" pulumi-lang-hcl=\"`ca_cert_pem`\"\u003e`caCertPem`\u003c/span\u003e."
+            },
+            "caCertPem": {
+                "type": "string",
+                "description": "PEM of a private certificate authority that signs the API certificate. Conflicts with \u003cspan pulumi-lang-nodejs=\"`caCertFile`\" pulumi-lang-dotnet=\"`CaCertFile`\" pulumi-lang-go=\"`caCertFile`\" pulumi-lang-python=\"`ca_cert_file`\" pulumi-lang-yaml=\"`caCertFile`\" pulumi-lang-java=\"`caCertFile`\" pulumi-lang-hcl=\"`ca_cert_file`\"\u003e`caCertFile`\u003c/span\u003e. Default: the `TABA_CA_CERT` environment variable (a PEM or a file path)."
+            },
+            "createOrUpdate": {
+                "type": "boolean",
+                "description": "Default of the \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e attribute of every resource: when creating a queue, distributor or token that already exists in the cluster, take it over (and bring it to the declared configuration) instead of failing. Off by default, because it takes over in silence what may belong to another configuration. Default: the `TABA_CREATE_OR_UPDATE` environment variable (\u003cspan pulumi-lang-nodejs=\"`true`\" pulumi-lang-dotnet=\"`True`\" pulumi-lang-go=\"`true`\" pulumi-lang-python=\"`true`\" pulumi-lang-yaml=\"`true`\" pulumi-lang-java=\"`true`\" pulumi-lang-hcl=\"`true`\"\u003e`true`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e), or \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e."
+            },
+            "endpoint": {
+                "type": "string",
+                "description": "URL of the client API (the cluster load balancer), such as `https://taba.example.com:8080`. Default: the `TABA_URL` environment variable."
+            },
+            "requestTimeout": {
+                "type": "string",
+                "description": "Timeout of each call, as a Go duration (\u003cspan pulumi-lang-nodejs=\"`30s`\" pulumi-lang-dotnet=\"`30s`\" pulumi-lang-go=\"`30s`\" pulumi-lang-python=\"`30s`\" pulumi-lang-yaml=\"`30s`\" pulumi-lang-java=\"`30s`\" pulumi-lang-hcl=\"`30s`\"\u003e`30s`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`1m`\" pulumi-lang-dotnet=\"`1m`\" pulumi-lang-go=\"`1m`\" pulumi-lang-python=\"`1m`\" pulumi-lang-yaml=\"`1m`\" pulumi-lang-java=\"`1m`\" pulumi-lang-hcl=\"`1m`\"\u003e`1m`\u003c/span\u003e). Default: \u003cspan pulumi-lang-nodejs=\"`30s`\" pulumi-lang-dotnet=\"`30s`\" pulumi-lang-go=\"`30s`\" pulumi-lang-python=\"`30s`\" pulumi-lang-yaml=\"`30s`\" pulumi-lang-java=\"`30s`\" pulumi-lang-hcl=\"`30s`\"\u003e`30s`\u003c/span\u003e."
+            },
+            "retryMaxWait": {
+                "type": "string",
+                "description": "Total wait, as a Go duration (\u003cspan pulumi-lang-nodejs=\"`3m`\" pulumi-lang-dotnet=\"`3m`\" pulumi-lang-go=\"`3m`\" pulumi-lang-python=\"`3m`\" pulumi-lang-yaml=\"`3m`\" pulumi-lang-java=\"`3m`\" pulumi-lang-hcl=\"`3m`\"\u003e`3m`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`90s`\" pulumi-lang-dotnet=\"`90s`\" pulumi-lang-go=\"`90s`\" pulumi-lang-python=\"`90s`\" pulumi-lang-yaml=\"`90s`\" pulumi-lang-java=\"`90s`\" pulumi-lang-hcl=\"`90s`\"\u003e`90s`\u003c/span\u003e), between the attempts of a call that gets \u003cspan pulumi-lang-nodejs=\"`429`\" pulumi-lang-dotnet=\"`429`\" pulumi-lang-go=\"`429`\" pulumi-lang-python=\"`429`\" pulumi-lang-yaml=\"`429`\" pulumi-lang-java=\"`429`\" pulumi-lang-hcl=\"`429`\"\u003e`429`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`503`\" pulumi-lang-dotnet=\"`503`\" pulumi-lang-go=\"`503`\" pulumi-lang-python=\"`503`\" pulumi-lang-yaml=\"`503`\" pulumi-lang-java=\"`503`\" pulumi-lang-hcl=\"`503`\"\u003e`503`\u003c/span\u003e: each one waits for the `Retry-After` (5 s from a node of the cluster) or 1, 2, 4… up to 64 seconds, and no attempt is made whose wait would pass this total. A node that crashed answers for the definitions it owns until the others vote it out (about a minute). It also bounds the creations of a token that get `503 cluster.quorum-unavailable`, each one after revoking what the previous one may have created. \u003cspan pulumi-lang-nodejs=\"`0s`\" pulumi-lang-dotnet=\"`0s`\" pulumi-lang-go=\"`0s`\" pulumi-lang-python=\"`0s`\" pulumi-lang-yaml=\"`0s`\" pulumi-lang-java=\"`0s`\" pulumi-lang-hcl=\"`0s`\"\u003e`0s`\u003c/span\u003e: no new attempt. Default: \u003cspan pulumi-lang-nodejs=\"`3m`\" pulumi-lang-dotnet=\"`3m`\" pulumi-lang-go=\"`3m`\" pulumi-lang-python=\"`3m`\" pulumi-lang-yaml=\"`3m`\" pulumi-lang-java=\"`3m`\" pulumi-lang-hcl=\"`3m`\"\u003e`3m`\u003c/span\u003e."
+            },
+            "token": {
+                "type": "string",
+                "description": "Access token (`Authorization: Bearer`). Queues and distributors need \u003cspan pulumi-lang-nodejs=\"`create`\" pulumi-lang-dotnet=\"`Create`\" pulumi-lang-go=\"`create`\" pulumi-lang-python=\"`create`\" pulumi-lang-yaml=\"`create`\" pulumi-lang-java=\"`create`\" pulumi-lang-hcl=\"`create`\"\u003e`create`\u003c/span\u003e and \u003cspan pulumi-lang-nodejs=\"`manage`\" pulumi-lang-dotnet=\"`Manage`\" pulumi-lang-go=\"`manage`\" pulumi-lang-python=\"`manage`\" pulumi-lang-yaml=\"`manage`\" pulumi-lang-java=\"`manage`\" pulumi-lang-hcl=\"`manage`\"\u003e`manage`\u003c/span\u003e within their prefixes; tokens need the root token (or an \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e one for tokens that are not \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e). Default: the `TABA_TOKEN` environment variable. Without it, the calls go without authentication.",
+                "secret": true
+            }
+        }
+    },
+    "types": {
+        "taba:index/getTokensToken:getTokensToken": {
+            "properties": {
+                "createdAt": {
+                    "type": "string",
+                    "description": "Creation date (RFC 3339).\n"
+                },
+                "expiresAt": {
+                    "type": "string",
+                    "description": "Deadline (RFC 3339), or null when the token does not expire.\n"
+                },
+                "id": {
+                    "type": "string",
+                    "description": "Identifier of the token.\n"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Name (not unique).\n"
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Permissions.\n"
+                },
+                "topicPrefixes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Prefixes the token is limited to (empty: every topic).\n"
+                }
+            },
+            "type": "object",
+            "required": [
+                "createdAt",
+                "expiresAt",
+                "id",
+                "name",
+                "permissions",
+                "topicPrefixes"
+            ],
+            "language": {
+                "nodejs": {
+                    "requiredInputs": []
+                }
+            }
+        },
+        "taba:index/getTopicsTopic:getTopicsTopic": {
+            "properties": {
+                "createdAt": {
+                    "type": "string",
+                    "description": "Creation date (RFC 3339).\n"
+                },
+                "deadLetter": {
+                    "type": "boolean",
+                    "description": "True on a dead-letter queue.\n"
+                },
+                "effectiveMaxDeliveries": {
+                    "type": "integer",
+                    "description": "The\u003cspan pulumi-lang-nodejs=\" maxDeliveries \" pulumi-lang-dotnet=\" MaxDeliveries \" pulumi-lang-go=\" maxDeliveries \" pulumi-lang-python=\" max_deliveries \" pulumi-lang-yaml=\" maxDeliveries \" pulumi-lang-java=\" maxDeliveries \" pulumi-lang-hcl=\" max_deliveries \"\u003e maxDeliveries \u003c/span\u003ein force.\n"
+                },
+                "effectiveMaxMessageBytes": {
+                    "type": "integer",
+                    "description": "The max*message*bytes in force.\n"
+                },
+                "effectiveTtl": {
+                    "type": "integer",
+                    "description": "The ttl in force.\n"
+                },
+                "fifo": {
+                    "type": "boolean",
+                    "description": "FIFO queue.\n"
+                },
+                "id": {
+                    "type": "string",
+                    "description": "Identifier of the topic.\n"
+                },
+                "idleTimeout": {
+                    "type": "integer",
+                    "description": "Volatile queue only: seconds without a consumer until removal.\n"
+                },
+                "maxDeliveries": {
+                    "type": "integer",
+                    "description": "Declared deliveries before the dead-letter (null: the node default).\n"
+                },
+                "maxMessageBytes": {
+                    "type": "integer",
+                    "description": "Declared maximum message size (null: the node default).\n"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Name of the topic.\n"
+                },
+                "prefixes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Distributor only: the destination prefixes (null on a queue).\n"
+                },
+                "source": {
+                    "type": "string",
+                    "description": "Dead-letter queue only: the queue it belongs to.\n"
+                },
+                "tags": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "description": "Telemetry tags.\n"
+                },
+                "ttl": {
+                    "type": "integer",
+                    "description": "Declared message lifetime, in seconds (null: the node default).\n"
+                },
+                "type": {
+                    "type": "string",
+                    "description": "\u003cspan pulumi-lang-nodejs=\"`queue`\" pulumi-lang-dotnet=\"`Queue`\" pulumi-lang-go=\"`queue`\" pulumi-lang-python=\"`queue`\" pulumi-lang-yaml=\"`queue`\" pulumi-lang-java=\"`queue`\" pulumi-lang-hcl=\"`queue`\"\u003e`queue`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`distributor`\" pulumi-lang-dotnet=\"`Distributor`\" pulumi-lang-go=\"`distributor`\" pulumi-lang-python=\"`distributor`\" pulumi-lang-yaml=\"`distributor`\" pulumi-lang-java=\"`distributor`\" pulumi-lang-hcl=\"`distributor`\"\u003e`distributor`\u003c/span\u003e.\n"
+                },
+                "volatile": {
+                    "type": "boolean",
+                    "description": "Volatile queue.\n"
+                }
+            },
+            "type": "object",
+            "required": [
+                "createdAt",
+                "deadLetter",
+                "effectiveMaxDeliveries",
+                "effectiveMaxMessageBytes",
+                "effectiveTtl",
+                "fifo",
+                "id",
+                "idleTimeout",
+                "maxDeliveries",
+                "maxMessageBytes",
+                "name",
+                "prefixes",
+                "source",
+                "tags",
+                "ttl",
+                "type",
+                "volatile"
+            ],
+            "language": {
+                "nodejs": {
+                    "requiredInputs": []
+                }
+            }
+        }
+    },
+    "provider": {
+        "description": "The provider type for the taba package. By default, resources use package-wide configuration\nsettings, however an explicit `Provider` instance may be created and passed during resource\nconstruction to achieve fine-grained programmatic control over provider settings. See the\n[documentation](https://www.pulumi.com/docs/reference/programming-model/#providers) for more information.\n",
+        "properties": {
+            "caCertFile": {
+                "type": "string",
+                "description": "Path of a PEM file with a private certificate authority. Conflicts with \u003cspan pulumi-lang-nodejs=\"`caCertPem`\" pulumi-lang-dotnet=\"`CaCertPem`\" pulumi-lang-go=\"`caCertPem`\" pulumi-lang-python=\"`ca_cert_pem`\" pulumi-lang-yaml=\"`caCertPem`\" pulumi-lang-java=\"`caCertPem`\" pulumi-lang-hcl=\"`ca_cert_pem`\"\u003e`caCertPem`\u003c/span\u003e."
+            },
+            "caCertPem": {
+                "type": "string",
+                "description": "PEM of a private certificate authority that signs the API certificate. Conflicts with \u003cspan pulumi-lang-nodejs=\"`caCertFile`\" pulumi-lang-dotnet=\"`CaCertFile`\" pulumi-lang-go=\"`caCertFile`\" pulumi-lang-python=\"`ca_cert_file`\" pulumi-lang-yaml=\"`caCertFile`\" pulumi-lang-java=\"`caCertFile`\" pulumi-lang-hcl=\"`ca_cert_file`\"\u003e`caCertFile`\u003c/span\u003e. Default: the `TABA_CA_CERT` environment variable (a PEM or a file path)."
+            },
+            "createOrUpdate": {
+                "type": "boolean",
+                "description": "Default of the \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e attribute of every resource: when creating a queue, distributor or token that already exists in the cluster, take it over (and bring it to the declared configuration) instead of failing. Off by default, because it takes over in silence what may belong to another configuration. Default: the `TABA_CREATE_OR_UPDATE` environment variable (\u003cspan pulumi-lang-nodejs=\"`true`\" pulumi-lang-dotnet=\"`True`\" pulumi-lang-go=\"`true`\" pulumi-lang-python=\"`true`\" pulumi-lang-yaml=\"`true`\" pulumi-lang-java=\"`true`\" pulumi-lang-hcl=\"`true`\"\u003e`true`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e), or \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e."
+            },
+            "endpoint": {
+                "type": "string",
+                "description": "URL of the client API (the cluster load balancer), such as `https://taba.example.com:8080`. Default: the `TABA_URL` environment variable."
+            },
+            "requestTimeout": {
+                "type": "string",
+                "description": "Timeout of each call, as a Go duration (\u003cspan pulumi-lang-nodejs=\"`30s`\" pulumi-lang-dotnet=\"`30s`\" pulumi-lang-go=\"`30s`\" pulumi-lang-python=\"`30s`\" pulumi-lang-yaml=\"`30s`\" pulumi-lang-java=\"`30s`\" pulumi-lang-hcl=\"`30s`\"\u003e`30s`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`1m`\" pulumi-lang-dotnet=\"`1m`\" pulumi-lang-go=\"`1m`\" pulumi-lang-python=\"`1m`\" pulumi-lang-yaml=\"`1m`\" pulumi-lang-java=\"`1m`\" pulumi-lang-hcl=\"`1m`\"\u003e`1m`\u003c/span\u003e). Default: \u003cspan pulumi-lang-nodejs=\"`30s`\" pulumi-lang-dotnet=\"`30s`\" pulumi-lang-go=\"`30s`\" pulumi-lang-python=\"`30s`\" pulumi-lang-yaml=\"`30s`\" pulumi-lang-java=\"`30s`\" pulumi-lang-hcl=\"`30s`\"\u003e`30s`\u003c/span\u003e."
+            },
+            "retryMaxWait": {
+                "type": "string",
+                "description": "Total wait, as a Go duration (\u003cspan pulumi-lang-nodejs=\"`3m`\" pulumi-lang-dotnet=\"`3m`\" pulumi-lang-go=\"`3m`\" pulumi-lang-python=\"`3m`\" pulumi-lang-yaml=\"`3m`\" pulumi-lang-java=\"`3m`\" pulumi-lang-hcl=\"`3m`\"\u003e`3m`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`90s`\" pulumi-lang-dotnet=\"`90s`\" pulumi-lang-go=\"`90s`\" pulumi-lang-python=\"`90s`\" pulumi-lang-yaml=\"`90s`\" pulumi-lang-java=\"`90s`\" pulumi-lang-hcl=\"`90s`\"\u003e`90s`\u003c/span\u003e), between the attempts of a call that gets \u003cspan pulumi-lang-nodejs=\"`429`\" pulumi-lang-dotnet=\"`429`\" pulumi-lang-go=\"`429`\" pulumi-lang-python=\"`429`\" pulumi-lang-yaml=\"`429`\" pulumi-lang-java=\"`429`\" pulumi-lang-hcl=\"`429`\"\u003e`429`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`503`\" pulumi-lang-dotnet=\"`503`\" pulumi-lang-go=\"`503`\" pulumi-lang-python=\"`503`\" pulumi-lang-yaml=\"`503`\" pulumi-lang-java=\"`503`\" pulumi-lang-hcl=\"`503`\"\u003e`503`\u003c/span\u003e: each one waits for the `Retry-After` (5 s from a node of the cluster) or 1, 2, 4… up to 64 seconds, and no attempt is made whose wait would pass this total. A node that crashed answers for the definitions it owns until the others vote it out (about a minute). It also bounds the creations of a token that get `503 cluster.quorum-unavailable`, each one after revoking what the previous one may have created. \u003cspan pulumi-lang-nodejs=\"`0s`\" pulumi-lang-dotnet=\"`0s`\" pulumi-lang-go=\"`0s`\" pulumi-lang-python=\"`0s`\" pulumi-lang-yaml=\"`0s`\" pulumi-lang-java=\"`0s`\" pulumi-lang-hcl=\"`0s`\"\u003e`0s`\u003c/span\u003e: no new attempt. Default: \u003cspan pulumi-lang-nodejs=\"`3m`\" pulumi-lang-dotnet=\"`3m`\" pulumi-lang-go=\"`3m`\" pulumi-lang-python=\"`3m`\" pulumi-lang-yaml=\"`3m`\" pulumi-lang-java=\"`3m`\" pulumi-lang-hcl=\"`3m`\"\u003e`3m`\u003c/span\u003e."
+            },
+            "token": {
+                "type": "string",
+                "description": "Access token (`Authorization: Bearer`). Queues and distributors need \u003cspan pulumi-lang-nodejs=\"`create`\" pulumi-lang-dotnet=\"`Create`\" pulumi-lang-go=\"`create`\" pulumi-lang-python=\"`create`\" pulumi-lang-yaml=\"`create`\" pulumi-lang-java=\"`create`\" pulumi-lang-hcl=\"`create`\"\u003e`create`\u003c/span\u003e and \u003cspan pulumi-lang-nodejs=\"`manage`\" pulumi-lang-dotnet=\"`Manage`\" pulumi-lang-go=\"`manage`\" pulumi-lang-python=\"`manage`\" pulumi-lang-yaml=\"`manage`\" pulumi-lang-java=\"`manage`\" pulumi-lang-hcl=\"`manage`\"\u003e`manage`\u003c/span\u003e within their prefixes; tokens need the root token (or an \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e one for tokens that are not \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e). Default: the `TABA_TOKEN` environment variable. Without it, the calls go without authentication.",
+                "secret": true
+            }
+        },
+        "inputProperties": {
+            "caCertFile": {
+                "type": "string",
+                "description": "Path of a PEM file with a private certificate authority. Conflicts with \u003cspan pulumi-lang-nodejs=\"`caCertPem`\" pulumi-lang-dotnet=\"`CaCertPem`\" pulumi-lang-go=\"`caCertPem`\" pulumi-lang-python=\"`ca_cert_pem`\" pulumi-lang-yaml=\"`caCertPem`\" pulumi-lang-java=\"`caCertPem`\" pulumi-lang-hcl=\"`ca_cert_pem`\"\u003e`caCertPem`\u003c/span\u003e."
+            },
+            "caCertPem": {
+                "type": "string",
+                "description": "PEM of a private certificate authority that signs the API certificate. Conflicts with \u003cspan pulumi-lang-nodejs=\"`caCertFile`\" pulumi-lang-dotnet=\"`CaCertFile`\" pulumi-lang-go=\"`caCertFile`\" pulumi-lang-python=\"`ca_cert_file`\" pulumi-lang-yaml=\"`caCertFile`\" pulumi-lang-java=\"`caCertFile`\" pulumi-lang-hcl=\"`ca_cert_file`\"\u003e`caCertFile`\u003c/span\u003e. Default: the `TABA_CA_CERT` environment variable (a PEM or a file path)."
+            },
+            "createOrUpdate": {
+                "type": "boolean",
+                "description": "Default of the \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e attribute of every resource: when creating a queue, distributor or token that already exists in the cluster, take it over (and bring it to the declared configuration) instead of failing. Off by default, because it takes over in silence what may belong to another configuration. Default: the `TABA_CREATE_OR_UPDATE` environment variable (\u003cspan pulumi-lang-nodejs=\"`true`\" pulumi-lang-dotnet=\"`True`\" pulumi-lang-go=\"`true`\" pulumi-lang-python=\"`true`\" pulumi-lang-yaml=\"`true`\" pulumi-lang-java=\"`true`\" pulumi-lang-hcl=\"`true`\"\u003e`true`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e), or \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e."
+            },
+            "endpoint": {
+                "type": "string",
+                "description": "URL of the client API (the cluster load balancer), such as `https://taba.example.com:8080`. Default: the `TABA_URL` environment variable."
+            },
+            "requestTimeout": {
+                "type": "string",
+                "description": "Timeout of each call, as a Go duration (\u003cspan pulumi-lang-nodejs=\"`30s`\" pulumi-lang-dotnet=\"`30s`\" pulumi-lang-go=\"`30s`\" pulumi-lang-python=\"`30s`\" pulumi-lang-yaml=\"`30s`\" pulumi-lang-java=\"`30s`\" pulumi-lang-hcl=\"`30s`\"\u003e`30s`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`1m`\" pulumi-lang-dotnet=\"`1m`\" pulumi-lang-go=\"`1m`\" pulumi-lang-python=\"`1m`\" pulumi-lang-yaml=\"`1m`\" pulumi-lang-java=\"`1m`\" pulumi-lang-hcl=\"`1m`\"\u003e`1m`\u003c/span\u003e). Default: \u003cspan pulumi-lang-nodejs=\"`30s`\" pulumi-lang-dotnet=\"`30s`\" pulumi-lang-go=\"`30s`\" pulumi-lang-python=\"`30s`\" pulumi-lang-yaml=\"`30s`\" pulumi-lang-java=\"`30s`\" pulumi-lang-hcl=\"`30s`\"\u003e`30s`\u003c/span\u003e."
+            },
+            "retryMaxWait": {
+                "type": "string",
+                "description": "Total wait, as a Go duration (\u003cspan pulumi-lang-nodejs=\"`3m`\" pulumi-lang-dotnet=\"`3m`\" pulumi-lang-go=\"`3m`\" pulumi-lang-python=\"`3m`\" pulumi-lang-yaml=\"`3m`\" pulumi-lang-java=\"`3m`\" pulumi-lang-hcl=\"`3m`\"\u003e`3m`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`90s`\" pulumi-lang-dotnet=\"`90s`\" pulumi-lang-go=\"`90s`\" pulumi-lang-python=\"`90s`\" pulumi-lang-yaml=\"`90s`\" pulumi-lang-java=\"`90s`\" pulumi-lang-hcl=\"`90s`\"\u003e`90s`\u003c/span\u003e), between the attempts of a call that gets \u003cspan pulumi-lang-nodejs=\"`429`\" pulumi-lang-dotnet=\"`429`\" pulumi-lang-go=\"`429`\" pulumi-lang-python=\"`429`\" pulumi-lang-yaml=\"`429`\" pulumi-lang-java=\"`429`\" pulumi-lang-hcl=\"`429`\"\u003e`429`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`503`\" pulumi-lang-dotnet=\"`503`\" pulumi-lang-go=\"`503`\" pulumi-lang-python=\"`503`\" pulumi-lang-yaml=\"`503`\" pulumi-lang-java=\"`503`\" pulumi-lang-hcl=\"`503`\"\u003e`503`\u003c/span\u003e: each one waits for the `Retry-After` (5 s from a node of the cluster) or 1, 2, 4… up to 64 seconds, and no attempt is made whose wait would pass this total. A node that crashed answers for the definitions it owns until the others vote it out (about a minute). It also bounds the creations of a token that get `503 cluster.quorum-unavailable`, each one after revoking what the previous one may have created. \u003cspan pulumi-lang-nodejs=\"`0s`\" pulumi-lang-dotnet=\"`0s`\" pulumi-lang-go=\"`0s`\" pulumi-lang-python=\"`0s`\" pulumi-lang-yaml=\"`0s`\" pulumi-lang-java=\"`0s`\" pulumi-lang-hcl=\"`0s`\"\u003e`0s`\u003c/span\u003e: no new attempt. Default: \u003cspan pulumi-lang-nodejs=\"`3m`\" pulumi-lang-dotnet=\"`3m`\" pulumi-lang-go=\"`3m`\" pulumi-lang-python=\"`3m`\" pulumi-lang-yaml=\"`3m`\" pulumi-lang-java=\"`3m`\" pulumi-lang-hcl=\"`3m`\"\u003e`3m`\u003c/span\u003e."
+            },
+            "token": {
+                "type": "string",
+                "description": "Access token (`Authorization: Bearer`). Queues and distributors need \u003cspan pulumi-lang-nodejs=\"`create`\" pulumi-lang-dotnet=\"`Create`\" pulumi-lang-go=\"`create`\" pulumi-lang-python=\"`create`\" pulumi-lang-yaml=\"`create`\" pulumi-lang-java=\"`create`\" pulumi-lang-hcl=\"`create`\"\u003e`create`\u003c/span\u003e and \u003cspan pulumi-lang-nodejs=\"`manage`\" pulumi-lang-dotnet=\"`Manage`\" pulumi-lang-go=\"`manage`\" pulumi-lang-python=\"`manage`\" pulumi-lang-yaml=\"`manage`\" pulumi-lang-java=\"`manage`\" pulumi-lang-hcl=\"`manage`\"\u003e`manage`\u003c/span\u003e within their prefixes; tokens need the root token (or an \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e one for tokens that are not \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e). Default: the `TABA_TOKEN` environment variable. Without it, the calls go without authentication.",
+                "secret": true
+            }
+        },
+        "methods": {
+            "terraformConfig": "pulumi:providers:taba/terraformConfig"
+        }
+    },
+    "resources": {
+        "taba:index/distributor:Distributor": {
+            "description": "A distributor: each publication to it is copied to every queue whose name starts with one of the \u003cspan pulumi-lang-nodejs=\"`prefixes`\" pulumi-lang-dotnet=\"`Prefixes`\" pulumi-lang-go=\"`prefixes`\" pulumi-lang-python=\"`prefixes`\" pulumi-lang-yaml=\"`prefixes`\" pulumi-lang-java=\"`prefixes`\" pulumi-lang-hcl=\"`prefixes`\"\u003e`prefixes`\u003c/span\u003e. It holds no messages.\n\n## Example Usage\n\n\u003c!--Start PulumiCodeChooser --\u003e\n```typescript\nimport * as pulumi from \"@pulumi/pulumi\";\nimport * as taba from \"@rafaelpontani/pulumi-taba\";\n\n// Each publication to \"order-events\" is copied to every queue whose name starts with \"orders-\" or \"audit-\".\nconst orderEvents = new taba.Distributor(\"order_events\", {\n    name: \"order-events\",\n    prefixes: [\n        \"orders-\",\n        \"audit-\",\n    ],\n});\n```\n```python\nimport pulumi\nimport pulumi_taba as taba\n\n# Each publication to \"order-events\" is copied to every queue whose name starts with \"orders-\" or \"audit-\".\norder_events = taba.Distributor(\"order_events\",\n    name=\"order-events\",\n    prefixes=[\n        \"orders-\",\n        \"audit-\",\n    ])\n```\n```csharp\nusing System.Collections.Generic;\nusing System.Linq;\nusing Pulumi;\nusing Pulumi = Taba.Pulumi;\n\nreturn await Deployment.RunAsync(() =\u003e \n{\n    // Each publication to \"order-events\" is copied to every queue whose name starts with \"orders-\" or \"audit-\".\n    var orderEvents = new Pulumi.Distributor(\"order_events\", new()\n    {\n        Name = \"order-events\",\n        Prefixes = new[]\n        {\n            \"orders-\",\n            \"audit-\",\n        },\n    });\n\n});\n```\n```go\npackage main\n\nimport (\n\t\"github.com/pulumi/pulumi/sdk/v3/go/pulumi\"\n\t\"github.com/rafaelpontani/pulumi-taba/sdk/go/taba\"\n)\n\nfunc main() {\n\tpulumi.Run(func(ctx *pulumi.Context) error {\n\t\t// Each publication to \"order-events\" is copied to every queue whose name starts with \"orders-\" or \"audit-\".\n\t\t_, err := taba.NewDistributor(ctx, \"order_events\", \u0026taba.DistributorArgs{\n\t\t\tName: pulumi.String(\"order-events\"),\n\t\t\tPrefixes: pulumi.StringArray{\n\t\t\t\tpulumi.String(\"orders-\"),\n\t\t\t\tpulumi.String(\"audit-\"),\n\t\t\t},\n\t\t})\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\treturn nil\n\t})\n}\n```\n```hcl\nterraform {\n  required_providers {\n    taba = {\n      source = \"pulumi/taba\"\n    }\n  }\n}\n\n# Each publication to \"order-events\" is copied to every queue whose name starts with \"orders-\" or \"audit-\".\nresource \"taba_distributor\" \"order_events\" {\n  lifecycle {\n    create_before_destroy = true\n  }\n  name     = \"order-events\"\n  prefixes = [\"orders-\", \"audit-\"]\n}\n```\n```java\npackage generated_program;\n\nimport com.pulumi.Context;\nimport com.pulumi.Pulumi;\nimport com.pulumi.core.Output;\nimport com.pulumi.taba.Distributor;\nimport com.pulumi.taba.DistributorArgs;\nimport java.util.ArrayList;\nimport java.util.Arrays;\nimport java.util.Map;\nimport java.io.File;\nimport java.nio.file.Files;\nimport java.nio.file.Paths;\n\npublic class App {\n    public static void main(String[] args) {\n        Pulumi.run(App::stack);\n    }\n\n    public static void stack(Context ctx) {\n        // Each publication to \"order-events\" is copied to every queue whose name starts with \"orders-\" or \"audit-\".\n        var orderEvents = new Distributor(\"orderEvents\", DistributorArgs.builder()\n            .name(\"order-events\")\n            .prefixes(            \n                \"orders-\",\n                \"audit-\")\n            .build());\n\n    }\n}\n```\n```yaml\nresources:\n  # Each publication to \"order-events\" is copied to every queue whose name starts with \"orders-\" or \"audit-\".\n  orderEvents:\n    type: taba:Distributor\n    name: order_events\n    properties:\n      name: order-events\n      prefixes:\n        - orders-\n        - audit-\n```\n\u003c!--End PulumiCodeChooser --\u003e\n\n## Import\n\nThe `pulumi import` command can be used, for example:\n\nA distributor is imported by its name.\n\n```sh\n$ pulumi import taba:index/distributor:Distributor order_events order-events\n```\n\n",
+            "properties": {
+                "createOrUpdate": {
+                    "type": "boolean",
+                    "description": "When creating, take over a topic with this name that already exists instead of failing: it gets the declared \u003cspan pulumi-lang-nodejs=\"`prefixes`\" pulumi-lang-dotnet=\"`Prefixes`\" pulumi-lang-go=\"`prefixes`\" pulumi-lang-python=\"`prefixes`\" pulumi-lang-yaml=\"`prefixes`\" pulumi-lang-java=\"`prefixes`\" pulumi-lang-hcl=\"`prefixes`\"\u003e`prefixes`\u003c/span\u003e and \u003cspan pulumi-lang-nodejs=\"`tags`\" pulumi-lang-dotnet=\"`Tags`\" pulumi-lang-go=\"`tags`\" pulumi-lang-python=\"`tags`\" pulumi-lang-yaml=\"`tags`\" pulumi-lang-java=\"`tags`\" pulumi-lang-hcl=\"`tags`\"\u003e`tags`\u003c/span\u003e. A queue with this name is recreated as a distributor only if it holds no message; otherwise nothing changes and the creation fails. Not set: the provider \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e (default \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e). It is only used when the resource is created; afterwards the resource belongs to this state like any other, and a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e removes it.\n"
+                },
+                "createdAt": {
+                    "type": "string",
+                    "description": "Creation date (RFC 3339).\n"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Name: 1 to 100 characters `A-Za-z0-9_-`, case-sensitive, not ending in `-dead-letter`. Changing it replaces the distributor.\n"
+                },
+                "prefixes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Name prefixes of the queues each publication is copied to (1 to 20, of 1 to 100 characters `A-Za-z0-9_-`). A change applies to the publications after it.\n"
+                },
+                "tags": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "description": "Telemetry tags (up to 20; key of 1 to 64 and value of 0 to 128 characters `A-Za-z0-9_-.:`). They do not affect behaviour. Default: none.\n"
+                }
+            },
+            "required": [
+                "createdAt",
+                "name",
+                "prefixes",
+                "tags"
+            ],
+            "inputProperties": {
+                "createOrUpdate": {
+                    "type": "boolean",
+                    "description": "When creating, take over a topic with this name that already exists instead of failing: it gets the declared \u003cspan pulumi-lang-nodejs=\"`prefixes`\" pulumi-lang-dotnet=\"`Prefixes`\" pulumi-lang-go=\"`prefixes`\" pulumi-lang-python=\"`prefixes`\" pulumi-lang-yaml=\"`prefixes`\" pulumi-lang-java=\"`prefixes`\" pulumi-lang-hcl=\"`prefixes`\"\u003e`prefixes`\u003c/span\u003e and \u003cspan pulumi-lang-nodejs=\"`tags`\" pulumi-lang-dotnet=\"`Tags`\" pulumi-lang-go=\"`tags`\" pulumi-lang-python=\"`tags`\" pulumi-lang-yaml=\"`tags`\" pulumi-lang-java=\"`tags`\" pulumi-lang-hcl=\"`tags`\"\u003e`tags`\u003c/span\u003e. A queue with this name is recreated as a distributor only if it holds no message; otherwise nothing changes and the creation fails. Not set: the provider \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e (default \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e). It is only used when the resource is created; afterwards the resource belongs to this state like any other, and a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e removes it.\n"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Name: 1 to 100 characters `A-Za-z0-9_-`, case-sensitive, not ending in `-dead-letter`. Changing it replaces the distributor.\n"
+                },
+                "prefixes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Name prefixes of the queues each publication is copied to (1 to 20, of 1 to 100 characters `A-Za-z0-9_-`). A change applies to the publications after it.\n"
+                },
+                "tags": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "description": "Telemetry tags (up to 20; key of 1 to 64 and value of 0 to 128 characters `A-Za-z0-9_-.:`). They do not affect behaviour. Default: none.\n"
+                }
+            },
+            "requiredInputs": [
+                "name",
+                "prefixes"
+            ],
+            "stateInputs": {
+                "description": "Input properties used for looking up and filtering Distributor resources.\n",
+                "properties": {
+                    "createOrUpdate": {
+                        "type": "boolean",
+                        "description": "When creating, take over a topic with this name that already exists instead of failing: it gets the declared \u003cspan pulumi-lang-nodejs=\"`prefixes`\" pulumi-lang-dotnet=\"`Prefixes`\" pulumi-lang-go=\"`prefixes`\" pulumi-lang-python=\"`prefixes`\" pulumi-lang-yaml=\"`prefixes`\" pulumi-lang-java=\"`prefixes`\" pulumi-lang-hcl=\"`prefixes`\"\u003e`prefixes`\u003c/span\u003e and \u003cspan pulumi-lang-nodejs=\"`tags`\" pulumi-lang-dotnet=\"`Tags`\" pulumi-lang-go=\"`tags`\" pulumi-lang-python=\"`tags`\" pulumi-lang-yaml=\"`tags`\" pulumi-lang-java=\"`tags`\" pulumi-lang-hcl=\"`tags`\"\u003e`tags`\u003c/span\u003e. A queue with this name is recreated as a distributor only if it holds no message; otherwise nothing changes and the creation fails. Not set: the provider \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e (default \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e). It is only used when the resource is created; afterwards the resource belongs to this state like any other, and a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e removes it.\n"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "description": "Creation date (RFC 3339).\n"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name: 1 to 100 characters `A-Za-z0-9_-`, case-sensitive, not ending in `-dead-letter`. Changing it replaces the distributor.\n"
+                    },
+                    "prefixes": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Name prefixes of the queues each publication is copied to (1 to 20, of 1 to 100 characters `A-Za-z0-9_-`). A change applies to the publications after it.\n"
+                    },
+                    "tags": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "description": "Telemetry tags (up to 20; key of 1 to 64 and value of 0 to 128 characters `A-Za-z0-9_-.:`). They do not affect behaviour. Default: none.\n"
+                    }
+                },
+                "type": "object"
+            }
+        },
+        "taba:index/queue:Queue": {
+            "description": "A queue. Every queue gets a dead-letter queue (\u003cspan pulumi-lang-nodejs=\"`deadLetterName`\" pulumi-lang-dotnet=\"`DeadLetterName`\" pulumi-lang-go=\"`deadLetterName`\" pulumi-lang-python=\"`dead_letter_name`\" pulumi-lang-yaml=\"`deadLetterName`\" pulumi-lang-java=\"`deadLetterName`\" pulumi-lang-hcl=\"`dead_letter_name`\"\u003e`deadLetterName`\u003c/span\u003e), created and removed with it.\n\nChanging \u003cspan pulumi-lang-nodejs=\"`name`\" pulumi-lang-dotnet=\"`Name`\" pulumi-lang-go=\"`name`\" pulumi-lang-python=\"`name`\" pulumi-lang-yaml=\"`name`\" pulumi-lang-java=\"`name`\" pulumi-lang-hcl=\"`name`\"\u003e`name`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`fifo`\" pulumi-lang-dotnet=\"`Fifo`\" pulumi-lang-go=\"`fifo`\" pulumi-lang-python=\"`fifo`\" pulumi-lang-yaml=\"`fifo`\" pulumi-lang-java=\"`fifo`\" pulumi-lang-hcl=\"`fifo`\"\u003e`fifo`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`volatile`\" pulumi-lang-dotnet=\"`Volatile`\" pulumi-lang-go=\"`volatile`\" pulumi-lang-python=\"`volatile`\" pulumi-lang-yaml=\"`volatile`\" pulumi-lang-java=\"`volatile`\" pulumi-lang-hcl=\"`volatile`\"\u003e`volatile`\u003c/span\u003e replaces the queue, and removing a queue removes its messages: unless \u003cspan pulumi-lang-nodejs=\"`forceDestroy`\" pulumi-lang-dotnet=\"`ForceDestroy`\" pulumi-lang-go=\"`forceDestroy`\" pulumi-lang-python=\"`force_destroy`\" pulumi-lang-yaml=\"`forceDestroy`\" pulumi-lang-java=\"`forceDestroy`\" pulumi-lang-hcl=\"`force_destroy`\"\u003e`forceDestroy`\u003c/span\u003e is \u003cspan pulumi-lang-nodejs=\"`true`\" pulumi-lang-dotnet=\"`True`\" pulumi-lang-go=\"`true`\" pulumi-lang-python=\"`true`\" pulumi-lang-yaml=\"`true`\" pulumi-lang-java=\"`true`\" pulumi-lang-hcl=\"`true`\"\u003e`true`\u003c/span\u003e, the removal (\u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e, or the replacement) is refused while the queue or its dead-letter holds a message.\n\n## Example Usage\n\n\u003c!--Start PulumiCodeChooser --\u003e\n```typescript\nimport * as pulumi from \"@pulumi/pulumi\";\nimport * as taba from \"@rafaelpontani/pulumi-taba\";\n\n// A durable queue: what is not declared follows the node default (see the effective_* attributes).\nconst orders = new taba.Queue(\"orders\", {\n    name: \"orders\",\n    ttl: 86400,\n    maxDeliveries: 5,\n    tags: {\n        team: \"billing\",\n    },\n});\n// A FIFO queue (the cluster needs replication.factor of 2 or more).\nconst payments = new taba.Queue(\"payments\", {\n    name: \"payments\",\n    fifo: true,\n});\n// A volatile queue, removed after 15 minutes without a consumer. force_destroy lets a destroy remove it with\n// messages in it.\nconst notifications = new taba.Queue(\"notifications\", {\n    name: \"notifications\",\n    volatile: true,\n    idleTimeout: 900,\n    forceDestroy: true,\n});\n// A queue that may already exist (created by an application at startup, say): it is taken over and gets the\n// declared configuration instead of failing the creation. From then on it belongs to this state, and a destroy\n// removes it.\nconst events = new taba.Queue(\"events\", {\n    name: \"events\",\n    ttl: 3600,\n    createOrUpdate: true,\n});\n```\n```python\nimport pulumi\nimport pulumi_taba as taba\n\n# A durable queue: what is not declared follows the node default (see the effective_* attributes).\norders = taba.Queue(\"orders\",\n    name=\"orders\",\n    ttl=86400,\n    max_deliveries=5,\n    tags={\n        \"team\": \"billing\",\n    })\n# A FIFO queue (the cluster needs replication.factor of 2 or more).\npayments = taba.Queue(\"payments\",\n    name=\"payments\",\n    fifo=True)\n# A volatile queue, removed after 15 minutes without a consumer. force_destroy lets a destroy remove it with\n# messages in it.\nnotifications = taba.Queue(\"notifications\",\n    name=\"notifications\",\n    volatile=True,\n    idle_timeout=900,\n    force_destroy=True)\n# A queue that may already exist (created by an application at startup, say): it is taken over and gets the\n# declared configuration instead of failing the creation. From then on it belongs to this state, and a destroy\n# removes it.\nevents = taba.Queue(\"events\",\n    name=\"events\",\n    ttl=3600,\n    create_or_update=True)\n```\n```csharp\nusing System.Collections.Generic;\nusing System.Linq;\nusing Pulumi;\nusing Pulumi = Taba.Pulumi;\n\nreturn await Deployment.RunAsync(() =\u003e \n{\n    // A durable queue: what is not declared follows the node default (see the effective_* attributes).\n    var orders = new Pulumi.Queue(\"orders\", new()\n    {\n        Name = \"orders\",\n        Ttl = 86400,\n        MaxDeliveries = 5,\n        Tags = \n        {\n            { \"team\", \"billing\" },\n        },\n    });\n\n    // A FIFO queue (the cluster needs replication.factor of 2 or more).\n    var payments = new Pulumi.Queue(\"payments\", new()\n    {\n        Name = \"payments\",\n        Fifo = true,\n    });\n\n    // A volatile queue, removed after 15 minutes without a consumer. force_destroy lets a destroy remove it with\n    // messages in it.\n    var notifications = new Pulumi.Queue(\"notifications\", new()\n    {\n        Name = \"notifications\",\n        Volatile = true,\n        IdleTimeout = 900,\n        ForceDestroy = true,\n    });\n\n    // A queue that may already exist (created by an application at startup, say): it is taken over and gets the\n    // declared configuration instead of failing the creation. From then on it belongs to this state, and a destroy\n    // removes it.\n    var events = new Pulumi.Queue(\"events\", new()\n    {\n        Name = \"events\",\n        Ttl = 3600,\n        CreateOrUpdate = true,\n    });\n\n});\n```\n```go\npackage main\n\nimport (\n\t\"github.com/pulumi/pulumi/sdk/v3/go/pulumi\"\n\t\"github.com/rafaelpontani/pulumi-taba/sdk/go/taba\"\n)\n\nfunc main() {\n\tpulumi.Run(func(ctx *pulumi.Context) error {\n\t\t// A durable queue: what is not declared follows the node default (see the effective_* attributes).\n\t\t_, err := taba.NewQueue(ctx, \"orders\", \u0026taba.QueueArgs{\n\t\t\tName:          pulumi.String(\"orders\"),\n\t\t\tTtl:           pulumi.Int(86400),\n\t\t\tMaxDeliveries: pulumi.Int(5),\n\t\t\tTags: pulumi.StringMap{\n\t\t\t\t\"team\": pulumi.String(\"billing\"),\n\t\t\t},\n\t\t})\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\t// A FIFO queue (the cluster needs replication.factor of 2 or more).\n\t\t_, err = taba.NewQueue(ctx, \"payments\", \u0026taba.QueueArgs{\n\t\t\tName: pulumi.String(\"payments\"),\n\t\t\tFifo: pulumi.Bool(true),\n\t\t})\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\t// A volatile queue, removed after 15 minutes without a consumer. force_destroy lets a destroy remove it with\n\t\t// messages in it.\n\t\t_, err = taba.NewQueue(ctx, \"notifications\", \u0026taba.QueueArgs{\n\t\t\tName:         pulumi.String(\"notifications\"),\n\t\t\tVolatile:     pulumi.Bool(true),\n\t\t\tIdleTimeout:  pulumi.Int(900),\n\t\t\tForceDestroy: pulumi.Bool(true),\n\t\t})\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\t// A queue that may already exist (created by an application at startup, say): it is taken over and gets the\n\t\t// declared configuration instead of failing the creation. From then on it belongs to this state, and a destroy\n\t\t// removes it.\n\t\t_, err = taba.NewQueue(ctx, \"events\", \u0026taba.QueueArgs{\n\t\t\tName:           pulumi.String(\"events\"),\n\t\t\tTtl:            pulumi.Int(3600),\n\t\t\tCreateOrUpdate: pulumi.Bool(true),\n\t\t})\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\treturn nil\n\t})\n}\n```\n```hcl\nterraform {\n  required_providers {\n    taba = {\n      source = \"pulumi/taba\"\n    }\n  }\n}\n\n# A durable queue: what is not declared follows the node default (see the effective_* attributes).\nresource \"taba_queue\" \"orders\" {\n  lifecycle {\n    create_before_destroy = true\n  }\n  name           = \"orders\"\n  ttl            = 86400\n  max_deliveries = 5\n  tags = {\n    \"team\" = \"billing\"\n  }\n}\n# A FIFO queue (the cluster needs replication.factor of 2 or more).\nresource \"taba_queue\" \"payments\" {\n  lifecycle {\n    create_before_destroy = true\n  }\n  name = \"payments\"\n  fifo = true\n}\n# A volatile queue, removed after 15 minutes without a consumer. force_destroy lets a destroy remove it with\n# messages in it.\nresource \"taba_queue\" \"notifications\" {\n  lifecycle {\n    create_before_destroy = true\n  }\n  name          = \"notifications\"\n  volatile      = true\n  idle_timeout  = 900\n  force_destroy = true\n}\n# A queue that may already exist (created by an application at startup, say): it is taken over and gets the\n# declared configuration instead of failing the creation. From then on it belongs to this state, and a destroy\n# removes it.\nresource \"taba_queue\" \"events\" {\n  lifecycle {\n    create_before_destroy = true\n  }\n  name             = \"events\"\n  ttl              = 3600\n  create_or_update = true\n}\n```\n```java\npackage generated_program;\n\nimport com.pulumi.Context;\nimport com.pulumi.Pulumi;\nimport com.pulumi.core.Output;\nimport com.pulumi.taba.Queue;\nimport com.pulumi.taba.QueueArgs;\nimport java.util.ArrayList;\nimport java.util.Arrays;\nimport java.util.Map;\nimport java.io.File;\nimport java.nio.file.Files;\nimport java.nio.file.Paths;\n\npublic class App {\n    public static void main(String[] args) {\n        Pulumi.run(App::stack);\n    }\n\n    public static void stack(Context ctx) {\n        // A durable queue: what is not declared follows the node default (see the effective_* attributes).\n        var orders = new Queue(\"orders\", QueueArgs.builder()\n            .name(\"orders\")\n            .ttl(86400)\n            .maxDeliveries(5)\n            .tags(Map.of(\"team\", \"billing\"))\n            .build());\n\n        // A FIFO queue (the cluster needs replication.factor of 2 or more).\n        var payments = new Queue(\"payments\", QueueArgs.builder()\n            .name(\"payments\")\n            .fifo(true)\n            .build());\n\n        // A volatile queue, removed after 15 minutes without a consumer. force_destroy lets a destroy remove it with\n        // messages in it.\n        var notifications = new Queue(\"notifications\", QueueArgs.builder()\n            .name(\"notifications\")\n            .volatile_(true)\n            .idleTimeout(900)\n            .forceDestroy(true)\n            .build());\n\n        // A queue that may already exist (created by an application at startup, say): it is taken over and gets the\n        // declared configuration instead of failing the creation. From then on it belongs to this state, and a destroy\n        // removes it.\n        var events = new Queue(\"events\", QueueArgs.builder()\n            .name(\"events\")\n            .ttl(3600)\n            .createOrUpdate(true)\n            .build());\n\n    }\n}\n```\n```yaml\nresources:\n  # A durable queue: what is not declared follows the node default (see the effective_* attributes).\n  orders:\n    type: taba:Queue\n    properties:\n      name: orders\n      ttl: 86400\n      maxDeliveries: 5\n      tags:\n        team: billing\n  # A FIFO queue (the cluster needs replication.factor of 2 or more).\n  payments:\n    type: taba:Queue\n    properties:\n      name: payments\n      fifo: true\n  # A volatile queue, removed after 15 minutes without a consumer. force_destroy lets a destroy remove it with\n  # messages in it.\n  notifications:\n    type: taba:Queue\n    properties:\n      name: notifications\n      volatile: true\n      idleTimeout: 900\n      forceDestroy: true\n  # A queue that may already exist (created by an application at startup, say): it is taken over and gets the\n  # declared configuration instead of failing the creation. From then on it belongs to this state, and a destroy\n  # removes it.\n  events:\n    type: taba:Queue\n    properties:\n      name: events\n      ttl: 3600\n      createOrUpdate: true\n```\n\u003c!--End PulumiCodeChooser --\u003e\n\n## Import\n\nThe `pulumi import` command can be used, for example:\n\nA queue is imported by its name.\n\n```sh\n$ pulumi import taba:index/queue:Queue orders orders\n```\n\n",
+            "properties": {
+                "createOrUpdate": {
+                    "type": "boolean",
+                    "description": "When creating, take over a topic with this name that already exists instead of failing: it gets the declared configuration (what is not declared goes back to the node default). A topic with another type, \u003cspan pulumi-lang-nodejs=\"`fifo`\" pulumi-lang-dotnet=\"`Fifo`\" pulumi-lang-go=\"`fifo`\" pulumi-lang-python=\"`fifo`\" pulumi-lang-yaml=\"`fifo`\" pulumi-lang-java=\"`fifo`\" pulumi-lang-hcl=\"`fifo`\"\u003e`fifo`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`volatile`\" pulumi-lang-dotnet=\"`Volatile`\" pulumi-lang-go=\"`volatile`\" pulumi-lang-python=\"`volatile`\" pulumi-lang-yaml=\"`volatile`\" pulumi-lang-java=\"`volatile`\" pulumi-lang-hcl=\"`volatile`\"\u003e`volatile`\u003c/span\u003e is recreated only if it holds no message; otherwise nothing changes and the creation fails. Not set: the provider \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e (default \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e). It is only used when the resource is created; afterwards the resource belongs to this state like any other, and a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e removes it.\n"
+                },
+                "createdAt": {
+                    "type": "string",
+                    "description": "Creation date (RFC 3339).\n"
+                },
+                "deadLetterName": {
+                    "type": "string",
+                    "description": "Name of the dead-letter queue of this queue (`\u003cname\u003e-dead-letter`).\n"
+                },
+                "effectiveMaxDeliveries": {
+                    "type": "integer",
+                    "description": "The \u003cspan pulumi-lang-nodejs=\"`maxDeliveries`\" pulumi-lang-dotnet=\"`MaxDeliveries`\" pulumi-lang-go=\"`maxDeliveries`\" pulumi-lang-python=\"`max_deliveries`\" pulumi-lang-yaml=\"`maxDeliveries`\" pulumi-lang-java=\"`maxDeliveries`\" pulumi-lang-hcl=\"`max_deliveries`\"\u003e`maxDeliveries`\u003c/span\u003e in force: the declared one or the node default.\n"
+                },
+                "effectiveMaxMessageBytes": {
+                    "type": "integer",
+                    "description": "The \u003cspan pulumi-lang-nodejs=\"`maxMessageBytes`\" pulumi-lang-dotnet=\"`MaxMessageBytes`\" pulumi-lang-go=\"`maxMessageBytes`\" pulumi-lang-python=\"`max_message_bytes`\" pulumi-lang-yaml=\"`maxMessageBytes`\" pulumi-lang-java=\"`maxMessageBytes`\" pulumi-lang-hcl=\"`max_message_bytes`\"\u003e`maxMessageBytes`\u003c/span\u003e in force: the declared one or the node default.\n"
+                },
+                "effectiveTtl": {
+                    "type": "integer",
+                    "description": "The \u003cspan pulumi-lang-nodejs=\"`ttl`\" pulumi-lang-dotnet=\"`Ttl`\" pulumi-lang-go=\"`ttl`\" pulumi-lang-python=\"`ttl`\" pulumi-lang-yaml=\"`ttl`\" pulumi-lang-java=\"`ttl`\" pulumi-lang-hcl=\"`ttl`\"\u003e`ttl`\u003c/span\u003e in force: the declared one or the node default.\n"
+                },
+                "fifo": {
+                    "type": "boolean",
+                    "description": "FIFO queue (order per group and deduplication). Needs `replication.factor` of 2 or more on the cluster. Changing it replaces the queue. Default: \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e.\n"
+                },
+                "forceDestroy": {
+                    "type": "boolean",
+                    "description": "Remove the queue even when it holds messages (they are lost). With \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e, the removal is refused while the queue or its dead-letter holds a message. It is read from the state, so set it to \u003cspan pulumi-lang-nodejs=\"`true`\" pulumi-lang-dotnet=\"`True`\" pulumi-lang-go=\"`true`\" pulumi-lang-python=\"`true`\" pulumi-lang-yaml=\"`true`\" pulumi-lang-java=\"`true`\" pulumi-lang-hcl=\"`true`\"\u003e`true`\u003c/span\u003e and apply before a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e or a replacement. Default: \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e.\n"
+                },
+                "idleTimeout": {
+                    "type": "integer",
+                    "description": "Volatile queue only: seconds without a consumer until the queue is removed (60 to 604800). Default on a volatile queue: \u003cspan pulumi-lang-nodejs=\"`600`\" pulumi-lang-dotnet=\"`600`\" pulumi-lang-go=\"`600`\" pulumi-lang-python=\"`600`\" pulumi-lang-yaml=\"`600`\" pulumi-lang-java=\"`600`\" pulumi-lang-hcl=\"`600`\"\u003e`600`\u003c/span\u003e.\n"
+                },
+                "maxDeliveries": {
+                    "type": "integer",
+                    "description": "Deliveries without an ack before the message goes to the dead-letter (1 to 1000). Not set: the node default (\u003cspan pulumi-lang-nodejs=\"`effectiveMaxDeliveries`\" pulumi-lang-dotnet=\"`EffectiveMaxDeliveries`\" pulumi-lang-go=\"`effectiveMaxDeliveries`\" pulumi-lang-python=\"`effective_max_deliveries`\" pulumi-lang-yaml=\"`effectiveMaxDeliveries`\" pulumi-lang-java=\"`effectiveMaxDeliveries`\" pulumi-lang-hcl=\"`effective_max_deliveries`\"\u003e`effectiveMaxDeliveries`\u003c/span\u003e).\n"
+                },
+                "maxMessageBytes": {
+                    "type": "integer",
+                    "description": "Maximum size of a message, in bytes (1 up to the node `message.hard-limit`). Not set: the node default (\u003cspan pulumi-lang-nodejs=\"`effectiveMaxMessageBytes`\" pulumi-lang-dotnet=\"`EffectiveMaxMessageBytes`\" pulumi-lang-go=\"`effectiveMaxMessageBytes`\" pulumi-lang-python=\"`effective_max_message_bytes`\" pulumi-lang-yaml=\"`effectiveMaxMessageBytes`\" pulumi-lang-java=\"`effectiveMaxMessageBytes`\" pulumi-lang-hcl=\"`effective_max_message_bytes`\"\u003e`effectiveMaxMessageBytes`\u003c/span\u003e).\n"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Name: 1 to 100 characters `A-Za-z0-9_-`, case-sensitive, not ending in `-dead-letter`. Changing it replaces the queue.\n"
+                },
+                "tags": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "description": "Telemetry tags (up to 20; key of 1 to 64 and value of 0 to 128 characters `A-Za-z0-9_-.:`). They do not affect behaviour. Default: none.\n"
+                },
+                "ttl": {
+                    "type": "integer",
+                    "description": "Message lifetime, in seconds (60 to 31536000). Not set: the node default (\u003cspan pulumi-lang-nodejs=\"`effectiveTtl`\" pulumi-lang-dotnet=\"`EffectiveTtl`\" pulumi-lang-go=\"`effectiveTtl`\" pulumi-lang-python=\"`effective_ttl`\" pulumi-lang-yaml=\"`effectiveTtl`\" pulumi-lang-java=\"`effectiveTtl`\" pulumi-lang-hcl=\"`effective_ttl`\"\u003e`effectiveTtl`\u003c/span\u003e).\n"
+                },
+                "volatile": {
+                    "type": "boolean",
+                    "description": "Volatile queue: messages only in memory, and the queue is removed after \u003cspan pulumi-lang-nodejs=\"`idleTimeout`\" pulumi-lang-dotnet=\"`IdleTimeout`\" pulumi-lang-go=\"`idleTimeout`\" pulumi-lang-python=\"`idle_timeout`\" pulumi-lang-yaml=\"`idleTimeout`\" pulumi-lang-java=\"`idleTimeout`\" pulumi-lang-hcl=\"`idle_timeout`\"\u003e`idleTimeout`\u003c/span\u003e without a consumer. Changing it replaces the queue. Default: \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e.\n"
+                }
+            },
+            "required": [
+                "createdAt",
+                "deadLetterName",
+                "effectiveMaxDeliveries",
+                "effectiveMaxMessageBytes",
+                "effectiveTtl",
+                "fifo",
+                "forceDestroy",
+                "idleTimeout",
+                "name",
+                "tags",
+                "volatile"
+            ],
+            "inputProperties": {
+                "createOrUpdate": {
+                    "type": "boolean",
+                    "description": "When creating, take over a topic with this name that already exists instead of failing: it gets the declared configuration (what is not declared goes back to the node default). A topic with another type, \u003cspan pulumi-lang-nodejs=\"`fifo`\" pulumi-lang-dotnet=\"`Fifo`\" pulumi-lang-go=\"`fifo`\" pulumi-lang-python=\"`fifo`\" pulumi-lang-yaml=\"`fifo`\" pulumi-lang-java=\"`fifo`\" pulumi-lang-hcl=\"`fifo`\"\u003e`fifo`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`volatile`\" pulumi-lang-dotnet=\"`Volatile`\" pulumi-lang-go=\"`volatile`\" pulumi-lang-python=\"`volatile`\" pulumi-lang-yaml=\"`volatile`\" pulumi-lang-java=\"`volatile`\" pulumi-lang-hcl=\"`volatile`\"\u003e`volatile`\u003c/span\u003e is recreated only if it holds no message; otherwise nothing changes and the creation fails. Not set: the provider \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e (default \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e). It is only used when the resource is created; afterwards the resource belongs to this state like any other, and a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e removes it.\n"
+                },
+                "fifo": {
+                    "type": "boolean",
+                    "description": "FIFO queue (order per group and deduplication). Needs `replication.factor` of 2 or more on the cluster. Changing it replaces the queue. Default: \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e.\n"
+                },
+                "forceDestroy": {
+                    "type": "boolean",
+                    "description": "Remove the queue even when it holds messages (they are lost). With \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e, the removal is refused while the queue or its dead-letter holds a message. It is read from the state, so set it to \u003cspan pulumi-lang-nodejs=\"`true`\" pulumi-lang-dotnet=\"`True`\" pulumi-lang-go=\"`true`\" pulumi-lang-python=\"`true`\" pulumi-lang-yaml=\"`true`\" pulumi-lang-java=\"`true`\" pulumi-lang-hcl=\"`true`\"\u003e`true`\u003c/span\u003e and apply before a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e or a replacement. Default: \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e.\n"
+                },
+                "idleTimeout": {
+                    "type": "integer",
+                    "description": "Volatile queue only: seconds without a consumer until the queue is removed (60 to 604800). Default on a volatile queue: \u003cspan pulumi-lang-nodejs=\"`600`\" pulumi-lang-dotnet=\"`600`\" pulumi-lang-go=\"`600`\" pulumi-lang-python=\"`600`\" pulumi-lang-yaml=\"`600`\" pulumi-lang-java=\"`600`\" pulumi-lang-hcl=\"`600`\"\u003e`600`\u003c/span\u003e.\n"
+                },
+                "maxDeliveries": {
+                    "type": "integer",
+                    "description": "Deliveries without an ack before the message goes to the dead-letter (1 to 1000). Not set: the node default (\u003cspan pulumi-lang-nodejs=\"`effectiveMaxDeliveries`\" pulumi-lang-dotnet=\"`EffectiveMaxDeliveries`\" pulumi-lang-go=\"`effectiveMaxDeliveries`\" pulumi-lang-python=\"`effective_max_deliveries`\" pulumi-lang-yaml=\"`effectiveMaxDeliveries`\" pulumi-lang-java=\"`effectiveMaxDeliveries`\" pulumi-lang-hcl=\"`effective_max_deliveries`\"\u003e`effectiveMaxDeliveries`\u003c/span\u003e).\n"
+                },
+                "maxMessageBytes": {
+                    "type": "integer",
+                    "description": "Maximum size of a message, in bytes (1 up to the node `message.hard-limit`). Not set: the node default (\u003cspan pulumi-lang-nodejs=\"`effectiveMaxMessageBytes`\" pulumi-lang-dotnet=\"`EffectiveMaxMessageBytes`\" pulumi-lang-go=\"`effectiveMaxMessageBytes`\" pulumi-lang-python=\"`effective_max_message_bytes`\" pulumi-lang-yaml=\"`effectiveMaxMessageBytes`\" pulumi-lang-java=\"`effectiveMaxMessageBytes`\" pulumi-lang-hcl=\"`effective_max_message_bytes`\"\u003e`effectiveMaxMessageBytes`\u003c/span\u003e).\n"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Name: 1 to 100 characters `A-Za-z0-9_-`, case-sensitive, not ending in `-dead-letter`. Changing it replaces the queue.\n"
+                },
+                "tags": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "description": "Telemetry tags (up to 20; key of 1 to 64 and value of 0 to 128 characters `A-Za-z0-9_-.:`). They do not affect behaviour. Default: none.\n"
+                },
+                "ttl": {
+                    "type": "integer",
+                    "description": "Message lifetime, in seconds (60 to 31536000). Not set: the node default (\u003cspan pulumi-lang-nodejs=\"`effectiveTtl`\" pulumi-lang-dotnet=\"`EffectiveTtl`\" pulumi-lang-go=\"`effectiveTtl`\" pulumi-lang-python=\"`effective_ttl`\" pulumi-lang-yaml=\"`effectiveTtl`\" pulumi-lang-java=\"`effectiveTtl`\" pulumi-lang-hcl=\"`effective_ttl`\"\u003e`effectiveTtl`\u003c/span\u003e).\n"
+                },
+                "volatile": {
+                    "type": "boolean",
+                    "description": "Volatile queue: messages only in memory, and the queue is removed after \u003cspan pulumi-lang-nodejs=\"`idleTimeout`\" pulumi-lang-dotnet=\"`IdleTimeout`\" pulumi-lang-go=\"`idleTimeout`\" pulumi-lang-python=\"`idle_timeout`\" pulumi-lang-yaml=\"`idleTimeout`\" pulumi-lang-java=\"`idleTimeout`\" pulumi-lang-hcl=\"`idle_timeout`\"\u003e`idleTimeout`\u003c/span\u003e without a consumer. Changing it replaces the queue. Default: \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e.\n"
+                }
+            },
+            "requiredInputs": [
+                "name"
+            ],
+            "stateInputs": {
+                "description": "Input properties used for looking up and filtering Queue resources.\n",
+                "properties": {
+                    "createOrUpdate": {
+                        "type": "boolean",
+                        "description": "When creating, take over a topic with this name that already exists instead of failing: it gets the declared configuration (what is not declared goes back to the node default). A topic with another type, \u003cspan pulumi-lang-nodejs=\"`fifo`\" pulumi-lang-dotnet=\"`Fifo`\" pulumi-lang-go=\"`fifo`\" pulumi-lang-python=\"`fifo`\" pulumi-lang-yaml=\"`fifo`\" pulumi-lang-java=\"`fifo`\" pulumi-lang-hcl=\"`fifo`\"\u003e`fifo`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`volatile`\" pulumi-lang-dotnet=\"`Volatile`\" pulumi-lang-go=\"`volatile`\" pulumi-lang-python=\"`volatile`\" pulumi-lang-yaml=\"`volatile`\" pulumi-lang-java=\"`volatile`\" pulumi-lang-hcl=\"`volatile`\"\u003e`volatile`\u003c/span\u003e is recreated only if it holds no message; otherwise nothing changes and the creation fails. Not set: the provider \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e (default \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e). It is only used when the resource is created; afterwards the resource belongs to this state like any other, and a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e removes it.\n"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "description": "Creation date (RFC 3339).\n"
+                    },
+                    "deadLetterName": {
+                        "type": "string",
+                        "description": "Name of the dead-letter queue of this queue (`\u003cname\u003e-dead-letter`).\n"
+                    },
+                    "effectiveMaxDeliveries": {
+                        "type": "integer",
+                        "description": "The \u003cspan pulumi-lang-nodejs=\"`maxDeliveries`\" pulumi-lang-dotnet=\"`MaxDeliveries`\" pulumi-lang-go=\"`maxDeliveries`\" pulumi-lang-python=\"`max_deliveries`\" pulumi-lang-yaml=\"`maxDeliveries`\" pulumi-lang-java=\"`maxDeliveries`\" pulumi-lang-hcl=\"`max_deliveries`\"\u003e`maxDeliveries`\u003c/span\u003e in force: the declared one or the node default.\n"
+                    },
+                    "effectiveMaxMessageBytes": {
+                        "type": "integer",
+                        "description": "The \u003cspan pulumi-lang-nodejs=\"`maxMessageBytes`\" pulumi-lang-dotnet=\"`MaxMessageBytes`\" pulumi-lang-go=\"`maxMessageBytes`\" pulumi-lang-python=\"`max_message_bytes`\" pulumi-lang-yaml=\"`maxMessageBytes`\" pulumi-lang-java=\"`maxMessageBytes`\" pulumi-lang-hcl=\"`max_message_bytes`\"\u003e`maxMessageBytes`\u003c/span\u003e in force: the declared one or the node default.\n"
+                    },
+                    "effectiveTtl": {
+                        "type": "integer",
+                        "description": "The \u003cspan pulumi-lang-nodejs=\"`ttl`\" pulumi-lang-dotnet=\"`Ttl`\" pulumi-lang-go=\"`ttl`\" pulumi-lang-python=\"`ttl`\" pulumi-lang-yaml=\"`ttl`\" pulumi-lang-java=\"`ttl`\" pulumi-lang-hcl=\"`ttl`\"\u003e`ttl`\u003c/span\u003e in force: the declared one or the node default.\n"
+                    },
+                    "fifo": {
+                        "type": "boolean",
+                        "description": "FIFO queue (order per group and deduplication). Needs `replication.factor` of 2 or more on the cluster. Changing it replaces the queue. Default: \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e.\n"
+                    },
+                    "forceDestroy": {
+                        "type": "boolean",
+                        "description": "Remove the queue even when it holds messages (they are lost). With \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e, the removal is refused while the queue or its dead-letter holds a message. It is read from the state, so set it to \u003cspan pulumi-lang-nodejs=\"`true`\" pulumi-lang-dotnet=\"`True`\" pulumi-lang-go=\"`true`\" pulumi-lang-python=\"`true`\" pulumi-lang-yaml=\"`true`\" pulumi-lang-java=\"`true`\" pulumi-lang-hcl=\"`true`\"\u003e`true`\u003c/span\u003e and apply before a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e or a replacement. Default: \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e.\n"
+                    },
+                    "idleTimeout": {
+                        "type": "integer",
+                        "description": "Volatile queue only: seconds without a consumer until the queue is removed (60 to 604800). Default on a volatile queue: \u003cspan pulumi-lang-nodejs=\"`600`\" pulumi-lang-dotnet=\"`600`\" pulumi-lang-go=\"`600`\" pulumi-lang-python=\"`600`\" pulumi-lang-yaml=\"`600`\" pulumi-lang-java=\"`600`\" pulumi-lang-hcl=\"`600`\"\u003e`600`\u003c/span\u003e.\n"
+                    },
+                    "maxDeliveries": {
+                        "type": "integer",
+                        "description": "Deliveries without an ack before the message goes to the dead-letter (1 to 1000). Not set: the node default (\u003cspan pulumi-lang-nodejs=\"`effectiveMaxDeliveries`\" pulumi-lang-dotnet=\"`EffectiveMaxDeliveries`\" pulumi-lang-go=\"`effectiveMaxDeliveries`\" pulumi-lang-python=\"`effective_max_deliveries`\" pulumi-lang-yaml=\"`effectiveMaxDeliveries`\" pulumi-lang-java=\"`effectiveMaxDeliveries`\" pulumi-lang-hcl=\"`effective_max_deliveries`\"\u003e`effectiveMaxDeliveries`\u003c/span\u003e).\n"
+                    },
+                    "maxMessageBytes": {
+                        "type": "integer",
+                        "description": "Maximum size of a message, in bytes (1 up to the node `message.hard-limit`). Not set: the node default (\u003cspan pulumi-lang-nodejs=\"`effectiveMaxMessageBytes`\" pulumi-lang-dotnet=\"`EffectiveMaxMessageBytes`\" pulumi-lang-go=\"`effectiveMaxMessageBytes`\" pulumi-lang-python=\"`effective_max_message_bytes`\" pulumi-lang-yaml=\"`effectiveMaxMessageBytes`\" pulumi-lang-java=\"`effectiveMaxMessageBytes`\" pulumi-lang-hcl=\"`effective_max_message_bytes`\"\u003e`effectiveMaxMessageBytes`\u003c/span\u003e).\n"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name: 1 to 100 characters `A-Za-z0-9_-`, case-sensitive, not ending in `-dead-letter`. Changing it replaces the queue.\n"
+                    },
+                    "tags": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "description": "Telemetry tags (up to 20; key of 1 to 64 and value of 0 to 128 characters `A-Za-z0-9_-.:`). They do not affect behaviour. Default: none.\n"
+                    },
+                    "ttl": {
+                        "type": "integer",
+                        "description": "Message lifetime, in seconds (60 to 31536000). Not set: the node default (\u003cspan pulumi-lang-nodejs=\"`effectiveTtl`\" pulumi-lang-dotnet=\"`EffectiveTtl`\" pulumi-lang-go=\"`effectiveTtl`\" pulumi-lang-python=\"`effective_ttl`\" pulumi-lang-yaml=\"`effectiveTtl`\" pulumi-lang-java=\"`effectiveTtl`\" pulumi-lang-hcl=\"`effective_ttl`\"\u003e`effectiveTtl`\u003c/span\u003e).\n"
+                    },
+                    "volatile": {
+                        "type": "boolean",
+                        "description": "Volatile queue: messages only in memory, and the queue is removed after \u003cspan pulumi-lang-nodejs=\"`idleTimeout`\" pulumi-lang-dotnet=\"`IdleTimeout`\" pulumi-lang-go=\"`idleTimeout`\" pulumi-lang-python=\"`idle_timeout`\" pulumi-lang-yaml=\"`idleTimeout`\" pulumi-lang-java=\"`idleTimeout`\" pulumi-lang-hcl=\"`idle_timeout`\"\u003e`idleTimeout`\u003c/span\u003e without a consumer. Changing it replaces the queue. Default: \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e.\n"
+                    }
+                },
+                "type": "object"
+            }
+        },
+        "taba:index/token:Token": {
+            "description": "An access token of the client API. Tokens only exist with authentication on, and the provider token must be the root token or an \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e token (a token with \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e is only created by the root token).\n\nThe secret (\u003cspan pulumi-lang-nodejs=\"`token`\" pulumi-lang-dotnet=\"`Token`\" pulumi-lang-go=\"`token`\" pulumi-lang-python=\"`token`\" pulumi-lang-yaml=\"`token`\" pulumi-lang-java=\"`token`\" pulumi-lang-hcl=\"`token`\"\u003e`token`\u003c/span\u003e) only exists in the creation answer, so it is kept in the state: treat the state as a secret. Changing \u003cspan pulumi-lang-nodejs=\"`permissions`\" pulumi-lang-dotnet=\"`Permissions`\" pulumi-lang-go=\"`permissions`\" pulumi-lang-python=\"`permissions`\" pulumi-lang-yaml=\"`permissions`\" pulumi-lang-java=\"`permissions`\" pulumi-lang-hcl=\"`permissions`\"\u003e`permissions`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`topicPrefixes`\" pulumi-lang-dotnet=\"`TopicPrefixes`\" pulumi-lang-go=\"`topicPrefixes`\" pulumi-lang-python=\"`topic_prefixes`\" pulumi-lang-yaml=\"`topicPrefixes`\" pulumi-lang-java=\"`topicPrefixes`\" pulumi-lang-hcl=\"`topic_prefixes`\"\u003e`topicPrefixes`\u003c/span\u003e replaces the token (a new secret); \u003cspan pulumi-lang-nodejs=\"`name`\" pulumi-lang-dotnet=\"`Name`\" pulumi-lang-go=\"`name`\" pulumi-lang-python=\"`name`\" pulumi-lang-yaml=\"`name`\" pulumi-lang-java=\"`name`\" pulumi-lang-hcl=\"`name`\"\u003e`name`\u003c/span\u003e and \u003cspan pulumi-lang-nodejs=\"`expiresAt`\" pulumi-lang-dotnet=\"`ExpiresAt`\" pulumi-lang-go=\"`expiresAt`\" pulumi-lang-python=\"`expires_at`\" pulumi-lang-yaml=\"`expiresAt`\" pulumi-lang-java=\"`expiresAt`\" pulumi-lang-hcl=\"`expires_at`\"\u003e`expiresAt`\u003c/span\u003e change in place. To rotate, `pulumi up -replace=\u003caddress\u003e`, with `lifecycle {\u003cspan pulumi-lang-nodejs=\" createBeforeDestroy \" pulumi-lang-dotnet=\" CreateBeforeDestroy \" pulumi-lang-go=\" createBeforeDestroy \" pulumi-lang-python=\" create_before_destroy \" pulumi-lang-yaml=\" createBeforeDestroy \" pulumi-lang-java=\" createBeforeDestroy \" pulumi-lang-hcl=\" create_before_destroy \"\u003e createBeforeDestroy \u003c/span\u003e= true }` so there is no moment without a token.\n\n## Example Usage\n\n\u003c!--Start PulumiCodeChooser --\u003e\n```typescript\nimport * as pulumi from \"@pulumi/pulumi\";\nimport * as taba from \"@rafaelpontani/pulumi-taba\";\n\n// A token that publishes and consumes only the topics starting with \"orders\".\n// The secret is in taba_token.orders_app.token (sensitive): hand it to the application\n// through a secret store, and keep the Pulumi state as a secret too.\nconst ordersApp = new taba.Token(\"orders_app\", {\n    name: \"orders-app\",\n    permissions: [\n        \"publish\",\n        \"consume\",\n    ],\n    topicPrefixes: [\"orders\"],\n    expiresAt: \"2027-12-31T23:59:59Z\",\n});\nexport const ordersAppToken = ordersApp.secret;\n```\n```python\nimport pulumi\nimport pulumi_taba as taba\n\n# A token that publishes and consumes only the topics starting with \"orders\".\n# The secret is in taba_token.orders_app.token (sensitive): hand it to the application\n# through a secret store, and keep the Pulumi state as a secret too.\norders_app = taba.Token(\"orders_app\",\n    name=\"orders-app\",\n    permissions=[\n        \"publish\",\n        \"consume\",\n    ],\n    topic_prefixes=[\"orders\"],\n    expires_at=\"2027-12-31T23:59:59Z\")\npulumi.export(\"ordersAppToken\", orders_app.secret)\n```\n```csharp\nusing System.Collections.Generic;\nusing System.Linq;\nusing Pulumi;\nusing Pulumi = Taba.Pulumi;\n\nreturn await Deployment.RunAsync(() =\u003e \n{\n    // A token that publishes and consumes only the topics starting with \"orders\".\n    // The secret is in taba_token.orders_app.token (sensitive): hand it to the application\n    // through a secret store, and keep the Pulumi state as a secret too.\n    var ordersApp = new Pulumi.Token(\"orders_app\", new()\n    {\n        Name = \"orders-app\",\n        Permissions = new[]\n        {\n            \"publish\",\n            \"consume\",\n        },\n        TopicPrefixes = new[]\n        {\n            \"orders\",\n        },\n        ExpiresAt = \"2027-12-31T23:59:59Z\",\n    });\n\n    return new Dictionary\u003cstring, object?\u003e\n    {\n        [\"ordersAppToken\"] = ordersApp.Secret,\n    };\n});\n```\n```go\npackage main\n\nimport (\n\t\"github.com/pulumi/pulumi/sdk/v3/go/pulumi\"\n\t\"github.com/rafaelpontani/pulumi-taba/sdk/go/taba\"\n)\n\nfunc main() {\n\tpulumi.Run(func(ctx *pulumi.Context) error {\n\t\t// A token that publishes and consumes only the topics starting with \"orders\".\n\t\t// The secret is in taba_token.orders_app.token (sensitive): hand it to the application\n\t\t// through a secret store, and keep the Pulumi state as a secret too.\n\t\tordersApp, err := taba.NewToken(ctx, \"orders_app\", \u0026taba.TokenArgs{\n\t\t\tName: pulumi.String(\"orders-app\"),\n\t\t\tPermissions: pulumi.StringArray{\n\t\t\t\tpulumi.String(\"publish\"),\n\t\t\t\tpulumi.String(\"consume\"),\n\t\t\t},\n\t\t\tTopicPrefixes: pulumi.StringArray{\n\t\t\t\tpulumi.String(\"orders\"),\n\t\t\t},\n\t\t\tExpiresAt: pulumi.String(\"2027-12-31T23:59:59Z\"),\n\t\t})\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\tctx.Export(\"ordersAppToken\", ordersApp.Secret)\n\t\treturn nil\n\t})\n}\n```\n```hcl\nterraform {\n  required_providers {\n    taba = {\n      source = \"pulumi/taba\"\n    }\n  }\n}\n\n# A token that publishes and consumes only the topics starting with \"orders\".\n# The secret is in taba_token.orders_app.token (sensitive): hand it to the application\n# through a secret store, and keep the Pulumi state as a secret too.\nresource \"taba_token\" \"orders_app\" {\n  lifecycle {\n    create_before_destroy = true\n  }\n  name           = \"orders-app\"\n  permissions    = [\"publish\", \"consume\"]\n  topic_prefixes = [\"orders\"]\n  expires_at     = \"2027-12-31T23:59:59Z\"\n}\noutput \"ordersAppToken\" {\n  value = taba_token.orders_app.token\n}\n```\n```java\npackage generated_program;\n\nimport com.pulumi.Context;\nimport com.pulumi.Pulumi;\nimport com.pulumi.core.Output;\nimport com.pulumi.taba.Token;\nimport com.pulumi.taba.TokenArgs;\nimport java.util.ArrayList;\nimport java.util.Arrays;\nimport java.util.Map;\nimport java.io.File;\nimport java.nio.file.Files;\nimport java.nio.file.Paths;\n\npublic class App {\n    public static void main(String[] args) {\n        Pulumi.run(App::stack);\n    }\n\n    public static void stack(Context ctx) {\n        // A token that publishes and consumes only the topics starting with \"orders\".\n        // The secret is in taba_token.orders_app.token (sensitive): hand it to the application\n        // through a secret store, and keep the Pulumi state as a secret too.\n        var ordersApp = new Token(\"ordersApp\", TokenArgs.builder()\n            .name(\"orders-app\")\n            .permissions(            \n                \"publish\",\n                \"consume\")\n            .topicPrefixes(\"orders\")\n            .expiresAt(\"2027-12-31T23:59:59Z\")\n            .build());\n\n        ctx.export(\"ordersAppToken\", ordersApp.secret());\n    }\n}\n```\n```yaml\nresources:\n  # A token that publishes and consumes only the topics starting with \"orders\".\n  # The secret is in taba_token.orders_app.token (sensitive): hand it to the application\n  # through a secret store, and keep the Pulumi state as a secret too.\n  ordersApp:\n    type: taba:Token\n    name: orders_app\n    properties:\n      name: orders-app\n      permissions:\n        - publish\n        - consume\n      topicPrefixes:\n        - orders\n      expiresAt: 2027-12-31T23:59:59Z\noutputs:\n  ordersAppToken: ${ordersApp.secret}\n```\n\u003c!--End PulumiCodeChooser --\u003e\n\n## Import\n\nThe `pulumi import` command can be used, for example:\n\nA token is imported by its id; the secret does not come back (token stays null).\n\n```sh\n$ pulumi import taba:index/token:Token orders_app 01JC8X3V5Q2W7E9R4T6Y8U0I1O\n```\n\n",
+            "properties": {
+                "createOrUpdate": {
+                    "type": "boolean",
+                    "description": "When creating, take over the token with this \u003cspan pulumi-lang-nodejs=\"`name`\" pulumi-lang-dotnet=\"`Name`\" pulumi-lang-go=\"`name`\" pulumi-lang-python=\"`name`\" pulumi-lang-yaml=\"`name`\" pulumi-lang-java=\"`name`\" pulumi-lang-hcl=\"`name`\"\u003e`name`\u003c/span\u003e that already exists instead of creating another (names are not unique): it must be the only one with the name and have the declared \u003cspan pulumi-lang-nodejs=\"`permissions`\" pulumi-lang-dotnet=\"`Permissions`\" pulumi-lang-go=\"`permissions`\" pulumi-lang-python=\"`permissions`\" pulumi-lang-yaml=\"`permissions`\" pulumi-lang-java=\"`permissions`\" pulumi-lang-hcl=\"`permissions`\"\u003e`permissions`\u003c/span\u003e and \u003cspan pulumi-lang-nodejs=\"`topicPrefixes`\" pulumi-lang-dotnet=\"`TopicPrefixes`\" pulumi-lang-go=\"`topicPrefixes`\" pulumi-lang-python=\"`topic_prefixes`\" pulumi-lang-yaml=\"`topicPrefixes`\" pulumi-lang-java=\"`topicPrefixes`\" pulumi-lang-hcl=\"`topic_prefixes`\"\u003e`topicPrefixes`\u003c/span\u003e, and its \u003cspan pulumi-lang-nodejs=\"`expiresAt`\" pulumi-lang-dotnet=\"`ExpiresAt`\" pulumi-lang-go=\"`expiresAt`\" pulumi-lang-python=\"`expires_at`\" pulumi-lang-yaml=\"`expiresAt`\" pulumi-lang-java=\"`expiresAt`\" pulumi-lang-hcl=\"`expires_at`\"\u003e`expiresAt`\u003c/span\u003e changes to the declared one. Its secret cannot be recovered: \u003cspan pulumi-lang-nodejs=\"`token`\" pulumi-lang-dotnet=\"`Token`\" pulumi-lang-go=\"`token`\" pulumi-lang-python=\"`token`\" pulumi-lang-yaml=\"`token`\" pulumi-lang-java=\"`token`\" pulumi-lang-hcl=\"`token`\"\u003e`token`\u003c/span\u003e stays null (use `-replace` for a new one). Not set: the provider \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e (default \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e). It is only used when the resource is created; afterwards the resource belongs to this state like any other, and a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e removes it.\n"
+                },
+                "createdAt": {
+                    "type": "string",
+                    "description": "Creation date (RFC 3339).\n"
+                },
+                "expiresAt": {
+                    "type": "string",
+                    "description": "Deadline (RFC 3339, such as `2027-01-01T00:00:00Z`); it must be in the future. Not set: the token does not expire. Changes in place. An expired token disappears from the server: the next \u003cspan pulumi-lang-nodejs=\"`plan`\" pulumi-lang-dotnet=\"`Plan`\" pulumi-lang-go=\"`plan`\" pulumi-lang-python=\"`plan`\" pulumi-lang-yaml=\"`plan`\" pulumi-lang-java=\"`plan`\" pulumi-lang-hcl=\"`plan`\"\u003e`plan`\u003c/span\u003e then refuses the configuration until \u003cspan pulumi-lang-nodejs=\"`expiresAt`\" pulumi-lang-dotnet=\"`ExpiresAt`\" pulumi-lang-go=\"`expiresAt`\" pulumi-lang-python=\"`expires_at`\" pulumi-lang-yaml=\"`expiresAt`\" pulumi-lang-java=\"`expiresAt`\" pulumi-lang-hcl=\"`expires_at`\"\u003e`expiresAt`\u003c/span\u003e moves to the future (a new token) or the resource is removed.\n"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Name: 1 to 100 characters `A-Za-z0-9_-.:`. It is not unique on the server. Changes in place.\n"
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Permissions: one or more of \u003cspan pulumi-lang-nodejs=\"`publish`\" pulumi-lang-dotnet=\"`Publish`\" pulumi-lang-go=\"`publish`\" pulumi-lang-python=\"`publish`\" pulumi-lang-yaml=\"`publish`\" pulumi-lang-java=\"`publish`\" pulumi-lang-hcl=\"`publish`\"\u003e`publish`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`consume`\" pulumi-lang-dotnet=\"`Consume`\" pulumi-lang-go=\"`consume`\" pulumi-lang-python=\"`consume`\" pulumi-lang-yaml=\"`consume`\" pulumi-lang-java=\"`consume`\" pulumi-lang-hcl=\"`consume`\"\u003e`consume`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`create`\" pulumi-lang-dotnet=\"`Create`\" pulumi-lang-go=\"`create`\" pulumi-lang-python=\"`create`\" pulumi-lang-yaml=\"`create`\" pulumi-lang-java=\"`create`\" pulumi-lang-hcl=\"`create`\"\u003e`create`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`manage`\" pulumi-lang-dotnet=\"`Manage`\" pulumi-lang-go=\"`manage`\" pulumi-lang-python=\"`manage`\" pulumi-lang-yaml=\"`manage`\" pulumi-lang-java=\"`manage`\" pulumi-lang-hcl=\"`manage`\"\u003e`manage`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e. Changing them replaces the token.\n"
+                },
+                "secret": {
+                    "type": "string",
+                    "description": "The secret to send in `Authorization: Bearer` (`tb_\u003cid\u003e.\u003csecret\u003e`). Only known when the token was created here: null after an import.\n",
+                    "secret": true
+                },
+                "topicPrefixes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Limit the token to the topics whose name starts with one of these prefixes (up to 20; 1 to 100 characters `A-Za-z0-9_-`). Empty: every topic. Not allowed with \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e. Changing them replaces the token. Default: none.\n"
+                }
+            },
+            "required": [
+                "createdAt",
+                "expiresAt",
+                "name",
+                "permissions",
+                "secret",
+                "topicPrefixes"
+            ],
+            "inputProperties": {
+                "createOrUpdate": {
+                    "type": "boolean",
+                    "description": "When creating, take over the token with this \u003cspan pulumi-lang-nodejs=\"`name`\" pulumi-lang-dotnet=\"`Name`\" pulumi-lang-go=\"`name`\" pulumi-lang-python=\"`name`\" pulumi-lang-yaml=\"`name`\" pulumi-lang-java=\"`name`\" pulumi-lang-hcl=\"`name`\"\u003e`name`\u003c/span\u003e that already exists instead of creating another (names are not unique): it must be the only one with the name and have the declared \u003cspan pulumi-lang-nodejs=\"`permissions`\" pulumi-lang-dotnet=\"`Permissions`\" pulumi-lang-go=\"`permissions`\" pulumi-lang-python=\"`permissions`\" pulumi-lang-yaml=\"`permissions`\" pulumi-lang-java=\"`permissions`\" pulumi-lang-hcl=\"`permissions`\"\u003e`permissions`\u003c/span\u003e and \u003cspan pulumi-lang-nodejs=\"`topicPrefixes`\" pulumi-lang-dotnet=\"`TopicPrefixes`\" pulumi-lang-go=\"`topicPrefixes`\" pulumi-lang-python=\"`topic_prefixes`\" pulumi-lang-yaml=\"`topicPrefixes`\" pulumi-lang-java=\"`topicPrefixes`\" pulumi-lang-hcl=\"`topic_prefixes`\"\u003e`topicPrefixes`\u003c/span\u003e, and its \u003cspan pulumi-lang-nodejs=\"`expiresAt`\" pulumi-lang-dotnet=\"`ExpiresAt`\" pulumi-lang-go=\"`expiresAt`\" pulumi-lang-python=\"`expires_at`\" pulumi-lang-yaml=\"`expiresAt`\" pulumi-lang-java=\"`expiresAt`\" pulumi-lang-hcl=\"`expires_at`\"\u003e`expiresAt`\u003c/span\u003e changes to the declared one. Its secret cannot be recovered: \u003cspan pulumi-lang-nodejs=\"`token`\" pulumi-lang-dotnet=\"`Token`\" pulumi-lang-go=\"`token`\" pulumi-lang-python=\"`token`\" pulumi-lang-yaml=\"`token`\" pulumi-lang-java=\"`token`\" pulumi-lang-hcl=\"`token`\"\u003e`token`\u003c/span\u003e stays null (use `-replace` for a new one). Not set: the provider \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e (default \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e). It is only used when the resource is created; afterwards the resource belongs to this state like any other, and a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e removes it.\n"
+                },
+                "expiresAt": {
+                    "type": "string",
+                    "description": "Deadline (RFC 3339, such as `2027-01-01T00:00:00Z`); it must be in the future. Not set: the token does not expire. Changes in place. An expired token disappears from the server: the next \u003cspan pulumi-lang-nodejs=\"`plan`\" pulumi-lang-dotnet=\"`Plan`\" pulumi-lang-go=\"`plan`\" pulumi-lang-python=\"`plan`\" pulumi-lang-yaml=\"`plan`\" pulumi-lang-java=\"`plan`\" pulumi-lang-hcl=\"`plan`\"\u003e`plan`\u003c/span\u003e then refuses the configuration until \u003cspan pulumi-lang-nodejs=\"`expiresAt`\" pulumi-lang-dotnet=\"`ExpiresAt`\" pulumi-lang-go=\"`expiresAt`\" pulumi-lang-python=\"`expires_at`\" pulumi-lang-yaml=\"`expiresAt`\" pulumi-lang-java=\"`expiresAt`\" pulumi-lang-hcl=\"`expires_at`\"\u003e`expiresAt`\u003c/span\u003e moves to the future (a new token) or the resource is removed.\n"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Name: 1 to 100 characters `A-Za-z0-9_-.:`. It is not unique on the server. Changes in place.\n"
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Permissions: one or more of \u003cspan pulumi-lang-nodejs=\"`publish`\" pulumi-lang-dotnet=\"`Publish`\" pulumi-lang-go=\"`publish`\" pulumi-lang-python=\"`publish`\" pulumi-lang-yaml=\"`publish`\" pulumi-lang-java=\"`publish`\" pulumi-lang-hcl=\"`publish`\"\u003e`publish`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`consume`\" pulumi-lang-dotnet=\"`Consume`\" pulumi-lang-go=\"`consume`\" pulumi-lang-python=\"`consume`\" pulumi-lang-yaml=\"`consume`\" pulumi-lang-java=\"`consume`\" pulumi-lang-hcl=\"`consume`\"\u003e`consume`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`create`\" pulumi-lang-dotnet=\"`Create`\" pulumi-lang-go=\"`create`\" pulumi-lang-python=\"`create`\" pulumi-lang-yaml=\"`create`\" pulumi-lang-java=\"`create`\" pulumi-lang-hcl=\"`create`\"\u003e`create`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`manage`\" pulumi-lang-dotnet=\"`Manage`\" pulumi-lang-go=\"`manage`\" pulumi-lang-python=\"`manage`\" pulumi-lang-yaml=\"`manage`\" pulumi-lang-java=\"`manage`\" pulumi-lang-hcl=\"`manage`\"\u003e`manage`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e. Changing them replaces the token.\n"
+                },
+                "topicPrefixes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Limit the token to the topics whose name starts with one of these prefixes (up to 20; 1 to 100 characters `A-Za-z0-9_-`). Empty: every topic. Not allowed with \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e. Changing them replaces the token. Default: none.\n"
+                }
+            },
+            "requiredInputs": [
+                "name",
+                "permissions"
+            ],
+            "stateInputs": {
+                "description": "Input properties used for looking up and filtering Token resources.\n",
+                "properties": {
+                    "createOrUpdate": {
+                        "type": "boolean",
+                        "description": "When creating, take over the token with this \u003cspan pulumi-lang-nodejs=\"`name`\" pulumi-lang-dotnet=\"`Name`\" pulumi-lang-go=\"`name`\" pulumi-lang-python=\"`name`\" pulumi-lang-yaml=\"`name`\" pulumi-lang-java=\"`name`\" pulumi-lang-hcl=\"`name`\"\u003e`name`\u003c/span\u003e that already exists instead of creating another (names are not unique): it must be the only one with the name and have the declared \u003cspan pulumi-lang-nodejs=\"`permissions`\" pulumi-lang-dotnet=\"`Permissions`\" pulumi-lang-go=\"`permissions`\" pulumi-lang-python=\"`permissions`\" pulumi-lang-yaml=\"`permissions`\" pulumi-lang-java=\"`permissions`\" pulumi-lang-hcl=\"`permissions`\"\u003e`permissions`\u003c/span\u003e and \u003cspan pulumi-lang-nodejs=\"`topicPrefixes`\" pulumi-lang-dotnet=\"`TopicPrefixes`\" pulumi-lang-go=\"`topicPrefixes`\" pulumi-lang-python=\"`topic_prefixes`\" pulumi-lang-yaml=\"`topicPrefixes`\" pulumi-lang-java=\"`topicPrefixes`\" pulumi-lang-hcl=\"`topic_prefixes`\"\u003e`topicPrefixes`\u003c/span\u003e, and its \u003cspan pulumi-lang-nodejs=\"`expiresAt`\" pulumi-lang-dotnet=\"`ExpiresAt`\" pulumi-lang-go=\"`expiresAt`\" pulumi-lang-python=\"`expires_at`\" pulumi-lang-yaml=\"`expiresAt`\" pulumi-lang-java=\"`expiresAt`\" pulumi-lang-hcl=\"`expires_at`\"\u003e`expiresAt`\u003c/span\u003e changes to the declared one. Its secret cannot be recovered: \u003cspan pulumi-lang-nodejs=\"`token`\" pulumi-lang-dotnet=\"`Token`\" pulumi-lang-go=\"`token`\" pulumi-lang-python=\"`token`\" pulumi-lang-yaml=\"`token`\" pulumi-lang-java=\"`token`\" pulumi-lang-hcl=\"`token`\"\u003e`token`\u003c/span\u003e stays null (use `-replace` for a new one). Not set: the provider \u003cspan pulumi-lang-nodejs=\"`createOrUpdate`\" pulumi-lang-dotnet=\"`CreateOrUpdate`\" pulumi-lang-go=\"`createOrUpdate`\" pulumi-lang-python=\"`create_or_update`\" pulumi-lang-yaml=\"`createOrUpdate`\" pulumi-lang-java=\"`createOrUpdate`\" pulumi-lang-hcl=\"`create_or_update`\"\u003e`createOrUpdate`\u003c/span\u003e (default \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e). It is only used when the resource is created; afterwards the resource belongs to this state like any other, and a \u003cspan pulumi-lang-nodejs=\"`destroy`\" pulumi-lang-dotnet=\"`Destroy`\" pulumi-lang-go=\"`destroy`\" pulumi-lang-python=\"`destroy`\" pulumi-lang-yaml=\"`destroy`\" pulumi-lang-java=\"`destroy`\" pulumi-lang-hcl=\"`destroy`\"\u003e`destroy`\u003c/span\u003e removes it.\n"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "description": "Creation date (RFC 3339).\n"
+                    },
+                    "expiresAt": {
+                        "type": "string",
+                        "description": "Deadline (RFC 3339, such as `2027-01-01T00:00:00Z`); it must be in the future. Not set: the token does not expire. Changes in place. An expired token disappears from the server: the next \u003cspan pulumi-lang-nodejs=\"`plan`\" pulumi-lang-dotnet=\"`Plan`\" pulumi-lang-go=\"`plan`\" pulumi-lang-python=\"`plan`\" pulumi-lang-yaml=\"`plan`\" pulumi-lang-java=\"`plan`\" pulumi-lang-hcl=\"`plan`\"\u003e`plan`\u003c/span\u003e then refuses the configuration until \u003cspan pulumi-lang-nodejs=\"`expiresAt`\" pulumi-lang-dotnet=\"`ExpiresAt`\" pulumi-lang-go=\"`expiresAt`\" pulumi-lang-python=\"`expires_at`\" pulumi-lang-yaml=\"`expiresAt`\" pulumi-lang-java=\"`expiresAt`\" pulumi-lang-hcl=\"`expires_at`\"\u003e`expiresAt`\u003c/span\u003e moves to the future (a new token) or the resource is removed.\n"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name: 1 to 100 characters `A-Za-z0-9_-.:`. It is not unique on the server. Changes in place.\n"
+                    },
+                    "permissions": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Permissions: one or more of \u003cspan pulumi-lang-nodejs=\"`publish`\" pulumi-lang-dotnet=\"`Publish`\" pulumi-lang-go=\"`publish`\" pulumi-lang-python=\"`publish`\" pulumi-lang-yaml=\"`publish`\" pulumi-lang-java=\"`publish`\" pulumi-lang-hcl=\"`publish`\"\u003e`publish`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`consume`\" pulumi-lang-dotnet=\"`Consume`\" pulumi-lang-go=\"`consume`\" pulumi-lang-python=\"`consume`\" pulumi-lang-yaml=\"`consume`\" pulumi-lang-java=\"`consume`\" pulumi-lang-hcl=\"`consume`\"\u003e`consume`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`create`\" pulumi-lang-dotnet=\"`Create`\" pulumi-lang-go=\"`create`\" pulumi-lang-python=\"`create`\" pulumi-lang-yaml=\"`create`\" pulumi-lang-java=\"`create`\" pulumi-lang-hcl=\"`create`\"\u003e`create`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`manage`\" pulumi-lang-dotnet=\"`Manage`\" pulumi-lang-go=\"`manage`\" pulumi-lang-python=\"`manage`\" pulumi-lang-yaml=\"`manage`\" pulumi-lang-java=\"`manage`\" pulumi-lang-hcl=\"`manage`\"\u003e`manage`\u003c/span\u003e, \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e. Changing them replaces the token.\n"
+                    },
+                    "secret": {
+                        "type": "string",
+                        "description": "The secret to send in `Authorization: Bearer` (`tb_\u003cid\u003e.\u003csecret\u003e`). Only known when the token was created here: null after an import.\n",
+                        "secret": true
+                    },
+                    "topicPrefixes": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Limit the token to the topics whose name starts with one of these prefixes (up to 20; 1 to 100 characters `A-Za-z0-9_-`). Empty: every topic. Not allowed with \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e. Changing them replaces the token. Default: none.\n"
+                    }
+                },
+                "type": "object"
+            }
+        }
+    },
+    "functions": {
+        "pulumi:providers:taba/terraformConfig": {
+            "description": "This function returns a Terraform config object with terraform-namecased keys,to be used with the Terraform Module Provider.",
+            "inputs": {
+                "properties": {
+                    "__self__": {
+                        "type": "ref",
+                        "$ref": "#/provider"
+                    }
+                },
+                "type": "pulumi:providers:taba/terraformConfig",
+                "required": [
+                    "__self__"
+                ]
+            },
+            "outputs": {
+                "properties": {
+                    "result": {
+                        "additionalProperties": {
+                            "$ref": "pulumi.json#/Any"
+                        },
+                        "type": "object"
+                    }
+                },
+                "required": [
+                    "result"
+                ],
+                "type": "object"
+            }
+        },
+        "taba:index/getToken:getToken": {
+            "description": "Reads one token by id, without the secret (the server only shows it at the creation). Needs authentication on and the root token or an \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e token.\n\n## Example Usage\n\n\u003c!--Start PulumiCodeChooser --\u003e\n```typescript\nimport * as pulumi from \"@pulumi/pulumi\";\nimport * as taba from \"@rafaelpontani/pulumi-taba\";\n\n// Reads a token by id, without the secret.\nconst ci = taba.getToken({\n    id: \"01JC8X3V5Q2W7E9R4T6Y8U0I1O\",\n});\nexport const ciExpiresAt = ci.then(ci =\u003e ci.expiresAt);\n```\n```python\nimport pulumi\nimport pulumi_taba as taba\n\n# Reads a token by id, without the secret.\nci = taba.get_token(id=\"01JC8X3V5Q2W7E9R4T6Y8U0I1O\")\npulumi.export(\"ciExpiresAt\", ci.expires_at)\n```\n```csharp\nusing System.Collections.Generic;\nusing System.Linq;\nusing Pulumi;\nusing Pulumi = Taba.Pulumi;\n\nreturn await Deployment.RunAsync(() =\u003e \n{\n    // Reads a token by id, without the secret.\n    var ci = Pulumi.GetToken.Invoke(new()\n    {\n        Id = \"01JC8X3V5Q2W7E9R4T6Y8U0I1O\",\n    });\n\n    return new Dictionary\u003cstring, object?\u003e\n    {\n        [\"ciExpiresAt\"] = ci.Apply(getTokenResult =\u003e getTokenResult.ExpiresAt),\n    };\n});\n```\n```go\npackage main\n\nimport (\n\t\"github.com/pulumi/pulumi/sdk/v3/go/pulumi\"\n\t\"github.com/rafaelpontani/pulumi-taba/sdk/go/taba\"\n)\n\nfunc main() {\n\tpulumi.Run(func(ctx *pulumi.Context) error {\n\t\t// Reads a token by id, without the secret.\n\t\tci, err := taba.GetToken(ctx, \u0026taba.LookupTokenArgs{\n\t\t\tId: \"01JC8X3V5Q2W7E9R4T6Y8U0I1O\",\n\t\t}, nil)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\tctx.Export(\"ciExpiresAt\", ci.ExpiresAt)\n\t\treturn nil\n\t})\n}\n```\n```hcl\nterraform {\n  required_providers {\n    taba = {\n      source = \"pulumi/taba\"\n    }\n  }\n}\n\ndata \"taba_token\" \"ci\" {\n  id = \"01JC8X3V5Q2W7E9R4T6Y8U0I1O\"\n}\n\n# Reads a token by id, without the secret.\noutput \"ciExpiresAt\" {\n  value = data.taba_token.ci.expires_at\n}\n```\n```java\npackage generated_program;\n\nimport com.pulumi.Context;\nimport com.pulumi.Pulumi;\nimport com.pulumi.core.Output;\nimport com.pulumi.taba.TabaFunctions;\nimport com.pulumi.taba.inputs.GetTokenArgs;\nimport java.util.ArrayList;\nimport java.util.Arrays;\nimport java.util.Map;\nimport java.io.File;\nimport java.nio.file.Files;\nimport java.nio.file.Paths;\n\npublic class App {\n    public static void main(String[] args) {\n        Pulumi.run(App::stack);\n    }\n\n    public static void stack(Context ctx) {\n        // Reads a token by id, without the secret.\n        final var ci = TabaFunctions.getToken(GetTokenArgs.builder()\n            .id(\"01JC8X3V5Q2W7E9R4T6Y8U0I1O\")\n            .build());\n\n        ctx.export(\"ciExpiresAt\", ci.expiresAt());\n    }\n}\n```\n```yaml\nvariables:\n  # Reads a token by id, without the secret.\n  ci:\n    fn::invoke:\n      function: taba:getToken\n      arguments:\n        id: 01JC8X3V5Q2W7E9R4T6Y8U0I1O\noutputs:\n  ciExpiresAt: ${ci.expiresAt}\n```\n\u003c!--End PulumiCodeChooser --\u003e\n",
+            "inputs": {
+                "description": "A collection of arguments for invoking getToken.\n",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "Identifier of the token.\n"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id"
+                ]
+            },
+            "outputs": {
+                "description": "A collection of values returned by getToken.\n",
+                "properties": {
+                    "createdAt": {
+                        "description": "Creation date (RFC 3339).\n",
+                        "type": "string"
+                    },
+                    "expiresAt": {
+                        "description": "Deadline (RFC 3339), or null when the token does not expire.\n",
+                        "type": "string"
+                    },
+                    "id": {
+                        "description": "Identifier of the token.\n",
+                        "type": "string"
+                    },
+                    "name": {
+                        "description": "Name (not unique).\n",
+                        "type": "string"
+                    },
+                    "permissions": {
+                        "description": "Permissions.\n",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "topicPrefixes": {
+                        "description": "Prefixes the token is limited to (empty: every topic).\n",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    }
+                },
+                "required": [
+                    "createdAt",
+                    "expiresAt",
+                    "id",
+                    "name",
+                    "permissions",
+                    "topicPrefixes"
+                ],
+                "type": "object"
+            }
+        },
+        "taba:index/getTokens:getTokens": {
+            "description": "Lists the tokens, oldest first, without the secrets. Expired tokens are not listed. Needs authentication on and the root token or an \u003cspan pulumi-lang-nodejs=\"`admin`\" pulumi-lang-dotnet=\"`Admin`\" pulumi-lang-go=\"`admin`\" pulumi-lang-python=\"`admin`\" pulumi-lang-yaml=\"`admin`\" pulumi-lang-java=\"`admin`\" pulumi-lang-hcl=\"`admin`\"\u003e`admin`\u003c/span\u003e token.\n\n## Example Usage\n\n\u003c!--Start PulumiCodeChooser --\u003e\n```typescript\nimport * as pulumi from \"@pulumi/pulumi\";\nimport * as taba from \"@rafaelpontani/pulumi-taba\";\n\n// The tokens whose name contains \"ci\", oldest first, without the secrets.\nconst ci = taba.getTokens({\n    nameContains: \"ci\",\n});\nexport const ciTokenIds = ci.then(ci =\u003e ci.ids);\n```\n```python\nimport pulumi\nimport pulumi_taba as taba\n\n# The tokens whose name contains \"ci\", oldest first, without the secrets.\nci = taba.get_tokens(name_contains=\"ci\")\npulumi.export(\"ciTokenIds\", ci.ids)\n```\n```csharp\nusing System.Collections.Generic;\nusing System.Linq;\nusing Pulumi;\nusing Pulumi = Taba.Pulumi;\n\nreturn await Deployment.RunAsync(() =\u003e \n{\n    // The tokens whose name contains \"ci\", oldest first, without the secrets.\n    var ci = Pulumi.GetTokens.Invoke(new()\n    {\n        NameContains = \"ci\",\n    });\n\n    return new Dictionary\u003cstring, object?\u003e\n    {\n        [\"ciTokenIds\"] = ci.Apply(getTokensResult =\u003e getTokensResult.Ids),\n    };\n});\n```\n```go\npackage main\n\nimport (\n\t\"github.com/pulumi/pulumi/sdk/v3/go/pulumi\"\n\t\"github.com/rafaelpontani/pulumi-taba/sdk/go/taba\"\n)\n\nfunc main() {\n\tpulumi.Run(func(ctx *pulumi.Context) error {\n\t\t// The tokens whose name contains \"ci\", oldest first, without the secrets.\n\t\tci, err := taba.GetTokens(ctx, \u0026taba.GetTokensArgs{\n\t\t\tNameContains: pulumi.StringRef(\"ci\"),\n\t\t}, nil)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\tctx.Export(\"ciTokenIds\", ci.Ids)\n\t\treturn nil\n\t})\n}\n```\n```hcl\nterraform {\n  required_providers {\n    taba = {\n      source = \"pulumi/taba\"\n    }\n  }\n}\n\ndata \"taba_tokens\" \"ci\" {\n  name_contains = \"ci\"\n}\n\n# The tokens whose name contains \"ci\", oldest first, without the secrets.\noutput \"ciTokenIds\" {\n  value = data.taba_tokens.ci.ids\n}\n```\n```java\npackage generated_program;\n\nimport com.pulumi.Context;\nimport com.pulumi.Pulumi;\nimport com.pulumi.core.Output;\nimport com.pulumi.taba.TabaFunctions;\nimport com.pulumi.taba.inputs.GetTokensArgs;\nimport java.util.ArrayList;\nimport java.util.Arrays;\nimport java.util.Map;\nimport java.io.File;\nimport java.nio.file.Files;\nimport java.nio.file.Paths;\n\npublic class App {\n    public static void main(String[] args) {\n        Pulumi.run(App::stack);\n    }\n\n    public static void stack(Context ctx) {\n        // The tokens whose name contains \"ci\", oldest first, without the secrets.\n        final var ci = TabaFunctions.getTokens(GetTokensArgs.builder()\n            .nameContains(\"ci\")\n            .build());\n\n        ctx.export(\"ciTokenIds\", ci.ids());\n    }\n}\n```\n```yaml\nvariables:\n  # The tokens whose name contains \"ci\", oldest first, without the secrets.\n  ci:\n    fn::invoke:\n      function: taba:getTokens\n      arguments:\n        nameContains: ci\noutputs:\n  ciTokenIds: ${ci.ids}\n```\n\u003c!--End PulumiCodeChooser --\u003e\n",
+            "inputs": {
+                "description": "A collection of arguments for invoking getTokens.\n",
+                "properties": {
+                    "nameContains": {
+                        "type": "string",
+                        "description": "Only the tokens whose name contains this text.\n"
+                    }
+                },
+                "type": "object"
+            },
+            "outputs": {
+                "description": "A collection of values returned by getTokens.\n",
+                "properties": {
+                    "ids": {
+                        "description": "The ids of the tokens found.\n",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "nameContains": {
+                        "description": "Only the tokens whose name contains this text.\n",
+                        "type": "string"
+                    },
+                    "tokens": {
+                        "description": "The tokens found.\n",
+                        "items": {
+                            "$ref": "#/types/taba:index/getTokensToken:getTokensToken"
+                        },
+                        "type": "array"
+                    }
+                },
+                "required": [
+                    "ids",
+                    "tokens"
+                ],
+                "type": "object"
+            }
+        },
+        "taba:index/getTopic:getTopic": {
+            "description": "Reads one topic by name: a queue, a distributor or a dead-letter queue, managed here or not. The token needs to reach the name (its prefixes).\n\n## Example Usage\n\n\u003c!--Start PulumiCodeChooser --\u003e\n```typescript\nimport * as pulumi from \"@pulumi/pulumi\";\nimport * as taba from \"@rafaelpontani/pulumi-taba\";\n\n// A queue another team created, and its dead-letter queue.\nconst orders = taba.getTopic({\n    name: \"orders\",\n});\nconst ordersDeadLetter = taba.getTopic({\n    name: \"orders-dead-letter\",\n});\nexport const ordersTtl = orders.then(orders =\u003e orders.effectiveTtl);\n```\n```python\nimport pulumi\nimport pulumi_taba as taba\n\n# A queue another team created, and its dead-letter queue.\norders = taba.get_topic(name=\"orders\")\norders_dead_letter = taba.get_topic(name=\"orders-dead-letter\")\npulumi.export(\"ordersTtl\", orders.effective_ttl)\n```\n```csharp\nusing System.Collections.Generic;\nusing System.Linq;\nusing Pulumi;\nusing Pulumi = Taba.Pulumi;\n\nreturn await Deployment.RunAsync(() =\u003e \n{\n    // A queue another team created, and its dead-letter queue.\n    var orders = Pulumi.GetTopic.Invoke(new()\n    {\n        Name = \"orders\",\n    });\n\n    var ordersDeadLetter = Pulumi.GetTopic.Invoke(new()\n    {\n        Name = \"orders-dead-letter\",\n    });\n\n    return new Dictionary\u003cstring, object?\u003e\n    {\n        [\"ordersTtl\"] = orders.Apply(getTopicResult =\u003e getTopicResult.EffectiveTtl),\n    };\n});\n```\n```go\npackage main\n\nimport (\n\t\"github.com/pulumi/pulumi/sdk/v3/go/pulumi\"\n\t\"github.com/rafaelpontani/pulumi-taba/sdk/go/taba\"\n)\n\nfunc main() {\n\tpulumi.Run(func(ctx *pulumi.Context) error {\n\t\t// A queue another team created, and its dead-letter queue.\n\t\torders, err := taba.GetTopic(ctx, \u0026taba.GetTopicArgs{\n\t\t\tName: \"orders\",\n\t\t}, nil)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\t_, err = taba.GetTopic(ctx, \u0026taba.GetTopicArgs{\n\t\t\tName: \"orders-dead-letter\",\n\t\t}, nil)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\tctx.Export(\"ordersTtl\", orders.EffectiveTtl)\n\t\treturn nil\n\t})\n}\n```\n```hcl\nterraform {\n  required_providers {\n    taba = {\n      source = \"pulumi/taba\"\n    }\n  }\n}\n\ndata \"taba_topic\" \"orders\" {\n  name = \"orders\"\n}\ndata \"taba_topic\" \"ordersDeadLetter\" {\n  name = \"orders-dead-letter\"\n}\n\n# A queue another team created, and its dead-letter queue.\noutput \"ordersTtl\" {\n  value = data.taba_topic.orders.effective_ttl\n}\n```\n```java\npackage generated_program;\n\nimport com.pulumi.Context;\nimport com.pulumi.Pulumi;\nimport com.pulumi.core.Output;\nimport com.pulumi.taba.TabaFunctions;\nimport com.pulumi.taba.inputs.GetTopicArgs;\nimport java.util.ArrayList;\nimport java.util.Arrays;\nimport java.util.Map;\nimport java.io.File;\nimport java.nio.file.Files;\nimport java.nio.file.Paths;\n\npublic class App {\n    public static void main(String[] args) {\n        Pulumi.run(App::stack);\n    }\n\n    public static void stack(Context ctx) {\n        // A queue another team created, and its dead-letter queue.\n        final var orders = TabaFunctions.getTopic(GetTopicArgs.builder()\n            .name(\"orders\")\n            .build());\n\n        final var ordersDeadLetter = TabaFunctions.getTopic(GetTopicArgs.builder()\n            .name(\"orders-dead-letter\")\n            .build());\n\n        ctx.export(\"ordersTtl\", orders.effectiveTtl());\n    }\n}\n```\n```yaml\nvariables:\n  # A queue another team created, and its dead-letter queue.\n  orders:\n    fn::invoke:\n      function: taba:getTopic\n      arguments:\n        name: orders\n  ordersDeadLetter:\n    fn::invoke:\n      function: taba:getTopic\n      arguments:\n        name: orders-dead-letter\noutputs:\n  ordersTtl: ${orders.effectiveTtl}\n```\n\u003c!--End PulumiCodeChooser --\u003e\n",
+            "inputs": {
+                "description": "A collection of arguments for invoking getTopic.\n",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the topic (a dead-letter queue too).\n"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name"
+                ]
+            },
+            "outputs": {
+                "description": "A collection of values returned by getTopic.\n",
+                "properties": {
+                    "createdAt": {
+                        "description": "Creation date (RFC 3339).\n",
+                        "type": "string"
+                    },
+                    "deadLetter": {
+                        "description": "True on a dead-letter queue.\n",
+                        "type": "boolean"
+                    },
+                    "effectiveMaxDeliveries": {
+                        "description": "The\u003cspan pulumi-lang-nodejs=\" maxDeliveries \" pulumi-lang-dotnet=\" MaxDeliveries \" pulumi-lang-go=\" maxDeliveries \" pulumi-lang-python=\" max_deliveries \" pulumi-lang-yaml=\" maxDeliveries \" pulumi-lang-java=\" maxDeliveries \" pulumi-lang-hcl=\" max_deliveries \"\u003e maxDeliveries \u003c/span\u003ein force.\n",
+                        "type": "integer"
+                    },
+                    "effectiveMaxMessageBytes": {
+                        "description": "The max*message*bytes in force.\n",
+                        "type": "integer"
+                    },
+                    "effectiveTtl": {
+                        "description": "The ttl in force.\n",
+                        "type": "integer"
+                    },
+                    "fifo": {
+                        "description": "FIFO queue.\n",
+                        "type": "boolean"
+                    },
+                    "id": {
+                        "description": "Identifier of the topic.\n",
+                        "type": "string"
+                    },
+                    "idleTimeout": {
+                        "description": "Volatile queue only: seconds without a consumer until removal.\n",
+                        "type": "integer"
+                    },
+                    "maxDeliveries": {
+                        "description": "Declared deliveries before the dead-letter (null: the node default).\n",
+                        "type": "integer"
+                    },
+                    "maxMessageBytes": {
+                        "description": "Declared maximum message size (null: the node default).\n",
+                        "type": "integer"
+                    },
+                    "name": {
+                        "description": "Name of the topic (a dead-letter queue too).\n",
+                        "type": "string"
+                    },
+                    "prefixes": {
+                        "description": "Distributor only: the destination prefixes (null on a queue).\n",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "source": {
+                        "description": "Dead-letter queue only: the queue it belongs to.\n",
+                        "type": "string"
+                    },
+                    "tags": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "description": "Telemetry tags.\n",
+                        "type": "object"
+                    },
+                    "ttl": {
+                        "description": "Declared message lifetime, in seconds (null: the node default).\n",
+                        "type": "integer"
+                    },
+                    "type": {
+                        "description": "\u003cspan pulumi-lang-nodejs=\"`queue`\" pulumi-lang-dotnet=\"`Queue`\" pulumi-lang-go=\"`queue`\" pulumi-lang-python=\"`queue`\" pulumi-lang-yaml=\"`queue`\" pulumi-lang-java=\"`queue`\" pulumi-lang-hcl=\"`queue`\"\u003e`queue`\u003c/span\u003e or \u003cspan pulumi-lang-nodejs=\"`distributor`\" pulumi-lang-dotnet=\"`Distributor`\" pulumi-lang-go=\"`distributor`\" pulumi-lang-python=\"`distributor`\" pulumi-lang-yaml=\"`distributor`\" pulumi-lang-java=\"`distributor`\" pulumi-lang-hcl=\"`distributor`\"\u003e`distributor`\u003c/span\u003e.\n",
+                        "type": "string"
+                    },
+                    "volatile": {
+                        "description": "Volatile queue.\n",
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "createdAt",
+                    "deadLetter",
+                    "effectiveMaxDeliveries",
+                    "effectiveMaxMessageBytes",
+                    "effectiveTtl",
+                    "fifo",
+                    "id",
+                    "idleTimeout",
+                    "maxDeliveries",
+                    "maxMessageBytes",
+                    "name",
+                    "prefixes",
+                    "source",
+                    "tags",
+                    "ttl",
+                    "type",
+                    "volatile"
+                ],
+                "type": "object"
+            }
+        },
+        "taba:index/getTopics:getTopics": {
+            "description": "Lists the topics the token reaches, sorted by name, with optional filters.\n\n## Example Usage\n\n\u003c!--Start PulumiCodeChooser --\u003e\n```typescript\nimport * as pulumi from \"@pulumi/pulumi\";\nimport * as taba from \"@rafaelpontani/pulumi-taba\";\n\n// The queues of the billing team whose name contains \"orders\".\nconst billingOrders = taba.getTopics({\n    nameContains: \"orders\",\n    type: \"queue\",\n    tags: {\n        team: \"billing\",\n    },\n});\nexport const names = billingOrders.then(billingOrders =\u003e billingOrders.names);\n```\n```python\nimport pulumi\nimport pulumi_taba as taba\n\n# The queues of the billing team whose name contains \"orders\".\nbilling_orders = taba.get_topics(name_contains=\"orders\",\n    type=\"queue\",\n    tags={\n        \"team\": \"billing\",\n    })\npulumi.export(\"names\", billing_orders.names)\n```\n```csharp\nusing System.Collections.Generic;\nusing System.Linq;\nusing Pulumi;\nusing Pulumi = Taba.Pulumi;\n\nreturn await Deployment.RunAsync(() =\u003e \n{\n    // The queues of the billing team whose name contains \"orders\".\n    var billingOrders = Pulumi.GetTopics.Invoke(new()\n    {\n        NameContains = \"orders\",\n        Type = \"queue\",\n        Tags = \n        {\n            { \"team\", \"billing\" },\n        },\n    });\n\n    return new Dictionary\u003cstring, object?\u003e\n    {\n        [\"names\"] = billingOrders.Apply(getTopicsResult =\u003e getTopicsResult.Names),\n    };\n});\n```\n```go\npackage main\n\nimport (\n\t\"github.com/pulumi/pulumi/sdk/v3/go/pulumi\"\n\t\"github.com/rafaelpontani/pulumi-taba/sdk/go/taba\"\n)\n\nfunc main() {\n\tpulumi.Run(func(ctx *pulumi.Context) error {\n\t\t// The queues of the billing team whose name contains \"orders\".\n\t\tbillingOrders, err := taba.GetTopics(ctx, \u0026taba.GetTopicsArgs{\n\t\t\tNameContains: pulumi.StringRef(\"orders\"),\n\t\t\tType:         pulumi.StringRef(\"queue\"),\n\t\t\tTags: map[string]string{\n\t\t\t\t\"team\": \"billing\",\n\t\t\t},\n\t\t}, nil)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\tctx.Export(\"names\", billingOrders.Names)\n\t\treturn nil\n\t})\n}\n```\n```hcl\nterraform {\n  required_providers {\n    taba = {\n      source = \"pulumi/taba\"\n    }\n  }\n}\n\ndata \"taba_topics\" \"billingOrders\" {\n  name_contains = \"orders\"\n  type          = \"queue\"\n  tags = {\n    \"team\" = \"billing\"\n  }\n}\n\n# The queues of the billing team whose name contains \"orders\".\noutput \"names\" {\n  value = data.taba_topics.billingOrders.names\n}\n```\n```java\npackage generated_program;\n\nimport com.pulumi.Context;\nimport com.pulumi.Pulumi;\nimport com.pulumi.core.Output;\nimport com.pulumi.taba.TabaFunctions;\nimport com.pulumi.taba.inputs.GetTopicsArgs;\nimport java.util.ArrayList;\nimport java.util.Arrays;\nimport java.util.Map;\nimport java.io.File;\nimport java.nio.file.Files;\nimport java.nio.file.Paths;\n\npublic class App {\n    public static void main(String[] args) {\n        Pulumi.run(App::stack);\n    }\n\n    public static void stack(Context ctx) {\n        // The queues of the billing team whose name contains \"orders\".\n        final var billingOrders = TabaFunctions.getTopics(GetTopicsArgs.builder()\n            .nameContains(\"orders\")\n            .type(\"queue\")\n            .tags(Map.of(\"team\", \"billing\"))\n            .build());\n\n        ctx.export(\"names\", billingOrders.names());\n    }\n}\n```\n```yaml\nvariables:\n  # The queues of the billing team whose name contains \"orders\".\n  billingOrders:\n    fn::invoke:\n      function: taba:getTopics\n      arguments:\n        nameContains: orders\n        type: queue\n        tags:\n          team: billing\noutputs:\n  names: ${billingOrders.names}\n```\n\u003c!--End PulumiCodeChooser --\u003e\n",
+            "inputs": {
+                "description": "A collection of arguments for invoking getTopics.\n",
+                "properties": {
+                    "includeDeadLetters": {
+                        "type": "boolean",
+                        "description": "Also list the dead-letter queues. Default: \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e.\n"
+                    },
+                    "nameContains": {
+                        "type": "string",
+                        "description": "Only the topics whose name contains this text (case-sensitive).\n"
+                    },
+                    "tags": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "description": "Only the topics that have all these tags, with these values.\n"
+                    },
+                    "type": {
+                        "type": "string",
+                        "description": "Only \u003cspan pulumi-lang-nodejs=\"`queue`\" pulumi-lang-dotnet=\"`Queue`\" pulumi-lang-go=\"`queue`\" pulumi-lang-python=\"`queue`\" pulumi-lang-yaml=\"`queue`\" pulumi-lang-java=\"`queue`\" pulumi-lang-hcl=\"`queue`\"\u003e`queue`\u003c/span\u003e or only \u003cspan pulumi-lang-nodejs=\"`distributor`\" pulumi-lang-dotnet=\"`Distributor`\" pulumi-lang-go=\"`distributor`\" pulumi-lang-python=\"`distributor`\" pulumi-lang-yaml=\"`distributor`\" pulumi-lang-java=\"`distributor`\" pulumi-lang-hcl=\"`distributor`\"\u003e`distributor`\u003c/span\u003e.\n"
+                    }
+                },
+                "type": "object"
+            },
+            "outputs": {
+                "description": "A collection of values returned by getTopics.\n",
+                "properties": {
+                    "includeDeadLetters": {
+                        "description": "Also list the dead-letter queues. Default: \u003cspan pulumi-lang-nodejs=\"`false`\" pulumi-lang-dotnet=\"`False`\" pulumi-lang-go=\"`false`\" pulumi-lang-python=\"`false`\" pulumi-lang-yaml=\"`false`\" pulumi-lang-java=\"`false`\" pulumi-lang-hcl=\"`false`\"\u003e`false`\u003c/span\u003e.\n",
+                        "type": "boolean"
+                    },
+                    "nameContains": {
+                        "description": "Only the topics whose name contains this text (case-sensitive).\n",
+                        "type": "string"
+                    },
+                    "names": {
+                        "description": "The names of the topics found.\n",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "tags": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "description": "Only the topics that have all these tags, with these values.\n",
+                        "type": "object"
+                    },
+                    "topics": {
+                        "description": "The topics found.\n",
+                        "items": {
+                            "$ref": "#/types/taba:index/getTopicsTopic:getTopicsTopic"
+                        },
+                        "type": "array"
+                    },
+                    "type": {
+                        "description": "Only \u003cspan pulumi-lang-nodejs=\"`queue`\" pulumi-lang-dotnet=\"`Queue`\" pulumi-lang-go=\"`queue`\" pulumi-lang-python=\"`queue`\" pulumi-lang-yaml=\"`queue`\" pulumi-lang-java=\"`queue`\" pulumi-lang-hcl=\"`queue`\"\u003e`queue`\u003c/span\u003e or only \u003cspan pulumi-lang-nodejs=\"`distributor`\" pulumi-lang-dotnet=\"`Distributor`\" pulumi-lang-go=\"`distributor`\" pulumi-lang-python=\"`distributor`\" pulumi-lang-yaml=\"`distributor`\" pulumi-lang-java=\"`distributor`\" pulumi-lang-hcl=\"`distributor`\"\u003e`distributor`\u003c/span\u003e.\n",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "names",
+                    "topics"
+                ],
+                "type": "object"
+            }
+        }
+    }
+}

@@ -13,7 +13,7 @@ fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 >
 > **Legenda:** `[ ]` em aberto, sem decisão; `[~]` parcialmente resolvida (o texto traz **só as perguntas que faltam**, cada uma com seu sub-código); **Depende de** = a dúvida só se responde depois de outra.
 >
-> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D221** e **PRB-109**; D212, D213, D217 e PRB-108 estão tomados por planos ainda em desenvolvimento).
+> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D224** e **PRB-110**; D217 e PRB-108 estão tomados por planos ainda em desenvolvimento).
 
 ## Limites conhecidos
 
@@ -129,6 +129,14 @@ Achados ao implementar o provider ([40-terraform.md](40-terraform.md), D211, D21
 | **PRB-106** | **A adoção de um token pelo `create_or_update` não é atômica.** É uma lista por nome e depois um `PATCH` do lado do cliente, então dois `apply` ao mesmo tempo, com o token ausente, criam os dois: dois tokens com o mesmo nome, e o `apply` seguinte acusa a ambiguidade. Os tópicos não têm isso (o `PUT` é decidido pelo dono) | Aceito para IaC (um estado por recurso). Um upsert de tokens no servidor exigiria nome único, que a API não tem |
 | **PRB-107** | **Depois de uma resposta de criação perdida, o provider pode revogar um token que outra pessoa criou.** Num `503 cluster.quorum-unavailable` do `POST /tokens`, o órfão é o token igual (nome, permissões, prefixos) que não estava na lista feita antes da chamada; um token igual criado por outro cliente entre essa lista e o `503` seria revogado no lugar dele. Com dois candidatos ou mais nada é revogado | Documentado ([16-api-cliente.md](16-api-cliente.md#tokens)). Um id de requisição que o servidor guardasse com o token (uma chave de idempotência no `POST /tokens`) tiraria a adivinhação |
 | **PRB-109** | **Só o conector Go administra tokens**, então o cenário de contrato dos conectores (`connectors/contract/scenarios/`) não cobre `/tokens`, e os outros sete conectores não criam um token | Quando um segundo conector precisar (o provider Pulumi usa o do Terraform), pôr as cinco chamadas em todos os conectores e um cenário de contrato com a autenticação ligada |
+
+## Provider Pulumi (problemas e limites novos)
+
+Achados ao implementar o provider ([41-pulumi.md](41-pulumi.md), D212, D213, D222).
+
+| Código | Efeito | Proposta |
+|---|---|---|
+| **PRB-110** | **Parte do provider Pulumi não é provada por um programa.** Os SDKs .NET e Go são só compilados (`test.sh acc`), e nenhum programa nessas linguagens roda `up` e `preview`; e o job `verify` final do `release.yml` não instala nenhum dos pacotes publicados (o do npm é conferido pelo `pulumi-npm`, os do PyPI e do NuGet não são). Os casos `UC-IAC-025`, `026` e `030` a `034` são cobertos por scripts de shell, que o `uc_coverage` não lê | Um programa mínimo em cada linguagem em `examples/` e um passo no `verify` que instala os três pacotes publicados e roda `pulumi preview`. Levar os cenários para um executor de testes que o `uc_coverage` leia tiraria os casos do [26b](26b-casos-de-uso-planejados.md) |
 
 ## 1. Sem bloqueio
 
@@ -357,6 +365,18 @@ Podem ser respondidas **agora**, em qualquer ordem: não dependem de outra pergu
 - **Estado:** `[ ]` aberta · **Tipo:** dúvida de design
 
 **A rodada por grupo dentro da faixa.** A entrega justa escolhe a faixa do grupo pelo tamanho (potência de 2); no empate de faixa o código escolhe a mensagem mais antiga entre os grupos da faixa (e a mais nova na vez seguinte), então dois grupos pequenos de tamanho próximo se alternam por idade, e não por rodada (UC-GRP-007). O texto de [12-entrega.md](12-entrega.md) (seção 12.11) fala em rodada. Pergunta: a rodada por grupo deve valer dentro da faixa? A proposta é manter por idade, que é justa entre grupos de tamanho parecido, e dizer isso em 12.11.
+
+### D223
+
+- **Estado:** `[ ]` aberta · **Tipo:** dúvida de design
+
+**O SDK Java do provider Pulumi.** O bridge o gera, mas o Maven Central pede uma conta no Central Portal, um namespace verificado (`io.github.rafaelpontani`) e uma chave GPG própria, e nada mais no projeto publica no Maven. Pergunta: vale fazer o Java antes de alguém pedir? A proposta é esperar o primeiro pedido e então acrescentar `java` ao `generate.sh` e ao `package.sh`, um job de publicação com a variável dele e a configuração em [27-ci-cd.md](27-ci-cd.md#provider-pulumi).
+
+### D224
+
+- **Estado:** `[ ]` aberta · **Tipo:** dúvida de design
+
+**A listagem no Pulumi Registry.** O registry lista um provider por um pull request para o `pulumi/registry` (`community-packages/package-list.json`, com o repositório `rafaelpontani/pulumi-taba` e o schema `provider/cmd/pulumi-resource-taba/schema.json`, que o espelho já tem) e lê as Releases dele; a Pulumi revisa, como o time do OpenTofu fez com o provider Terraform. Ele também pede `docs/_index.md` e `docs/installation-configuration.md` no repositório. Pergunta: quando? A proposta é depois de a primeira versão final ser publicada e conferida, com os dois documentos acrescentados ao espelho então.
 
 ## 2. Bloqueadas por outra decisão ou etapa
 
