@@ -33,5 +33,5 @@ pulumi_go -e PULUMI_VERSION="$PULUMI_VERSION" -- '
   cd sdk
   go mod init github.com/rafaelpontani/pulumi-taba/sdk >/dev/null 2>&1
   go get "github.com/pulumi/pulumi/sdk/v3@v$PULUMI_VERSION" >/dev/null 2>&1
-  GOFLAGS=-mod=mod go mod tidy >/dev/null 2>&1'
+  GOFLAGS="-mod=mod -buildvcs=false" go mod tidy >/dev/null 2>&1'
 echo "  generated"

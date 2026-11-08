@@ -16,7 +16,7 @@ pulumi_go() {
   local opts=()
   while [ "$1" != "--" ]; do opts+=("$1"); shift; done
   shift
-  docker run --rm -e GOTOOLCHAIN=local -e GOFLAGS=-mod=readonly \
+  docker run --rm -e GOTOOLCHAIN=local -e GOFLAGS="-mod=readonly -buildvcs=false" \
     -e PULUMI_HOME=/tools/pulumi-home -e PULUMI_SKIP_UPDATE_CHECK=true -e PULUMI_AUTOMATION_API_SKIP_VERSION_CHECK=true \
     -e PATH="/tools/pulumi-$PULUMI_VERSION:/usr/local/go/bin:/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     -v taba-pulumi-gomod:/go/pkg/mod -v taba-pulumi-gocache:/root/.cache/go-build -v taba-pulumi-tools:/tools \
