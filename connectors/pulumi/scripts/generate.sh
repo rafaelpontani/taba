@@ -28,10 +28,10 @@ pulumi_go -e PULUMI_VERSION="$PULUMI_VERSION" -- '
   for lang in nodejs python dotnet go; do
     "$tfgen" "$lang" --out "sdk/$lang" >/dev/null
   done
-  rm -rf sdk/dotnet/bin sdk/dotnet/obj
   # The Go SDK is its own module (tag sdk/vX.Y.Z of the mirror), with the Pulumi SDK pinned to the CLI version.
   cd sdk
   go mod init github.com/rafaelpontani/pulumi-taba/sdk >/dev/null 2>&1
   go get "github.com/pulumi/pulumi/sdk/v3@v$PULUMI_VERSION" >/dev/null 2>&1
-  GOFLAGS="-mod=mod -buildvcs=false" go mod tidy >/dev/null 2>&1'
+  GOFLAGS="-mod=mod -buildvcs=false" go mod tidy >/dev/null 2>&1
+  cd ..; rm -rf sdk/dotnet/bin sdk/dotnet/obj'
 echo "  generated"

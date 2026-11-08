@@ -36,13 +36,14 @@ fi
 
 # The schema and the four SDKs, regenerated, must be the committed ones (a tree hash, so it also works before the first commit).
 tree_hash() {
-  (cd "$(dirname "${BASH_SOURCE[0]}")/.." && find sdk provider/cmd/pulumi-resource-taba -type f | LC_ALL=C sort | xargs sha256sum | sha256sum)
+  (cd "$(dirname "${BASH_SOURCE[0]}")/.." && find sdk provider/cmd/pulumi-resource-taba -type f | LC_ALL=C sort | xargs sha256sum)
 }
 if [ "$mode" = all ] || [ "$mode" = sdks ]; then
   contract_step "schema.json and the SDKs are up to date (generate.sh)"
-  before="$(tree_hash)"
+  tree_hash >"${TMPDIR:-/tmp}/pulumi-tree-before.txt"
   "$(dirname "${BASH_SOURCE[0]}")/generate.sh" >/dev/null
-  [ "$before" = "$(tree_hash)" ] || contract_die "schema.json or an SDK changed: the generated files were out of date (they are regenerated now; review and commit them)"
+  tree_hash >"${TMPDIR:-/tmp}/pulumi-tree-after.txt"
+  diff "${TMPDIR:-/tmp}/pulumi-tree-before.txt" "${TMPDIR:-/tmp}/pulumi-tree-after.txt" >&2 || contract_die "schema.json or an SDK changed: the generated files were out of date (they are regenerated now; review and commit them)"
   echo "  up to date"
 fi
 [ "$mode" = sdks ] && exit 0
