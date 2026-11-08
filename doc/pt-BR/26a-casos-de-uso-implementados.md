@@ -59,7 +59,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `BKP` | Backup opcional em S3 | 46 | 0 |
 | `CHS` | Caos com histórico verificado | 5 | 0 |
 | `BNC` | Benchmark comparativo local (`bench/run.sh`) | 5 | 1 |
-| `IAC` | Provider Terraform e OpenTofu | 23 | 0 |
+| `IAC` | Providers Terraform, OpenTofu e Pulumi | 27 | 7 |
 
 ## TOP: Tópicos: criar, listar, ler, alterar e remover
 
@@ -11142,7 +11142,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-## IAC: Provider Terraform e OpenTofu
+## IAC: Providers Terraform, OpenTofu e Pulumi
 
 ### UC-IAC-001
 
@@ -11418,10 +11418,50 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/terraform/internal/provider/topics_test.go::TestTheErrorDetailsAreShownAsLines`
 
 ---
+
+### UC-IAC-024
+
+**Caso:** Todo recurso e data source do provider Terraform tem um token Pulumi e está no schema ([41-pulumi.md](41-pulumi.md#recursos-e-funções))
+**Então:** Um recurso ou data source que só o provider Terraform ganhou faz o teste falhar, por faltar no schema do Pulumi
+**Nível:** K
+**Testes:**
+  - `connectors/pulumi/provider/resources_test.go::TestEveryTerraformResourceAndDataSourceIsMapped`
+
+---
+
+### UC-IAC-027
+
+**Caso:** Nada tem nome automático no Pulumi ([41-pulumi.md](41-pulumi.md#sem-nomes-automáticos), D222)
+**Então:** `name` é obrigatório em `Queue`, `Distributor` e `Token` e nenhum recurso declara autonaming, então o `createOrUpdate` acha o que existe pelo nome exato
+**Nível:** K
+**Testes:**
+  - `connectors/pulumi/provider/resources_test.go::TestNoResourceHasAutonaming`
+
+---
+
+### UC-IAC-028
+
+**Caso:** O que o provider Terraform marca como sensível é um segredo do Pulumi ([41-pulumi.md](41-pulumi.md#recursos-e-funções))
+**Então:** O segredo de um token e o token da configuração do provider são `secret` no schema (`caCertPem` é um certificado público e não é)
+**Nível:** K
+**Testes:**
+  - `connectors/pulumi/provider/resources_test.go::TestSensitiveFieldsAreSecrets`
+
+---
+
+### UC-IAC-029
+
+**Caso:** A ordem de uma substituição no Pulumi ([41-pulumi.md](41-pulumi.md#substituição-e-rotação))
+**Então:** Uma fila e um distribuidor são substituídos apagando primeiro (o nome é o id; criar primeiro falharia com `topic.already-exists`); um token é criado primeiro
+**Nível:** K
+**Testes:**
+  - `connectors/pulumi/provider/resources_test.go::TestReplacementOrder`
+
+---
 ## Fontes e provas
 
 - Os casos vieram de `doc/20a`, `20b` e `20c` (o catálogo histórico, removido no commit `efeb47a`); os testes, das linhas `/// UC:` do código. O teste `crates/taba-node/tests/uc_coverage.rs` confere os códigos.
 - Os casos `UC-BKP` (backup em S3) não vêm do catálogo histórico: foram escritos à mão neste arquivo, no mesmo formato, e a lista de testes de cada um é conferida por `uc_coverage`.
 - Os casos `UC-BNC` (benchmark local) foram escritos à mão neste arquivo; os testes deles são arquivos Node.js em `bench/`, que o `uc_coverage` também lê.
-- Os casos `UC-IAC` (provider Terraform e OpenTofu) foram escritos à mão neste arquivo; os testes deles são arquivos Go em `connectors/terraform/internal/provider/` (os unitários com servidor falso e os de aceitação, que só rodam contra um nó real com `TF_ACC=1`), que o `uc_coverage` também lê.
+- Os casos `UC-IAC` (providers Terraform, OpenTofu e Pulumi) foram escritos à mão neste arquivo; os testes deles são arquivos Go em `connectors/terraform/internal/provider/` e `connectors/pulumi/provider/` (os unitários com servidor falso e os de aceitação, que só rodam contra um nó real com `TF_ACC=1`), que o `uc_coverage` também lê.
 - Mantido à mão: um teste novo que cita um caso entra no cartão dele ([26-casos-de-uso.md](26-casos-de-uso.md)).

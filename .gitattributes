@@ -1,3 +1,7 @@
 # Os vetores de referência do formato entre nós são comparados byte a byte: sempre LF, também num clone do
 # Windows com core.autocrlf.
 crates/taba-node/tests/wire/*.hex text eol=lf
+# O SDK e o schema gerados do provider Pulumi: sempre LF, para o teste "sdks" comparar byte a byte no Windows também.
+connectors/pulumi/sdk/** text eol=lf
+connectors/pulumi/sdk/**/*.png binary
+connectors/pulumi/provider/cmd/pulumi-resource-taba/*.json text eol=lf

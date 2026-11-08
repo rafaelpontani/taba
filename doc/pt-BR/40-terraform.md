@@ -11,7 +11,7 @@ fontes: [connectors/terraform/internal/provider/provider.go, connectors/terrafor
 
 > Leia antes: [16-api-cliente.md](16-api-cliente.md) (tópicos e tokens) e [14-seguranca.md](14-seguranca.md) (tokens e permissões).
 
-O provider gerencia como código o que de outro jeito se cria pela API de clientes ou pelo `taba-cli`: **filas, distribuidores e tokens de acesso**, com `plan`, detecção de desvio, `import` e remoção controlada. É um programa Go em `connectors/terraform` (terraform-plugin-framework) que chama a API de clientes pelo conector Go (`connectors/go`), então não precisa de nada no nó além da API de clientes. O mesmo binário serve o **Terraform** e o **OpenTofu**, e o provider Pulumi será gerado a partir dele.
+O provider gerencia como código o que de outro jeito se cria pela API de clientes ou pelo `taba-cli`: **filas, distribuidores e tokens de acesso**, com `plan`, detecção de desvio, `import` e remoção controlada. É um programa Go em `connectors/terraform` (terraform-plugin-framework) que chama a API de clientes pelo conector Go (`connectors/go`), então não precisa de nada no nó além da API de clientes. O mesmo binário serve o **Terraform** e o **OpenTofu**, e o [provider Pulumi](41-pulumi.md) é gerado a partir dele.
 
 **Estado.** O provider está pronto e testado (unitários, aceitação contra um nó real com Terraform e OpenTofu, uma rodada de três nós com um nó fora). Está publicado no [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba) como `rafaelpontani/taba` desde a `v0.3.8-rc.3`; a submissão ao OpenTofu Registry (o provider e a chave de assinatura) foi validada e espera a revisão do time do OpenTofu ([Publicação](#publicação)). Os zips de cada versão também ficam na Release do GitHub dela.
 

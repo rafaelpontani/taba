@@ -328,6 +328,8 @@ The `taba-cli`, the client command line ([connectors/rust/cli](connectors/rust/c
 
 **Terraform and OpenTofu provider.** [`connectors/terraform`](connectors/terraform/README.md) manages queues, distributors and access tokens as code (`rafaelpontani/taba`), with plan, drift detection, import, a guard against removing a queue that still holds messages (`force_destroy`) and an optional `create_or_update` that takes over what already exists. It is on the [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba) (the OpenTofu Registry is reviewing it), and its zips also come with each [Release](https://github.com/rafaelpontani/taba/releases) ([the guide](doc/en-US/40-terraform.md)).
 
+**Pulumi provider.** [`connectors/pulumi`](connectors/pulumi/README.md) is the same provider for Pulumi, with SDKs for TypeScript/JavaScript, Python, .NET and Go (`@rafaelpontani/pulumi-taba`, `pulumi-taba`, `Taba.Pulumi` and a Go module): queues, distributors and access tokens as code, with `preview`, drift detection, import and the same `forceDestroy` and `createOrUpdate`. It is packaged with each [Release](https://github.com/rafaelpontani/taba/releases) and waits for the setup of its package registries ([the guide](doc/en-US/41-pulumi.md)).
+
 Other languages (C and C++ are deferred, with no date) use their own HTTP client. The design is in [the connectors guide](doc/en-US/21-connectors.md).
 
 > The base versions are proposals and may change until confirmed (pending item D68, see [pending items](doc/en-US/31-pending-items.md)).

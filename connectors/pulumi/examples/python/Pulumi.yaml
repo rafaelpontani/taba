@@ -1,0 +1,6 @@
+name: taba-example
+runtime:
+  name: python
+  options:
+    virtualenv: venv
+description: A queue, a distributor and a token of Taba (connectors/pulumi/scripts/test.sh acc runs this program)

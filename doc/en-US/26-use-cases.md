@@ -91,7 +91,7 @@ Both are **maintained by hand**, in both languages: a new case goes in as a card
 | `CNV` | Common API conventions (format, headers, errors, status) |
 | `CNT` | Connectors |
 | `CLI` | `taba-cli` |
-| `IAC` | Terraform and OpenTofu provider: configuration, queues, distributors, tokens, drift, import, `force_destroy` and `create_or_update` |
+| `IAC` | Terraform, OpenTofu and Pulumi providers: configuration, queues, distributors, tokens, drift, import, `force_destroy` and `create_or_update`, and what only the Pulumi SDKs have (mapping, names, secrets, replacement) |
 
 **Node and the message path:**
 

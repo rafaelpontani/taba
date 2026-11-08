@@ -91,7 +91,7 @@ Os dois são **mantidos à mão**, nas duas línguas: um caso novo entra como ca
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) |
 | `CNT` | Conectores |
 | `CLI` | O `taba-cli` |
-| `IAC` | Provider Terraform e OpenTofu: configuração, filas, distribuidores, tokens, desvio, import, `force_destroy` e `create_or_update` |
+| `IAC` | Providers Terraform, OpenTofu e Pulumi: configuração, filas, distribuidores, tokens, desvio, import, `force_destroy` e `create_or_update`, e o que só os SDKs do Pulumi têm (mapeamento, nomes, segredos, substituição) |
 
 **Nó e o caminho da mensagem:**
 
