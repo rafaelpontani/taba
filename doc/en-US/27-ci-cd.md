@@ -221,6 +221,7 @@ The token expires: renew it before the date, or the job fails at `mirror.sh` aft
 |---|---|
 | Markdown links between files of `doc/pt-BR` and to the repository | The file or the anchor does not exist |
 | Metadata | `resumo`, `status`, `verificado-em` or `fontes` is missing at the top, or the "Fontes e provas" section is missing |
+| Metadata in valid YAML (every language folder) | A value without quotes has `: ` or ` #`, or starts with a YAML indicator (`` ` `` `[` `{` `"` …): the GitHub page and the VS Code preview fail to read the block. `node doc/pt-BR/scripts/metadados.mjs --corrigir` puts those values in double quotes |
 | Configuration parameters | A key of `config/params/mod.rs` does not appear in [22-configuration.md](22-configuration.md), or the document cites a nonexistent key |
 | Error codes | An `ErrorCode` of the code does not appear in [19-errors-and-limits.md](19-errors-and-limits.md) (or vice versa) |
 | Routes | A route registered in the code (`.route(…)` and the cluster map) is not cited in the API documents |

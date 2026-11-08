@@ -1,6 +1,6 @@
 ---
 title: Known issues
-summary: Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts.
+summary: "Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts."
 type: reference
 status: partial
 verified-on: 2026-11-07 @ 689495f

@@ -1,6 +1,6 @@
 ---
 título: Problemas conhecidos
-resumo: Registro, com histórico, dos testes de cluster intermitentes e dos problemas conhecidos: cada um com título, status, data em que foi achado, data da solução e o histórico de ocorrências e tentativas.
+resumo: "Registro, com histórico, dos testes de cluster intermitentes e dos problemas conhecidos: cada um com título, status, data em que foi achado, data da solução e o histórico de ocorrências e tentativas."
 tipo: referência
 status: parcial
 verificado-em: 2026-11-07 @ 689495f

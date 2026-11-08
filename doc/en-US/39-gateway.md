@@ -1,6 +1,6 @@
 ---
 title: Gateway for the AWS SDKs
-summary: The SQS and SNS gateways inside the node: an application that uses the AWS SDK points its endpoint at a Taba port and keeps its code. What is supported (standard and FIFO queues, JSON and Query protocols, SNS topics that publish to queues, SigV4), how a call becomes a call to the client API, how the credentials file and the permissions work, where the message attributes live, how a topic and a subscription are stored, and every difference from SQS and SNS that the application must know.
+summary: "The SQS and SNS gateways inside the node: an application that uses the AWS SDK points its endpoint at a Taba port and keeps its code. What is supported (standard and FIFO queues, JSON and Query protocols, SNS topics that publish to queues, SigV4), how a call becomes a call to the client API, how the credentials file and the permissions work, where the message attributes live, how a topic and a subscription are stored, and every difference from SQS and SNS that the application must know."
 type: guide
 status: partial
 verified-on: 2026-11-04 @ a3bdab9

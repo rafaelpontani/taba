@@ -1,6 +1,6 @@
 ---
 title: Terraform and OpenTofu provider
-summary: The Taba provider for Terraform and OpenTofu (`rafaelpontani/taba`), in `connectors/terraform`: what it manages (queues, distributors, access tokens and four data sources), the provider configuration, how plan, drift and import work, `force_destroy`, the optional `create_or_update` (when to use it and its risks), the token secret in the state and its rotation, the retries while a node is down, how it is tested and published, and its limits.
+summary: "The Taba provider for Terraform and OpenTofu (`rafaelpontani/taba`), in `connectors/terraform`: what it manages (queues, distributors, access tokens and four data sources), the provider configuration, how plan, drift and import work, `force_destroy`, the optional `create_or_update` (when to use it and its risks), the token secret in the state and its rotation, the retries while a node is down, how it is tested and published, and its limits."
 type: guide
 status: partial
 verified-on: 2026-11-07 @ 689495f

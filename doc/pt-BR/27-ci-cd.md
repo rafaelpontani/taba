@@ -221,6 +221,7 @@ O token vence: renove-o antes da data, ou o job falha no `mirror.sh` depois de t
 |---|---|
 | Links Markdown entre arquivos de `doc/pt-BR` e para o repositório | O arquivo ou a âncora não existe |
 | Metadados | Falta `resumo`, `status`, `verificado-em` ou `fontes` no topo, ou falta a seção "Fontes e provas" |
+| Metadados em YAML válido (todas as pastas de idioma) | Um valor sem aspas tem `: ` ou ` #`, ou começa com um indicador do YAML (`` ` `` `[` `{` `"` …): a página do GitHub e o preview do VS Code não conseguem ler o bloco. `node doc/pt-BR/scripts/metadados.mjs --corrigir` põe esses valores entre aspas duplas |
 | Parâmetros de configuração | Uma chave de `config/params/mod.rs` não aparece em [22-configuracao.md](22-configuracao.md), ou o documento cita uma chave inexistente |
 | Códigos de erro | Um `ErrorCode` do código não aparece em [19-erros-e-limites.md](19-erros-e-limites.md) (ou vice-versa) |
 | Rotas | Uma rota registrada no código (`.route(…)` e o mapa do cluster) não é citada nos documentos de API |
