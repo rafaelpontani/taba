@@ -228,6 +228,29 @@ jobs:
           path: dist/*
           retention-days: 1
 
+  # The files of the Pulumi provider (connectors/pulumi/scripts/package.sh): the plugin of each platform, the npm, PyPI and
+  # NuGet packages, the Go SDK module and their SHA256SUMS. They go to the Release (release-assets) and the pulumi-*
+  # jobs below check them and publish them on the destinations of each one.
+  pulumi-provider:
+    name: Pulumi provider (package)
+    needs: plan
+    if: needs.plan.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: connectors/pulumi/scripts/package.sh "$VERSION" dist/pulumi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pulumi-provider
+          path: dist/pulumi/*
+          retention-days: 1
+
   # The provider files the Terraform and OpenTofu registries read (connectors/terraform/scripts/package.go): one zip per
   # platform, the manifest and their SHA256SUMS. They go to the Release (release-assets), and terraform-registry signs
   # them and publishes them on the mirror repository (D211).
@@ -365,7 +388,7 @@ jobs:
   # have no tag yet.
   tag:
     name: Tag and draft Release
-    needs: [plan, server, connector-rust, connector-csharp, chart, connector-packages, terraform-provider, images]
+    needs: [plan, server, connector-rust, connector-csharp, chart, connector-packages, terraform-provider, pulumi-provider, images]
     if: needs.plan.outputs.published == 'true' && needs.plan.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -442,6 +465,10 @@ jobs:
         with:
           name: terraform-provider
           path: assets/terraform-provider
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pulumi-provider
+          path: assets/pulumi-provider
       # Name with the version and the architecture, so it is not confused with binaries of other releases.
       - name: Rename with the version and compute the checksums
         shell: bash
@@ -456,6 +483,7 @@ jobs:
           cp assets/helm-chart/*.tgz release/
           cp assets/connector-packages/* release/
           cp assets/terraform-provider/* release/
+          cp assets/pulumi-provider/* release/
           (cd release && sha256sum -- * > SHA256SUMS)
           cat release/SHA256SUMS
       # SLSA provenance of every file: `gh attestation verify <file> -R rafaelpontani/taba`.
@@ -744,6 +772,149 @@ jobs:
           GH_TOKEN: ${{ secrets.TERRAFORM_MIRROR_TOKEN }}
           MIRROR: ${{ vars.TERRAFORM_PROVIDER_REPO }}
         run: connectors/terraform/scripts/mirror.sh "$VERSION" dist/terraform "$MIRROR"
+
+  # The Pulumi provider, in two steps. pulumi-verify installs the files as a user gets them (the plugin from the archive,
+  # the npm package and the Python wheel; verify-release.sh) and runs up, preview and destroy against the node image of
+  # this version; nothing is published unless it passes and one of the destinations below is configured. Then each
+  # destination has its own variable (empty = not published, so a new registry is turned on by itself, after its
+  # setup in doc/pt-BR/27-ci-cd.md) and publishes with --skip-duplicate / skip-existing, so a rerun is harmless:
+  #   PULUMI_PROVIDER_REPO  the mirror repository (owner/repository, secret PULUMI_MIRROR_TOKEN): tags, plugin archives, Go SDK
+  #   PULUMI_NPM            "true": @rafaelpontani/pulumi-taba on npm (Trusted Publishing; --tag next on a candidate)
+  #   PULUMI_PYPI           "true": pulumi-taba on PyPI (Trusted Publishing; a candidate is 0.3.9rc1)
+  #   PULUMI_NUGET_USER     the nuget.org account of the Trusted Publishing policy of Taba.Pulumi
+  pulumi-verify:
+    name: Pulumi provider (check)
+    needs: [plan, pulumi-provider, floating]
+    if: >-
+      always() && needs.floating.result == 'success'
+      && (vars.PULUMI_PROVIDER_REPO != '' || vars.PULUMI_NPM == 'true' || vars.PULUMI_PYPI == 'true' || vars.PULUMI_NUGET_USER != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pulumi-provider
+          path: dist/pulumi
+      - name: Check the files as a user gets them
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          TABA_IMAGE: ${{ needs.plan.outputs.dockerhub }}/taba:${{ needs.plan.outputs.version }}
+        run: connectors/pulumi/scripts/verify-release.sh dist/pulumi "$VERSION"
+
+  pulumi-mirror:
+    name: Pulumi provider (mirror)
+    needs: [plan, pulumi-verify]
+    if: needs.pulumi-verify.result == 'success' && vars.PULUMI_PROVIDER_REPO != ''
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pulumi-provider
+          path: dist/pulumi
+      - env:
+          GH_TOKEN: ${{ secrets.PULUMI_MIRROR_TOKEN }}
+          MIRROR: ${{ vars.PULUMI_PROVIDER_REPO }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: connectors/pulumi/scripts/mirror.sh "$VERSION" dist/pulumi "$MIRROR"
+
+  pulumi-npm:
+    name: Pulumi provider (npm)
+    needs: [plan, pulumi-verify]
+    if: needs.pulumi-verify.result == 'success' && vars.PULUMI_NPM == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pulumi-provider
+          path: dist/pulumi
+      # Trusted Publishing needs npm 11.5 or later (Node 24).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Publish (a version that already exists is kept)
+        run: |
+          set -euo pipefail
+          if npm view "@rafaelpontani/pulumi-taba@$VERSION" version >/dev/null 2>&1; then
+            echo "@rafaelpontani/pulumi-taba@$VERSION is already on npm"
+            exit 0
+          fi
+          tag=latest
+          [[ $VERSION == *-rc.* ]] && tag=next
+          npm publish "dist/pulumi/rafaelpontani-pulumi-taba-$VERSION.tgz" --access public --tag "$tag"
+      - name: The published package, as a user installs it
+        run: |
+          set -euo pipefail
+          for _ in 1 2 3 4 5 6; do
+            got="$(npm view "@rafaelpontani/pulumi-taba@$VERSION" version 2>/dev/null || true)"
+            [ "$got" = "$VERSION" ] && break
+            sleep 20
+          done
+          [ "$got" = "$VERSION" ] || { echo "npm does not list @rafaelpontani/pulumi-taba@$VERSION" >&2; exit 1; }
+          mkdir check && cd check && npm init -y >/dev/null
+          npm install --no-audit --no-fund "@rafaelpontani/pulumi-taba@$VERSION" >/dev/null
+          node -e 'const t = require("@rafaelpontani/pulumi-taba"); if (typeof t.Queue !== "function" || typeof t.Token !== "function") process.exit(1)'
+
+  pulumi-pypi:
+    name: Pulumi provider (PyPI)
+    needs: [plan, pulumi-verify]
+    if: needs.pulumi-verify.result == 'success' && vars.PULUMI_PYPI == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pulumi-provider
+          path: dist/pulumi
+      # Only the wheel and the sdist go to PyPI.
+      - run: mkdir dist/pypi && cp dist/pulumi/*.whl dist/pulumi/pulumi_taba-*.tar.gz dist/pypi/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          packages-dir: dist/pypi
+          skip-existing: true
+
+  pulumi-nuget:
+    name: Pulumi provider (nuget.org)
+    needs: [plan, pulumi-verify]
+    if: needs.pulumi-verify.result == 'success' && vars.PULUMI_NUGET_USER != ''
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pulumi-provider
+          path: dist/pulumi
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.x
+      - id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.PULUMI_NUGET_USER }}
+      - env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push "dist/pulumi/*.nupkg" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json --skip-duplicate
 
   # The proof, from the outside, as anyone would check it: every git tag points to github.sha; every Docker tag on
   # both registries is the same digest, with the revision label = github.sha; the signatures and attestations

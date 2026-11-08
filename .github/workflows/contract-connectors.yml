@@ -1,7 +1,7 @@
 # Contract tests of all the connectors against a real Taba (connectors/contract/README.md): builds the node image from this
 # commit, starts one node (the one-node profile) and runs the same scenario through the C#, Java, Node.js, Python,
 # Rust, Go, PHP and Ruby connectors, each in the container of its oldest supported runtime, and then makes them read each other's messages.
-# The same node image runs the acceptance tests of the Terraform provider (Terraform and OpenTofu) and of the OMB driver.
+# The same node image runs the acceptance tests of the Terraform provider (Terraform and OpenTofu), of the Pulumi provider and of the OMB driver.
 # Called by ci.yml (pull requests to release). Publishes nothing.
 name: Connector contract tests
 
@@ -27,6 +27,9 @@ jobs:
       # with OpenTofu.
       - name: Terraform provider against a node
         run: connectors/terraform/scripts/test.sh acc
+      # The same node runs the Pulumi acceptance scenarios (the TypeScript and Python SDKs, plugin built from this commit).
+      - name: Pulumi provider against a node
+        run: connectors/pulumi/scripts/test.sh acc
       # O test.sh usa o cache do Maven (driver-api do OMB e o conector Java) que o build.sh preenche.
       - name: Build the OpenMessaging Benchmark driver
         run: connectors/omb/build.sh

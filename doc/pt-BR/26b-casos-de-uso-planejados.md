@@ -49,6 +49,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 2 | 10 |
 | `CFG` | Configuração e validações de partida | 1 | 10 |
 | `BNC` | Benchmark comparativo local (`bench/run.sh`) | 1 | 4 |
+| `IAC` | Providers Terraform, OpenTofu e Pulumi | 7 | 27 |
 
 ## TOP: Tópicos: criar, listar, ler, alterar e remover
 
@@ -919,6 +920,71 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Caso:** O `bench/run.sh` roda um workload de ponta a ponta: constrói (ou recebe) as imagens, sobe um nó do Taba em Docker com os limites, espera ficar saudável, roda o OMB no contêiner executor, remove o nó e o volume e grava o JSON bruto, o `machine.json` e o relatório; o mesmo para Kafka, Redpanda, RabbitMQ e NATS JetStream
 **Nível:** K
 **Motivo de não ter teste citado pelo `uc_coverage`:** o `bench/test.sh` confere isso com o perfil `smoke` contra o Taba, mas precisa de Docker e leva minutos, então é um script e nenhum arquivo de teste cita o caso; os outros sistemas foram rodados uma vez à mão
+
+---
+
+## IAC: Providers Terraform, OpenTofu e Pulumi
+
+### UC-IAC-025
+
+**Caso:** Os SDKs e o schema do provider Pulumi estão em dia ([41-pulumi.md](41-pulumi.md#como-é-construído))  
+**Então:** o `scripts/test.sh sdks` os gera de novo e compara: o que está commitado é o que o gerador escreve a partir do provider Terraform  
+**Nível:** K  
+**Motivo de não ter teste citado pelo `uc_coverage`:** é o `scripts/test.sh sdks`, que roda o gerador num contêiner e compara a árvore; não há arquivo de teste para citar (PRB-110)
+
+---
+
+### UC-IAC-026
+
+**Caso:** Um programa em TypeScript e um em Python percorrem a vida dos recursos ([41-pulumi.md](41-pulumi.md#testes))  
+**Então:** o `up` cria a fila, o distribuidor e o token; o `preview --expect-no-changes` é vazio depois de cada passo; uma mudança mutável atualiza no lugar; uma mudança feita pela API é vista pelo `refresh` e corrigida; o `destroy` não deixa nada no nó  
+**Nível:** K  
+**Motivo de não ter teste citado pelo `uc_coverage`:** os cenários de aceitação do provider Pulumi são um script de shell (`connectors/pulumi/scripts/test.sh` e `examples/scenarios.sh`) que precisa de Docker e leva minutos, e nenhum arquivo de teste cita o caso (PRB-110)
+
+---
+
+### UC-IAC-030
+
+**Caso:** Uma mudança imutável numa fila com mensagens no Pulumi ([41-pulumi.md](41-pulumi.md#proteger-uma-fila-com-mensagens))  
+**Então:** Recusada com a mensagem "still holds messages"; depois de um `pulumi up` que aplica o `forceDestroy`, a mesma mudança substitui a fila  
+**Nível:** K  
+**Motivo de não ter teste citado pelo `uc_coverage`:** os cenários de aceitação do provider Pulumi são um script de shell (`connectors/pulumi/scripts/test.sh` e `examples/scenarios.sh`) que precisa de Docker e leva minutos, e nenhum arquivo de teste cita o caso (PRB-110)
+
+---
+
+### UC-IAC-031
+
+**Caso:** O `createOrUpdate` sobre uma fila que já existe, pelo SDK ([41-pulumi.md](41-pulumi.md#adotar-o-que-já-existe))  
+**Então:** A fila é adotada e levada ao estado declarado, com o diagnóstico da adoção, e o `preview` seguinte é vazio  
+**Nível:** K  
+**Motivo de não ter teste citado pelo `uc_coverage`:** os cenários de aceitação do provider Pulumi são um script de shell (`connectors/pulumi/scripts/test.sh` e `examples/scenarios.sh`) que precisa de Docker e leva minutos, e nenhum arquivo de teste cita o caso (PRB-110)
+
+---
+
+### UC-IAC-032
+
+**Caso:** O `pulumi import` de uma fila e de um token ([41-pulumi.md](41-pulumi.md#preview-desvio-e-import))  
+**Então:** O recurso entra no estado; o código que a CLI escreve não traz `forceDestroy` nem `createOrUpdate`; o segredo do token importado é vazio  
+**Nível:** K  
+**Motivo de não ter teste citado pelo `uc_coverage`:** os cenários de aceitação do provider Pulumi são um script de shell (`connectors/pulumi/scripts/test.sh` e `examples/scenarios.sh`) que precisa de Docker e leva minutos, e nenhum arquivo de teste cita o caso (PRB-110)
+
+---
+
+### UC-IAC-033
+
+**Caso:** A rotação de um token com `pulumi up --replace` ([41-pulumi.md](41-pulumi.md#substituição-e-rotação))  
+**Então:** Um token novo é criado, o `secret` dele substitui o antigo em quem o usa, e o antigo é revogado  
+**Nível:** K  
+**Motivo de não ter teste citado pelo `uc_coverage`:** os cenários de aceitação do provider Pulumi são um script de shell (`connectors/pulumi/scripts/test.sh` e `examples/scenarios.sh`) que precisa de Docker e leva minutos, e nenhum arquivo de teste cita o caso (PRB-110)
+
+---
+
+### UC-IAC-034
+
+**Caso:** Os arquivos do release do provider Pulumi funcionam como um usuário os recebe ([41-pulumi.md](41-pulumi.md#testes))  
+**Então:** o `verify-release.sh` confere o `SHA256SUMS`, instala o plugin do arquivo e o pacote npm e a wheel dos arquivos, e roda `up`, um `preview` vazio e `destroy` contra a imagem da versão  
+**Nível:** K  
+**Motivo de não ter teste citado pelo `uc_coverage`:** é o `connectors/pulumi/scripts/verify-release.sh`, rodado pelo release e à mão; nenhum arquivo de teste cita o caso (PRB-110)
 
 ---
 

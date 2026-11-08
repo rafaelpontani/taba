@@ -91,6 +91,7 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 | [38-benchmarks.md](38-benchmarks.md) | The local comparative benchmark (`bench/run.sh`): fairness rules, durability levels, workloads and the report |
 | [39-gateway.md](39-gateway.md) | The gateway for the AWS SDKs: SQS and SNS on ports of the node, the access keys, what is supported and the differences from SQS and SNS |
 | [40-terraform.md](40-terraform.md) | The Terraform and OpenTofu provider: queues, distributors and tokens as code, `force_destroy`, `create_or_update`, the token secret in the state, tests and publication |
+| [41-pulumi.md](41-pulumi.md) | The Pulumi provider: the Terraform provider bridged to TypeScript, Python, .NET and Go; installation, `createOrUpdate`, replacement and rotation, tests and publication |
 | [26-use-cases.md](26-use-cases.md) | The `UC-…` format and the coverage rule |
 | [26a-implemented-use-cases.md](26a-implemented-use-cases.md) | Cases with a test |
 | [26b-planned-use-cases.md](26b-planned-use-cases.md) | Cases without a test yet |

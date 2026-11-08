@@ -1,0 +1,23 @@
+# The Pulumi provider (connectors/pulumi): gofmt, vet and the mapping tests, and the generated SDKs (schema, Node.js,
+# Python, .NET and Go) up to date. The acceptance scenarios against a node run in contract-connectors.yml, which builds
+# the node image. Called by ci.yml.
+name: Pulumi provider build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  connector-pulumi:
+    name: Pulumi provider (unit tests and generated SDKs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: gofmt, vet and mapping tests
+        run: connectors/pulumi/scripts/test.sh unit
+      - name: SDKs up to date
+        run: connectors/pulumi/scripts/test.sh sdks
