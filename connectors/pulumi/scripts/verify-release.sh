@@ -44,7 +44,8 @@ case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; *) echo "unsu
 q() { "$@" >/work/last 2>&1 || { cat /work/last >&2; echo "FAILED: $*" >&2; exit 1; }; }
 echo "-- plugin $VERSION from the file"
 q pulumi plugin install resource taba "$VERSION" --file "/dist/pulumi-resource-taba-v$VERSION-linux-$arch.tar.gz"
-pulumi plugin ls | grep -q "taba.*$VERSION" || { pulumi plugin ls; echo "FAILED: plugin not installed" >&2; exit 1; }
+installed="$(pulumi plugin ls)"
+case "$installed" in *taba*"$VERSION"*) ;; *) echo "$installed"; echo "FAILED: plugin not installed" >&2; exit 1 ;; esac
 case "$lang" in
   typescript)
     printf "name: verify\nruntime: nodejs\n" > Pulumi.yaml
