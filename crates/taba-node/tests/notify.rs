@@ -70,7 +70,7 @@ async fn the_ready_messages_of_a_window_become_one_notice_with_the_quantity() {
     let cluster = TestCluster::start_with(
         3,
         &[
-            ("TABA_CLUSTER_NOTIFY_WINDOW", "1500ms"),
+            ("TABA_CLUSTER_NOTIFY_WINDOW", "4000ms"),
             ("TABA_CLUSTER_NOTIFY_WAIT", "50ms"),
         ],
     )
@@ -82,17 +82,21 @@ async fn the_ready_messages_of_a_window_become_one_notice_with_the_quantity() {
     publish(&cluster, "avisos", 24).await;
 
     let signals = signals_of(&cluster, 2);
-    eventually("the notice to reach node 2", {
+    // The notice of an owner carries the window's ready ones and not one. Only the last quantity is kept, so the
+    // wait is for a notice with more than one (under load an owner whose first message came late can be the last).
+    eventually("a notice with the window's quantity to reach node 2", {
         let signals = signals.clone();
-        move || signals.last_notice_count("avisos").is_some()
+        move || {
+            signals
+                .last_notice_count("avisos")
+                .is_some_and(|count| count > 1)
+        }
     })
     .await;
-    // Each owner (nodes 1 and 3) sent a single notice, with the window's ready ones and not one.
+    // Each owner (nodes 1 and 3) sent a single notice.
     tokio::time::sleep(Duration::from_millis(400)).await;
     let received = notices(&cluster, 2, "in", "received").await;
     assert!(received <= 2.0, "one notice per owner, got {received}");
-    let count = signals.last_notice_count("avisos").unwrap();
-    assert!(count > 1, "the notice carries the count, got {count}");
     cluster.shutdown().await;
 }
 
@@ -103,7 +107,7 @@ async fn the_notice_goes_to_one_listener_at_a_time_and_passes_on_when_nobody_com
         3,
         &[
             ("TABA_CLUSTER_NOTIFY_WINDOW", "20ms"),
-            ("TABA_CLUSTER_NOTIFY_WAIT", "700ms"),
+            ("TABA_CLUSTER_NOTIFY_WAIT", "2500ms"),
         ],
     )
     .await;
@@ -159,25 +163,38 @@ async fn a_notice_is_a_hint_that_ends_fetched_or_empty() {
         move || signals.local_listener_count("avisos") == 1
     })
     .await;
+    // The real heartbeat of node 1 (no ready messages) is the complete state of that node and erases the
+    // ready entry injected here; when it lands before the `take` no one is asked and nothing is counted. So the
+    // old hint is injected again until the notice is counted (it is still the same old hint).
     let from = cluster.node_id(1);
-    signals.receive(SignalFrame {
-        from: from.clone(),
-        signal: Signal::Ready {
-            topic: "avisos".into(),
-            has_ready: true,
-        },
-    });
-    signals.receive(SignalFrame {
-        from,
-        signal: Signal::Notify {
-            topic: "avisos".into(),
-            count: 1,
-        },
-    });
-    eventually_async("the old notice counted as empty", || async {
-        notices(&cluster, 2, "in", "empty").await >= 1.0
-    })
-    .await;
+    let mut counted = false;
+    for _ in 0..40 {
+        signals.receive(SignalFrame {
+            from: from.clone(),
+            signal: Signal::Ready {
+                topic: "avisos".into(),
+                has_ready: true,
+            },
+        });
+        signals.receive(SignalFrame {
+            from: from.clone(),
+            signal: Signal::Notify {
+                topic: "avisos".into(),
+                count: 1,
+            },
+        });
+        for _ in 0..20 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            if notices(&cluster, 2, "in", "empty").await >= 1.0 {
+                counted = true;
+                break;
+            }
+        }
+        if counted {
+            break;
+        }
+    }
+    assert!(counted, "the old notice was not counted as empty");
     waiting.abort();
 
     // Fetched: a `GET` waits on node 2 and the ready message is from another node. If the owner is node 2

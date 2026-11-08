@@ -3,7 +3,7 @@ título: Problemas conhecidos
 resumo: "Registro, com histórico, dos testes de cluster intermitentes e dos problemas conhecidos: cada um com título, status, data em que foi achado, data da solução e o histórico de ocorrências e tentativas."
 tipo: referência
 status: parcial
-verificado-em: 2026-11-07 @ 689495f
+verificado-em: 2026-11-08 @ 094f6df
 fontes: [crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -32,7 +32,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Uma definição oferecida a um nó que ainda estava entrando](#uma-definição-oferecida-a-um-nó-que-ainda-estava-entrando) | Corrigido | 2026-10-26 | 2026-10-26 |
 | [Um accept de canal que travou os peers duas vezes](#um-accept-de-canal-que-travou-os-peers-duas-vezes) | Corrigido | 2026-10-26 | 2026-10-26 |
 | [Teste de reinício da FIFO que espera 30 s numa execução combinada](#teste-de-reinício-da-fifo-que-espera-30-s-numa-execução-combinada) | Aberto | 2026-10-22 | — |
-| [Teste de aviso que espera 30 s uma vez na suíte completa](#teste-de-aviso-que-espera-30-s-uma-vez-na-suíte-completa) | Aberto | 2026-10-20 | — |
+| [Teste de aviso que espera 30 s uma vez na suíte completa](#teste-de-aviso-que-espera-30-s-uma-vez-na-suíte-completa) | Resolvido | 2026-10-20 | 2026-11-08 |
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
@@ -323,12 +323,14 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 ## Teste de aviso que espera 30 s uma vez na suíte completa
 
-**Status:** Aberto · **Achado em:** 2026-10-20 · **Solução em:** —
+**Status:** Resolvido · **Achado em:** 2026-10-20 · **Solução em:** 2026-11-08
 
-- **Teste:** `notify.rs` › `a_notice_is_a_hint_that_ends_fetched_or_empty`.
+- **Teste:** `notify.rs` › `a_notice_is_a_hint_that_ends_fetched_or_empty` (e, sob carga, os outros dois testes do arquivo).
 - **Sintoma:** pânico `waited 30 s` do `eventually_async` (`tests/common/cluster.rs`) em uma execução de `cargo test -p taba-node`, logo depois da compilação. Sozinho passou 3 vezes seguidas, com e sem a mudança em teste, e uma segunda execução completa ficou verde.
-- **Causa:** não identificada (a saída da execução que falhou não foi guardada).
-- **Próximo passo:** na próxima ocorrência, guardar a saída inteira para ver qual condição estourou; tentar o teste sob carga paralela (muitos binários de teste rodando ao mesmo tempo) antes de mexer em qualquer tempo limite.
+- **Causa:** o teste fabrica o estado de um nó (um sinal `Ready` do nó 1) e espera o `GET` do nó 2 pedir um `take` ao nó 1. Mas o heartbeat de um par é o estado **completo** dele (`apply_heartbeat`): o heartbeat real do nó 1, sem mensagens prontas, apagou a entrada injetada, `ready_peers` voltou vazio, nenhum `take` foi feito e o aviso "vazio" nunca foi contado. Sob carga (a suíte completa, um runner lento) o heartbeat caiu entre a injeção e o `take`. Os outros dois testes do arquivo tinham pouca margem de tempo: no segundo o aviso passou ao próximo ouvinte (`sent` 2 em vez de 1) quando a espera de 700 ms foi estourada por um `sleep(250)` sem CPU, e no primeiro a janela de 1500 ms fechou antes de as 24 publicações terminarem. O servidor estava certo nos três.
+- **Correção:** só nos testes. O primeiro injeta a dica velha de novo até o aviso ser contado (continua sendo a mesma dica velha); o segundo espera 2500 ms por um ouvinte; o terceiro tem uma janela de 4000 ms e espera um aviso com mais de uma mensagem em vez de ler só a última quantidade.
+- **Como foi achado:** `docker/hang-hunt.sh notify` com os três testes juntos (12 processos ao mesmo tempo, `KEEP_GOING=1`) reproduziu: 20 de 30 rodadas falharam (o teste sozinho não falhou em 320 execuções). Linhas temporárias `HUNT` em `receive`, `ready_peers` e `take_remote` mostraram `ready-received … has_ready=true` e, 4 ms depois, `ready_peers raw n=0`.
+- **Verificação:** depois da correção, 480 execuções (40 rodadas de 12 processos) sem problema.
 
 **Histórico**
 
@@ -336,6 +338,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-10-20 | Falhou uma vez numa execução completa local; passou sozinho (3 execuções) e na execução completa seguinte. |
 | 2026-10-22 | Falhou de novo numa execução completa local (`waited 30 s for: the old notice counted as empty`); passou 6 de 6 sozinho logo depois. A mudança em teste não toca os avisos. Causa ainda não identificada. |
+| 2026-11-08 | Falhou no CI do pull request do provider Pulumi (`Server (build and tests, amd64)`). Reproduzido com a caça (20 de 30 rodadas), causa achada no log e corrigida nos testes; 480 execuções sem problema. |
 
 ## Reingresso depois de uma partição simétrica
 
@@ -398,6 +401,7 @@ O que os problemas acima ensinaram, para o próximo ser achado mais rápido (a l
 - **Procure a família inteira.** O mesmo erro estava no `accept`, e o mesmo formato (um guard no escrutínio) estava em mais três lugares; a inversão de ordem de travas de 2026-10-18 é uma prima. Depois de uma correção, rode `cargo clippy -- -W clippy::significant_drop_in_scrutinee` e as verificações listadas no [AGENTS.md](../../AGENTS.md).
 - **Um `waited 30 s` por um estado que nunca chega é uma entrega perdida, não uma lenta.** Pergunte quem deveria enviar, a quem, e quem estava na lista de destinatários naquele instante. Um `broadcast` (ou um quadro do canal) alcança só os peers que existem **agora**: um nó que se registra milissegundos depois, e ainda sincroniza, nunca o recebe, a menos que outro caminho (um `definition-apply` com `spread`, o heartbeat, a própria sincronização) o cubra. Uma nova forma de entregar estado ao cluster precisa desse segundo caminho, ou de uma razão para não precisar.
 - **Quando o log não tem nenhuma linha do caminho suspeito, ponha uma, rode de novo e tire.** A execução que falhou na oferta não tinha nenhuma linha sobre a oferta. Linhas temporárias em cada passo (o que foi oferecido, a quem foi enviado, o que cada nó aprendeu), marcadas com uma palavra que se possa buscar (`HUNT`), e a mesma caçada, deram a ordem dos eventos em milissegundos; as linhas foram removidas com `git checkout` antes da correção. Guarde o log capturado (`target/`).
+- **Um teste que fabrica o estado de um nó compete com o nó real.** O heartbeat de um par é o estado completo dele e sobrescreve o que o teste injetou; injete de novo até ver o efeito, ou espere o estado real. Uma margem de tempo de poucas centenas de milissegundos não se sustenta num runner carregado: a caça com todos os testes do binário ao mesmo tempo acha (um teste sozinho não falhou em 320 execuções).
 - **Uma correção não está pronta sem um teste que falha sem ela** (aqui, um que falha por timeout e não travando) e sem repetir a execução que travava.
 - **Olhe o que aconteceu antes de teorizar sobre o que poderia.** O item pendente culpava um register expirado; o dump da mensagem que falhou e uma linha de log em cada register mostraram que nada expirou e que uma verificação e uma reserva eram dois passos. Um relatório de falha deve dizer onde a coisa está agora, em cada nó (`diagnosis` no `tests/chaos.rs`).
 - **Uma nova tentativa que continua falhando é um estado a inspecionar, não um tempo a esperar.** A primeira nota aqui propunha que o `drain_topic` tentasse de novo; a causa real teria ficado escondida. Manter o cluster de pé depois da falha e comparar a mesma mensagem em cada nó (`memoryMessages`, a tabela `excluded`) achou a causa em uma rodada.

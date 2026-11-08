@@ -3,7 +3,7 @@ title: Known issues
 summary: "Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts."
 type: reference
 status: partial
-verified-on: 2026-11-07 @ 689495f
+verified-on: 2026-11-08 @ 094f6df
 sources: [crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -32,7 +32,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [A definition offered to a node that was still joining](#a-definition-offered-to-a-node-that-was-still-joining) | Fixed | 2026-10-26 | 2026-10-26 |
 | [A channel accept that locked the peers twice](#a-channel-accept-that-locked-the-peers-twice) | Fixed | 2026-10-26 | 2026-10-26 |
 | [A FIFO restart test that waits 30 s in a combined run](#a-fifo-restart-test-that-waits-30-s-in-a-combined-run) | Open | 2026-10-22 | — |
-| [A notice test that waits 30 s once in the full suite](#a-notice-test-that-waits-30-s-once-in-the-full-suite) | Open | 2026-10-20 | — |
+| [A notice test that waits 30 s once in the full suite](#a-notice-test-that-waits-30-s-once-in-the-full-suite) | Fixed | 2026-10-20 | 2026-11-08 |
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
@@ -323,12 +323,14 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 ## A notice test that waits 30 s once in the full suite
 
-**Status:** Open · **Found on:** 2026-10-20 · **Fixed on:** —
+**Status:** Fixed · **Found on:** 2026-10-20 · **Fixed on:** 2026-11-08
 
-- **Test:** `notify.rs` › `a_notice_is_a_hint_that_ends_fetched_or_empty`.
+- **Test:** `notify.rs` › `a_notice_is_a_hint_that_ends_fetched_or_empty` (and, under load, the two other tests of the file).
 - **Symptom:** a `waited 30 s` panic from `eventually_async` (`tests/common/cluster.rs`) in one run of `cargo test -p taba-node`, right after the build. Alone it passed 3 times in a row with and without the change under test, and a second full run was green.
-- **Cause:** not identified (the output of the failing run was not kept).
-- **Next step:** on the next occurrence, keep the full output to see which condition timed out; try the test under parallel load (many test binaries running at once) before touching a timeout.
+- **Cause:** the test fabricates a node's state (a `Ready` signal of node 1) and then waits for the `GET` of node 2 to ask node 1 for a `take`. But a peer's heartbeat is the **complete** state of that peer (`apply_heartbeat`): the real heartbeat of node 1, with no ready messages, erased the injected entry, `ready_peers` came back empty, no `take` was made and the "empty" notice was never counted. Under load (the full suite, a slow runner) the heartbeat landed between the injection and the `take`. The two other tests of the file were short on time margin: in the second the notice passed to the next listener (`sent` 2 instead of 1) when its wait of 700 ms was overrun by a starved `sleep(250)`, and in the first the window of 1500 ms closed before the 24 publications ended. The server was right in all three.
+- **Fix:** tests only. The first injects the old hint again until the notice is counted (it is still the same old hint); the second waits 2500 ms for a listener; the third has a window of 4000 ms and waits for a notice with more than one message instead of reading only the last quantity.
+- **How it was found:** `docker/hang-hunt.sh notify` with the three tests together (12 processes at once, `KEEP_GOING=1`) reproduced it: 20 of 30 rounds failed (the test alone did not fail in 320 runs). Temporary `HUNT` lines in `receive`, `ready_peers` and `take_remote` showed `ready-received … has_ready=true` and, 4 ms later, `ready_peers raw n=0`.
+- **Verification:** after the fix, 480 runs (40 rounds of 12 processes) without a problem.
 
 **History**
 
@@ -336,6 +338,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-10-20 | Failed once in a full local run; passed alone (3 runs) and in the next full run. |
 | 2026-10-22 | Failed again in a full local run (`waited 30 s for: the old notice counted as empty`); passed 6 of 6 alone right after. The change under test does not touch the notices. Cause still not identified. |
+| 2026-11-08 | Failed in the CI of the pull request of the Pulumi provider (`Server (build and tests, amd64)`). Reproduced with the hunt (20 of 30 rounds), cause found in the log and fixed in the tests; 480 runs without a problem. |
 
 ## Rejoining after a symmetric partition
 
@@ -398,6 +401,7 @@ What the issues above taught, so the next one is found faster (the checklist for
 - **Search for the whole family.** The same mistake was in `accept`, and the same shape (a guard in a scrutinee) was in three more places; the lock-order inversion of 2026-10-18 is a cousin. After a fix, run `cargo clippy -- -W clippy::significant_drop_in_scrutinee` and the checks listed in [AGENTS.md](../../AGENTS.md).
 - **A `waited 30 s` for a state that never arrives is a lost delivery, not a slow one.** Ask who was supposed to send it, to whom, and who was in the list of recipients at that instant. A `broadcast` (or a frame of the channel) reaches only the peers that exist **now**: a node that registers a few milliseconds later, and is still synchronizing, never gets it unless some other path (a `definition-apply` with `spread`, the heartbeat, the synchronization itself) covers it. A new way of delivering state to the cluster needs that second path, or a reason why it is not needed.
 - **When the log has no line about the suspect path, add it, run again and take it out.** The failing run of the offer had no line about the offer. Temporary lines at each step (what was offered, to whom it was sent, what each node learned), marked with a word you can search (`HUNT`), and the same hunt, gave the order of the events in milliseconds; the lines were removed with `git checkout` before the fix. Keep the captured log (`target/`).
+- **A test that fabricates the state of a node competes with the real node.** The heartbeat of a peer is its complete state and overwrites what the test injected; inject again until the effect is seen, or wait for the real state. A time margin of a few hundred milliseconds does not hold on a loaded runner: the hunt with all the tests of the binary at once finds it (a single test alone did not fail in 320 runs).
 - **A fix is not done without a test that fails without it** (here, one that fails by timeout and not by hanging) and without repeating the run that used to hang.
 - **Look at what happened before theorizing about what could.** The pending item blamed an expired register for two years of reasoning; the dump of the failing message and a log line at each register showed that nothing had expired and that a check and a reservation were two steps. A report of a failure should say where the thing is now, on each node (`diagnosis` in `tests/chaos.rs`).
 - **A retry that keeps failing is a state to inspect, not a timing to wait out.** The first note here proposed that `drain_topic` try again; the real cause would have stayed hidden. Keeping the cluster up after the failure and comparing the same message on every node (`memoryMessages`, the `excluded` table) found it in one run.
