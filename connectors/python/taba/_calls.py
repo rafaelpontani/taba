@@ -19,7 +19,28 @@ HANDLER_WAIT_TIME = 20
 def create_topic_call(request: TopicRequest) -> ApiCall:
     if request is None:
         raise TabaError.client("client.invalid-request", "request is required")
-    body: Dict[str, Any] = {"name": request.name or "", "type": request.type or ""}
+    body: Dict[str, Any] = {"name": request.name or ""}
+    body.update(_topic_fields(request))
+    call = ApiCall("POST", "/topics").with_json(json.dumps(body, separators=(",", ":")))
+    call.recover.append((409, "topic.already-exists"))
+    return call
+
+
+def put_topic_call(request: TopicRequest, recreate: Optional[str]) -> ApiCall:
+    """`PUT /topics/{topic}`: the fields of `POST /topics` without `name` (it goes in the path)."""
+    if request is None:
+        raise TabaError.client("client.invalid-request", "request is required")
+    if recreate not in (None, "if-empty", "always"):
+        raise TabaError.client("client.invalid-request", "recreate must be 'if-empty' or 'always'")
+    body = _topic_fields(request)
+    call = ApiCall("PUT", "/topics/" + segment(request.name or "")).with_json(json.dumps(body, separators=(",", ":")))
+    if recreate is not None:
+        call.with_query("recreate", recreate)
+    return call
+
+
+def _topic_fields(request: TopicRequest) -> Dict[str, Any]:
+    body: Dict[str, Any] = {"type": request.type or ""}
     if request.tags:
         body["tags"] = request.tags
     if request.prefixes:
@@ -35,9 +56,7 @@ def create_topic_call(request: TopicRequest) -> ApiCall:
         value = getattr(request, attribute)
         if value is not None:
             body[name] = value
-    call = ApiCall("POST", "/topics").with_json(json.dumps(body, separators=(",", ":")))
-    call.recover.append((409, "topic.already-exists"))
-    return call
+    return body
 
 
 def get_topic_call(name: str) -> ApiCall:
@@ -76,8 +95,10 @@ def update_topic_call(name: str, update: TopicUpdate) -> ApiCall:
     return ApiCall("PATCH", "/topics/" + segment(name)).with_json(json.dumps(body, separators=(",", ":")))
 
 
-def delete_topic_call(name: str) -> ApiCall:
+def delete_topic_call(name: str, if_empty: bool = False) -> ApiCall:
     call = ApiCall("DELETE", "/topics/" + segment(name))
+    if if_empty:
+        call.with_query("ifEmpty", "true")
     call.recover.append((404, "topic.not-found"))
     return call
 

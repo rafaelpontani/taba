@@ -718,3 +718,198 @@ async fn a_delete_ignores_the_body_it_gets_and_the_204_has_none() {
     assert_eq!(node.client_get("/topics/q").await.status(), 404);
     node.shutdown().await;
 }
+
+async fn put(node: &TestNode, name: &str, query: &str, body: Value) -> Response {
+    node.client
+        .put(node.client_url(&format!("/topics/{name}{query}")))
+        .json(&body)
+        .send()
+        .await
+        .unwrap()
+}
+
+async fn delete_query(node: &TestNode, name: &str, query: &str) -> Response {
+    node.client
+        .delete(node.client_url(&format!("/topics/{name}{query}")))
+        .send()
+        .await
+        .unwrap()
+}
+
+async fn publish(node: &TestNode, topic: &str) {
+    let response = node
+        .client
+        .post(node.client_url(&format!("/topics/{topic}/messages")))
+        .body("1")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 201);
+}
+
+async fn consume(node: &TestNode, topic: &str) -> Vec<Value> {
+    let response = node.client_get(&format!("/topics/{topic}/messages")).await;
+    assert_eq!(response.status(), 200);
+    body(response).await["messages"].as_array().unwrap().clone()
+}
+
+/// UC: UC-TOP-050, UC-TOP-051
+#[tokio::test]
+async fn put_creates_with_201_changes_with_200_and_an_equal_put_keeps_the_version() {
+    let node = TestNode::single().await;
+    let response = put(&node, "orders", "", json!({ "type": "queue", "ttl": 60 })).await;
+    assert_eq!(response.status(), 201);
+    assert_eq!(response.headers()["location"], "/topics/orders");
+    assert!(response.headers().get("taba-topic-recreated").is_none());
+    let first = body(response).await;
+    assert_eq!(first["name"], "orders");
+    assert_eq!(first["ttl"], 60);
+
+    let response = put(&node, "orders", "", json!({ "type": "queue", "ttl": 60 })).await;
+    assert_eq!(response.status(), 200);
+    assert!(response.headers().get("location").is_none());
+    assert_eq!(body(response).await, first);
+
+    // Full replacement: `ttl` absent goes back to the default; `id` and `createdAt` stay.
+    let response = put(
+        &node,
+        "orders",
+        "",
+        json!({ "type": "queue", "tags": { "team": "a" } }),
+    )
+    .await;
+    assert_eq!(response.status(), 200);
+    let changed = body(response).await;
+    assert!(changed["ttl"].is_null());
+    assert_eq!(changed["tags"], json!({ "team": "a" }));
+    assert_eq!(changed["id"], first["id"]);
+    assert_eq!(changed["createdAt"], first["createdAt"]);
+    assert_eq!(body(node.client_get("/topics/orders").await).await, changed);
+    node.shutdown().await;
+}
+
+/// UC: UC-TOP-052
+#[tokio::test]
+async fn put_refuses_another_type_fifo_or_volatile_and_bad_bodies() {
+    let node = TestNode::single().await;
+    created(&node, json!({ "name": "orders", "type": "queue" })).await;
+
+    let response = put(
+        &node,
+        "orders",
+        "",
+        json!({ "type": "queue", "fifo": true }),
+    )
+    .await;
+    assert_eq!(response.status(), 409);
+    let error = body(response).await;
+    assert_eq!(error["code"], "topic.immutable-mismatch");
+    assert_eq!(error["details"][0]["field"], "fifo");
+    let distributor = json!({ "type": "distributor", "prefixes": ["x"] });
+    let response = put(&node, "orders", "", distributor).await;
+    assert_eq!(error_code(response, 409).await, "topic.immutable-mismatch");
+
+    // `name` belongs to the path; `type` is required; `recreate` has two values.
+    let with_name = json!({ "name": "orders", "type": "queue" });
+    let response = put(&node, "orders", "", with_name).await;
+    assert_eq!(error_code(response, 400).await, "validation.unknown-field");
+    let response = put(&node, "orders", "", json!({ "ttl": 60 })).await;
+    assert_eq!(response.status(), 400);
+    let response = put(&node, "orders", "?recreate=yes", json!({ "type": "queue" })).await;
+    let error = body(response).await;
+    assert_eq!(error["code"], "validation.failed");
+    assert_eq!(error["details"][0]["field"], "query.recreate");
+    let response = put(&node, "orders-dead-letter", "", json!({ "type": "queue" })).await;
+    assert_eq!(response.status(), 400);
+    let current = body(node.client_get("/topics/orders").await).await;
+    assert_eq!(current["fifo"], false);
+    node.shutdown().await;
+}
+
+/// UC: UC-TOP-053
+#[tokio::test]
+async fn put_with_recreate_always_drops_the_messages_and_gives_a_new_id() {
+    let node = TestNode::single().await;
+    let old = created(&node, json!({ "name": "orders", "type": "queue" })).await;
+    publish(&node, "orders").await;
+
+    let fifo = json!({ "type": "queue", "fifo": true });
+    let response = put(&node, "orders", "?recreate=always", fifo.clone()).await;
+    assert_eq!(response.status(), 201);
+    assert_eq!(response.headers()["taba-topic-recreated"], "true");
+    assert_eq!(response.headers()["location"], "/topics/orders");
+    let new = body(response).await;
+    assert_ne!(new["id"], old["id"]);
+    assert_eq!(new["fifo"], true);
+    assert!(consume(&node, "orders").await.is_empty());
+    // The dead-letter came back with the queue.
+    let dead_letter = node.client_get("/topics/orders-dead-letter").await;
+    assert_eq!(dead_letter.status(), 200);
+
+    // `recreate` does nothing when no immutable field differs.
+    let response = put(&node, "orders", "?recreate=always", fifo).await;
+    assert_eq!(response.status(), 200);
+    assert_eq!(body(response).await["id"], new["id"]);
+    node.shutdown().await;
+}
+
+/// UC: UC-TOP-054
+#[tokio::test]
+async fn put_with_recreate_if_empty_refuses_while_there_are_messages() {
+    let node = TestNode::single().await;
+    let old = created(&node, json!({ "name": "orders", "type": "queue" })).await;
+    publish(&node, "orders").await;
+    let volatile = json!({ "type": "queue", "volatile": true });
+
+    let response = put(&node, "orders", "?recreate=if-empty", volatile.clone()).await;
+    assert_eq!(response.status(), 409);
+    let error = body(response).await;
+    assert_eq!(error["code"], "topic.not-empty");
+    assert_eq!(error["details"][0]["field"], "messages");
+    // A message in flight (invisible) still counts.
+    assert_eq!(consume(&node, "orders").await.len(), 1);
+    let response = put(&node, "orders", "?recreate=if-empty", volatile.clone()).await;
+    assert_eq!(error_code(response, 409).await, "topic.not-empty");
+    let current = body(node.client_get("/topics/orders").await).await;
+    assert_eq!(current["id"], old["id"]);
+
+    let empty = created(&node, json!({ "name": "billing", "type": "queue" })).await;
+    let response = put(&node, "billing", "?recreate=if-empty", volatile).await;
+    assert_eq!(response.status(), 201);
+    assert_eq!(response.headers()["taba-topic-recreated"], "true");
+    let new = body(response).await;
+    assert_ne!(new["id"], empty["id"]);
+    assert_eq!(new["volatile"], true);
+    node.shutdown().await;
+}
+
+/// UC: UC-TOP-055
+#[tokio::test]
+async fn delete_if_empty_refuses_a_queue_with_messages() {
+    let node = TestNode::single().await;
+    created(&node, json!({ "name": "orders", "type": "queue" })).await;
+    let fan = json!({ "name": "fan", "type": "distributor", "prefixes": ["orders"] });
+    created(&node, fan).await;
+    publish(&node, "orders").await;
+
+    let response = delete_query(&node, "orders", "?ifEmpty=true").await;
+    assert_eq!(error_code(response, 409).await, "topic.not-empty");
+    assert_eq!(node.client_get("/topics/orders").await.status(), 200);
+    let response = delete_query(&node, "orders", "?ifEmpty=maybe").await;
+    assert_eq!(error_code(response, 400).await, "validation.failed");
+
+    // A distributor holds no messages; `ifEmpty=false` is the plain `DELETE`.
+    assert_eq!(
+        delete_query(&node, "fan", "?ifEmpty=true").await.status(),
+        204
+    );
+    let response = delete_query(&node, "orders", "?ifEmpty=false").await;
+    assert_eq!(response.status(), 204);
+    let response = delete_query(&node, "orders", "?ifEmpty=true").await;
+    assert_eq!(error_code(response, 404).await, "topic.not-found");
+
+    created(&node, json!({ "name": "empty", "type": "queue" })).await;
+    let response = delete_query(&node, "empty", "?ifEmpty=true").await;
+    assert_eq!(response.status(), 204);
+    node.shutdown().await;
+}

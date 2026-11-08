@@ -20,6 +20,10 @@ type Config struct {
 	RequestTimeout time.Duration
 	// MaxAttempts counts the first attempt (3).
 	MaxAttempts int
+	// RetryMaxWait, when above zero, bounds the total wait between the attempts of one call: no new attempt is made
+	// when its wait (the Retry-After, or 1, 2, 4... up to 64 s) would take the total past it. MaxAttempts still
+	// bounds the attempts. Zero: only MaxAttempts.
+	RetryMaxWait time.Duration
 	// UserAgent goes in User-Agent (taba-go/<version>). Add the application name.
 	UserAgent string
 	// TLSConfig is an own TLS configuration (a private CA, for example). Default: the system's roots, TLS 1.2

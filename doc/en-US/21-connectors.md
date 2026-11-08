@@ -3,7 +3,7 @@ title: Connectors
 summary: Taba's client libraries — the common contract (the nine operations, retry, errors, body), the real state of each language (Rust, C#, Java, Python, Node.js, Go, PHP and Ruby ready; two planned), how to use and how to write a new one.
 type: reference
 status: partial
-verified-on: 2026-11-05 @ db1e2d3
+verified-on: 2026-11-07 @ 4fbb808
 sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/go, connectors/php, connectors/ruby, .github/scripts/package-connectors.sh, connectors/omb, connectors/contract, examples/csharp-console]
 ---
 
@@ -25,6 +25,7 @@ sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, con
 | **PHP** (`taba/client`) | `connectors/php/` | ✅ **Ready** (unit tests and the contract tests; no automatic renewal of the invisibility, D68.3) | ⬜ Not published (D70.1, D70.2) |
 | **Ruby** (`taba-client`) | `connectors/ruby/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
 | **OpenMessaging Benchmark driver** (on top of Java) | `connectors/omb/` | ✅ **Ready** (unit and integration tests against a node) | ⬜ Not published (a tool of the repository) |
+| **Terraform and OpenTofu provider** (on top of Go) | `connectors/terraform/` | ✅ **Ready**: queues, distributors, tokens, `create_or_update`; unit tests and acceptance with Terraform and OpenTofu ([40-terraform.md](40-terraform.md)) | 🟡 Packaged in the Release; the registries wait for the mirror repository (D211) |
 | C, C++ | — | ⏸ **Deferred**, with no date (D68.4): the folders do not exist | — |
 
 > The goal of **ten languages** is a plan, not reality: today **8 of 10** exist, and the other two (C and C++) are deferred (D68.4). The [roadmap](32-roadmap.md) has the order. Since the API is HTTP, the other languages use their own HTTP client until the connector is out.
@@ -57,6 +58,8 @@ The same in all languages, with names adapted (`publish`, `Publish`, `publish_me
 
 **In batch** (optional, next to the single calls, [D189](30-decisions.md)): `publishBatch(topic, messages)`, `ackBatch(topic, messages)` and `changeVisibilityBatch(topic, messages, seconds)` call `POST …/messages/batch`, `/ack` and `/visibility` and return one `BatchResult` per item, in order (`status`, `id`, `duplicate`, `matched`, `invisibleUntil`, `errorCode`, `errorMessage` and an `ok`/`isOk`); an item that failed does not throw. A message of `publishBatch` (`BatchMessage`) has the body bytes and the same options as `publish` (`contentType`, `groupId`, `deduplicationId`); the bytes go in base64, so any type fits. A network failure is not repeated, like the single publication. In C# they are in the interface `ITabaBatchClient`, which `TabaClient` also implements, so whoever implements `ITabaClient` is not broken. Names: `publish_batch`, `ack_batch`, `change_visibility_batch` in Rust, Python and Ruby; `publishBatch`, `ackBatch`, `changeVisibilityBatch` in PHP; `PublishBatch`, `AckBatch`, `ChangeVisibilityBatch` in Go; `PublishBatchAsync` (and `PublishBatch`) in C#.
 
+**Declaring a topic** (optional, next to `createTopic`, which does not change; [D210](30-decisions.md#declaring-a-topic-d210-d214-to-d216)): `createOrUpdateTopic(request, recreate)` calls [`PUT /topics/{topic}`](16-client-api.md#create-or-update-a-topic-put-topicstopic) with the name in the encoded path and the body of `createTopic` without `name`, and returns the `Topic` and the **outcome** (`created` on `201`, `updated` on `200`, `recreated` on `201` with `Taba-Topic-Recreated: true`), so the caller looks at no status or header. What is left out goes back to the server default. `recreate` (`if-empty` or `always`) goes in the query only when given; another value is `client.invalid-request` and nothing is sent. `409 topic.immutable-mismatch` and `topic.not-empty` are errors with the code. After a `503` the `PUT` is repeated like the other calls, with no `recover` rule (it is idempotent). The removal "only if empty" (`DELETE ?ifEmpty=true`) goes in the form of each language without changing `deleteTopic`. Names: `create_or_update_topic` and `delete_topic_if_empty` in Rust; `CreateOrUpdateTopicAsync` (and the synchronous one) and `DeleteTopicIfEmptyAsync` in C#, in the interface `ITabaTopicPutClient`, which `TabaClient` implements, so whoever implements `ITabaClient` is not broken; `createOrUpdateTopic` and `deleteTopicIfEmpty` in Java (and the `…Async` forms), Go (`CreateOrUpdateTopic`, `DeleteTopicIfEmpty`) and PHP; `createOrUpdateTopic` and `deleteTopic(name, { ifEmpty: true })` in Node.js; `create_or_update_topic` and `delete_topic(name, if_empty=True)` in Python (also on `AsyncClient`) and Ruby (`if_empty: true`).
+
 **Outside the surface, on purpose:** tokens (`/tokens`: the operator creates them, with `curl` or `taba-cli token`), the operations API and the cluster one.
 
 **Additional** (where the language allows): `subscribe(handler)` (continuous long polling, calls the handler and confirms by itself **if it ends without an error**); `publishJson(topic, object)` (serializes and publishes as `application/json`) and `publishRawJson(topic, text)`; `consume` with a *handler* (the `delete` is `true` by default: the handler ends without an error, the message is deleted) and `consume<T>` (body already deserialized); automatic renewal of the invisibility while the handler runs. **Asynchronous** where there is an async model (`Task` in C#, `async`/`await` in Rust and Python 3.5+…), with the same contract.
@@ -86,7 +89,7 @@ Identical in **all** connectors; it is what allows a single conformance suite.
 
 | Response | Retry? |
 |---|---|
-| `429`, `503` | **Yes**, up to `maxAttempts`, waiting for the `Retry-After` (without it: 1 s, 2 s, 4 s). On a `503` of an operation that creates or deletes a topic, `409 topic.already-exists` and `404` on the retry count as success |
+| `429`, `503` | **Yes**, up to `maxAttempts`, waiting for the `Retry-After` (without it: 1 s, 2 s, 4 s). On a `503` of an operation that creates or deletes a topic, `409 topic.already-exists` and `404` on the retry count as success (not on `createOrUpdateTopic`, whose `PUT` is simply repeated) |
 | `502`, `504` | **Only** on publishing to a **FIFO** queue (the primary deduplicates). Outside it, **no** (it would duplicate) |
 | Network failure **before** sending the body (refused, DNS) | Yes, like a `503` |
 | Network failure **after** sending the body | **No** (it is not known whether it was applied) |
@@ -242,6 +245,7 @@ Tests: `cd connectors/python && python -m unittest discover -s tests -t .` (the 
 - `taba.Client` is safe for concurrent use. **Every call takes a `context.Context`** and returns `(value, error)`; cancelling the context ends the call in flight (a long polling does not wait for its timeout) and the call returns the context's own error, never a `*taba.Error`. `Subscribe` returns `nil` when its context is cancelled.
 - Optional fields are pointers (`taba.Int(20)`, `taba.Bool(true)`), so `nil` means "not set" and the server default applies; in a `TopicUpdate`, `taba.SetInt(n)` / `taba.ClearInt()` / `nil` are "send `n`" / "send `null`" / "leave out". The error is a `*taba.Error` (`Status`, `Code`, `Message`, `RequestID`, `RetryAfter`, `Details`, `Body`).
 - `ConsumeWith(ctx, topic, options, func(*MessageContext) error)`: a `nil` return deletes the message (unless `Delete = false`), an error keeps it and is returned; the invisibility is renewed by another goroutine. Go 1.7 has no generics, so there is no typed `consume<T>`: the handler reads the body with `Decode(&v)`.
+- **Only in Go so far** (the Terraform provider uses them; PRB-109): the administration of the access tokens (`CreateToken`, `GetToken`, `ListTokens`/`ListAllTokens`, `UpdateToken`, `RevokeToken`; a `503 cluster.quorum-unavailable` on `CreateToken` comes back without a new attempt, because the owner may have created the token), and `Config.RetryMaxWait`: the total of the waits between the attempts of one call; no attempt is made whose wait would pass it, and `MaxAttempts` still bounds them (D220).
 
 ```go
 client, _ := taba.NewClient(taba.Config{BaseURL: "http://localhost:8080", Token: os.Getenv("TABA_TOKEN")})
@@ -342,5 +346,5 @@ D68 (confirm the base versions of the languages still to do: C and C++), D70.1 (
 ## Sources and evidence
 
 - `connectors/rust/client/src` (`client`, `http`, `json`, `base64`, `transport`, `testing`), `connectors/rust/client/README.md`, `connectors/csharp/Taba.Client*`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src`, `connectors/node/src`, `connectors/python/taba`, `connectors/go`, `connectors/php/src`, `connectors/ruby/lib`, `examples/csharp-console`, `connectors/README.md`.
-- Use cases: UC-CNT (40 cases, level `K`; connectors); see [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md). Tests: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src/test`, `connectors/node/test`, `connectors/python/tests`, `connectors/go/*_test.go`, `connectors/php/tests`, `connectors/ruby/test`, `connectors/omb/src/test`; contract tests: `connectors/contract` (`run.sh`, `scenarios/`) and the drivers in `connectors/{csharp,java,node,python,rust,go,php,ruby}/contract`.
+- Use cases: UC-CNT (43 cases, level `K`; connectors; 042 and 043: declaring a topic); see [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md). Tests: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src/test`, `connectors/node/test`, `connectors/python/tests`, `connectors/go/*_test.go`, `connectors/php/tests`, `connectors/ruby/test`, `connectors/omb/src/test`; contract tests: `connectors/contract` (`run.sh`, `scenarios/`) and the drivers in `connectors/{csharp,java,node,python,rust,go,php,ruby}/contract`.
 - History: `19-conectores.md`, `19a-conectores-linguagens.md`.

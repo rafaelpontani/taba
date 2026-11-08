@@ -246,7 +246,7 @@ class Transport {
       try {
         const { status, headers, body } = await this._once(call, timeoutMs, signal);
         if (status < 400) {
-          return { status, body, text: body.toString('utf8'), recovered: false };
+          return { status, headers, body, text: body.toString('utf8'), recovered: false };
         }
         if (afterRetryable && recovers(call, status, body)) {
           return { status, body, text: body.toString('utf8'), recovered: true };

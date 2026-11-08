@@ -3,7 +3,7 @@ title: Client API
 summary: Route-by-route manual of the API that applications use — topics, messages (publish, consume, invisibility, ack, prune), tokens, who the token is, the nodes and the statistics, and the cluster and node operations for the root token — with parameters, DTOs, statuses and examples.
 type: reference
 status: stable
-verified-on: 2026-11-03 @ cc4da15
+verified-on: 2026-11-07 @ 4fbb808
 sources: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, crates/taba-node/src/http/tokens, crates/taba-node/src/http/auth, crates/taba-node/src/http/nodes, crates/taba-node/src/http/topic_stats, crates/taba-node/src/core/topic, crates/taba-node/src/core/validation, crates/taba-node/src/core/content]
 ---
 
@@ -71,7 +71,7 @@ What the document does **not** say: the rate-limit categories, the order in whic
 | `ttl` | 60 to 31,536,000 s (365 days) |
 | `maxDeliveries` | 1 to 1000 |
 | `maxMessageBytes` | 1 up to `message.hard-limit` |
-| `prefixes` | up to 20 prefixes of 1 to 100 characters (`A-Za-z0-9_-`); empty is refused |
+| `prefixes` | up to 20 prefixes of 1 to 100 characters (`A-Za-z0-9_-`); an empty list is accepted (the distributor copies to no one) |
 
 ### `POST /topics`
 
@@ -149,9 +149,68 @@ Returns the `Topic`. On the dead-letter, the values are those of the source queu
 
 **Immutable:** `name`, `id`, `type`, `volatile`, `fifo`: sending them, **even with the current value**, is `400 validation.immutable-field`. Errors: `404`, `409 topic.read-only` (the dead-letter follows the source queue), `503`.
 
+### Create or update a topic (`PUT /topics/{topic}`)
+
+Takes the topic to the **declared state**: creates it if it does not exist, otherwise applies the body as its whole state. It is the route for whatever declares the topics (Terraform, Pulumi, a deploy script), and repeating it is harmless. The **definition owner** decides, from its own table and under the lock of the name ([08-storage.md](08-storage.md#topic-and-token-definitions-who-decides)), whether to create, change, recreate or leave the topic as it is: two `PUT`s at the same time end in the state of one of them on every node, and two creations at the same time create **one** topic (a `201` and a `200`).
+
+**Body:** the `TopicCreateRequest` of `POST /topics` **without `name`** (the name is the path's; `name` in the body is `400 validation.unknown-field`), with the same validation, the same reserved names (a dead-letter name is `400 validation.reserved-name`) and the same check of the token's prefixes. **Permission:** `manage` (which includes `create`), whatever the outcome; whoever only wants the queue to exist, with a `create` token, uses `POST` and treats the `409`.
+
+**Full replacement** ([D215](30-decisions.md#declaring-a-topic-d210-d214-to-d216)). What is left out goes back to the default: `ttl`, `maxDeliveries` and `maxMessageBytes` to `null`, `tags` to `{}`, `prefixes` to `[]`, `idleTimeout` to 600 on a volatile queue; `fifo` and `volatile` count as `false`. That is the difference from the other two routes:
+
+| | `POST /topics` | `PATCH /topics/{topic}` | `PUT /topics/{topic}` |
+|---|---|---|---|
+| The topic does not exist | Creates (`201`) | `404 topic.not-found` | Creates (`201`) |
+| The topic exists | `409 topic.already-exists` | Changes only what was sent | Applies the whole body; what is left out goes back to the default (`200`) |
+| Nothing to change | — | A new version anyway | `200`, no new version |
+| Another `type`, `fifo` or `volatile` | — | `400 validation.immutable-field` | `409 topic.immutable-mismatch`, or recreates with `recreate` |
+| Permission | `create` | `manage` | `manage` |
+
+```bash
+curl -s -X PUT localhost:8080/topics/pedidos -H 'Content-Type: application/json' \
+  -d '{"type":"queue","ttl":86400,"tags":{"time":"financeiro"}}'
+# 201 the first time; 200 afterwards, and the ttl goes back to null if a later PUT leaves it out
+```
+
+**Response:**
+
+| Status | When |
+|---|---|
+| `201` with `Location: /topics/{name}` and the `Topic` | Created |
+| `201` with `Taba-Topic-Recreated: true` and the `Topic` | Recreated (a new `id`) |
+| `200` with the `Topic` | It already existed and is now as declared, **also when nothing changed**: the answer does not tell "changed" from "unchanged" |
+
+**Changing what is immutable** ([D216](30-decisions.md#declaring-a-topic-d210-d214-to-d216)). The type, `fifo` and `volatile` do not change in place (the stored messages would be lost or read with another meaning). With another value, the query parameter `recreate` decides:
+
+| `recreate` | Result |
+|---|---|
+| absent | `409 topic.immutable-mismatch`, with each field, its current value and the asked one in `details`. Nothing changes |
+| `if-empty` | Recreates only if the queue and its dead-letter hold no message on **every** node; otherwise `409 topic.not-empty` (with the count). A node that does not answer the count is `503 cluster.quorum-unavailable`: it never recreates blindly |
+| `always` | Removes the topic, its messages and its dead-letter and creates it again, like `DELETE` + `POST` |
+
+Without a difference in the immutable fields, `recreate` is ignored; another value is `400 validation.failed`. The count is made by the node that received the call (the same collection as the topic statistics), which tells the owner the `id` it counted; the owner only recreates that `id`, and a topic that changed in the meantime is `409 cluster.conflict` with `Retry-After: 1` (repeat the `PUT`). On a volatile queue, a `PUT` does not count as activity (only consumption does).
+
+| Status | Codes | When |
+|---|---|---|
+| `400` | `validation.failed`, `required`, `invalid-name`, `reserved-name`, `not-applicable`, `out-of-range`, `max-bytes-above-hard-limit`, `unknown-field` | Invalid body or `recreate` |
+| `401`/`403` | `auth.unauthorized`, `auth.forbidden`, `auth.out-of-scope` | Without `manage`, or name/`prefixes` outside the token's prefixes |
+| `409` | `topic.immutable-mismatch`, `topic.not-empty`, `cluster.conflict` | Above |
+| `429` | `rate-limit.exceeded` | — |
+| `503` | `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`, `cluster.quorum-unavailable` | As on `POST`. The route is idempotent: the connectors repeat the `PUT` after a `503`, with no special rule |
+
+**Limits** ([PRB-103, PRB-104, PRB-105](31-pending-items.md#declaring-a-topic-new-problems-and-limits)):
+
+- The emptiness of `recreate=if-empty` (and of `DELETE ?ifEmpty=true`) is checked on a best-effort basis: a publication that arrives between the count and the removal is lost with the topic.
+- Between the removal and the creation of a recreation, a publication or a consumption may get `404 topic.not-found`, and the `id` changes. If the creation fails after the removal, the topic stays removed: repeating the `PUT` creates it.
+- The `200` does not say whether something changed.
+- The cluster runs one Taba version (D214): during a rolling upgrade, a `PUT` that reaches an updated node whose definition owner is still on the old version fails (the old node does not know the operation). Repeat it once every node is updated.
+
+**Changing the type without losing messages.** Nothing in the server does it for you: create a queue with another name and the new type (or `fifo`), point the producers to it, let the consumers empty the old one, and remove it with `DELETE /topics/{old}?ifEmpty=true`, which refuses while a message is left.
+
 ### `DELETE /topics/{topic}`
 
-Removes the topic and **all its messages, even the pending ones**: it **always works**, with no check. It also removes the dead-letter. A failure at the register cancels (rollback); a failure at the commit, already decided, does not cancel: the coordinator insists. There is never a partial removal visible. `204`. On `503 cluster.commit-timeout` the removal **will complete** (a later `GET` will give `404`). `409 topic.read-only` on the dead-letter.
+Removes the topic and **all its messages, even the pending ones**: without `ifEmpty`, it **always works**, with no check. It also removes the dead-letter. A failure at the register cancels (rollback); a failure at the commit, already decided, does not cancel: the coordinator insists. There is never a partial removal visible. `204`. On `503 cluster.commit-timeout` the removal **will complete** (a later `GET` will give `404`). `409 topic.read-only` on the dead-letter.
+
+**`?ifEmpty=true`** ([D216](30-decisions.md#declaring-a-topic-d210-d214-to-d216)) only removes a queue that holds no message, counting the queue and its dead-letter on every node: `409 topic.not-empty` otherwise (nothing is removed), and `503 cluster.quorum-unavailable` if a node does not answer the count. It only removes the `id` it counted, so a topic recreated in the meantime stays. On a distributor it changes nothing (a distributor holds no message). A value other than `true` or `false` is `400 validation.failed`. The same best-effort limit as `recreate=if-empty` ([above](#create-or-update-a-topic-put-topicstopic)).
 
 ---
 
@@ -357,7 +416,7 @@ They only exist with **authentication on** and only accept the **root token**. W
 
 `Token`: `id`, `name`, `permissions`, `topicPrefixes`, `createdAt`, `expiresAt` (`TokenCreated` = `Token` + `token`).
 
-Errors: `400` (`validation.*`: unknown permission, empty list, invalid prefix, `expiresAt` in the past), `401`/`403` (root only), `404`, `503` (register not confirmed: try again).
+Errors: `400` (`validation.*`: unknown permission, empty list, invalid prefix, `expiresAt` in the past), `401`/`403` (root only), `404`, `503` (register not confirmed). A `503 cluster.quorum-unavailable` on `POST /tokens` may come **after** the owner of the definition created the token, when its answer was lost: a plain new attempt could leave two tokens, the first one with a secret nobody has. Before trying again, look for it with `GET /tokens?name=` (a token with the same name, permissions and prefixes that was not there before the call) and revoke it, as the Terraform provider does ([40-terraform.md](40-terraform.md#tokens), PRB-107). The other routes can simply be repeated.
 
 ## Who the token is, the nodes and the statistics
 
@@ -421,5 +480,5 @@ Starting or killing **processes** is not offered: it is the orchestrator's job (
 
 - `http/nodes`, `http/topic_stats` (`client_routes`), `http/messages/prune.rs`, `http/topics`, `http/messages`, `http/tokens`, `http/auth`, `core/topic` (definition), `core/validation` (ranges), `core/content` (body form), `engine/topics`, `engine/messages`.
 - All the examples above were run against a real node; the responses are copies.
-- Use cases: UC-TOP (prune: 044 to 048), UC-MSG (publishing and body), UC-CNS (consumption), UC-ACK, UC-VIS, UC-AUT (tokens; 037 to 039: `required`, `auth/me`, who sees what), UC-OPS (046 to 051: the nodes and the consolidated reads), UC-PAG; see [26a](26a-implemented-use-cases.md). Tests: `tests/topics.rs`, `messages.rs`, `auth.rs`, `definitions.rs`, `nodes_api.rs`.
+- Use cases: UC-TOP (prune: 044 to 048; `PUT` and `ifEmpty`: 050 to 058), UC-MSG (publishing and body), UC-CNS (consumption), UC-ACK, UC-VIS, UC-AUT (tokens; 037 to 039: `required`, `auth/me`, who sees what), UC-OPS (046 to 051: the nodes and the consolidated reads), UC-PAG; see [26a](26a-implemented-use-cases.md). Tests: `tests/topics.rs`, `messages.rs`, `auth.rs`, `definitions.rs`, `nodes_api.rs`.
 - History: `06a-api-cliente.md`.

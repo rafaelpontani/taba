@@ -6,6 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { checkAll } from './metadados.mjs';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '../../..');
 const docDir = path.join(root, 'doc/pt-BR');
@@ -88,6 +89,9 @@ for (const [f, t] of Object.entries(texts)) {
   }
   check('metadados, status e "Fontes e provas"', problems);
 }
+
+// ---- 2b. metadados que são YAML válido (o GitHub e o preview do VS Code), em todas as pastas de idioma ----
+check('metadados em YAML válido (todos os idiomas; corrigir: node doc/pt-BR/scripts/metadados.mjs --corrigir)', checkAll());
 
 // ---- 3. parâmetros de configuração ----
 {

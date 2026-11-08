@@ -1,10 +1,10 @@
 ---
 título: Problemas conhecidos
-resumo: Registro, com histórico, dos testes de cluster intermitentes e dos problemas conhecidos: cada um com título, status, data em que foi achado, data da solução e o histórico de ocorrências e tentativas.
+resumo: "Registro, com histórico, dos testes de cluster intermitentes e dos problemas conhecidos: cada um com título, status, data em que foi achado, data da solução e o histórico de ocorrências e tentativas."
 tipo: referência
 status: parcial
-verificado-em: 2026-11-05 @ 29af16e
-fontes: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+verificado-em: 2026-11-07 @ 689495f
+fontes: [crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Problemas conhecidos
@@ -17,6 +17,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [Uma mensagem entregue duas vezes depois da reunião de uma partição](#uma-mensagem-entregue-duas-vezes-depois-da-reunião-de-uma-partição) | Aberto | 2026-11-07 | — |
 | [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro) | Corrigido | 2026-11-05 | 2026-11-05 |
 | [Um nó que para de responder e não é excluído em 30 s](#um-nó-que-para-de-responder-e-não-é-excluído-em-30-s) | Aberto | 2026-11-04 | — |
 | [Um teste de replicação cujas 14 publicações não caíram no nó isolado](#um-teste-de-replicação-cujas-14-publicações-não-caíram-no-nó-isolado) | Corrigido | 2026-11-03 | 2026-11-03 |
@@ -35,6 +36,38 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## Uma mensagem entregue duas vezes depois da reunião de uma partição
+
+**Status:** Aberto · **Achado em:** 2026-11-07 · **Corrigido em:** —
+
+- **Teste:** `tests/partition.rs::the_half_that_loses_the_reunion_keeps_what_it_accepted_while_apart` (UC-FAL-026, a medição de R1 em [37-garantias.md](37-garantias.md)).
+- **Sintoma:** no job do servidor em arm64 do `release.yml` do merge do #63 (run 42409549368), o teste terminou com `delivered twice: [(18, 2)]` em `partition.rs:147`: nenhuma mensagem perdida, mas a de `seq` 18 (publicada no nó 3, da metade que fica com 3 e 4) foi entregue duas vezes. O mesmo commit passou no amd64, no CI do pull request e na `v0.3.8-rc.1`, que tem o mesmo código do servidor.
+- **Causa:** não identificada. Hipótese a verificar: o `drain` do teste recebe com `visibilityTimeout=30` e avança o relógio 1 s por rodada; um ack que falha enquanto a vida da metade perdedora é restaurada (o dono da mensagem muda, ou a cópia restaurada é outra) deixa a mensagem voltar 30 s de relógio depois. Se for isso, a duplicata é a entrega pelo menos uma vez que [37-garantias.md](37-garantias.md) já admite, e o que está errado é o teste afirmar "entregue uma vez"; se a cópia restaurada for uma segunda mensagem com o mesmo corpo, é um defeito da restauração (D181).
+- **Próximo passo:** ler no log que a caça guardou (`target/hang-hunt/run_12_2.log`; `docker/hang-hunt.sh partition` de novo para outro) se o ack da mensagem repetida respondeu `204` e em qual nó cada entrega aconteceu.
+- **Não fazer:** trocar a afirmação do teste por "pelo menos uma vez" antes de saber a causa.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-07 | Uma falha em arm64 no `release.yml` do merge do #63, que só mudou conectores e documentação; os jobs que falharam rodaram de novo. |
+| 2026-11-07 | O `docker/hang-hunt.sh partition` (8 processos ao mesmo tempo) reproduziu na rodada 12: `delivered twice: [(17, 2)]`. O log ficou em `target/hang-hunt/run_12_2.log`, ainda não lido. |
+
+## Um teste de lote que contou as chamadas antes do commit em segundo plano
+
+**Status:** Corrigido · **Achado em:** 2026-11-07 · **Corrigido em:** 2026-11-07
+
+- **Teste:** `tests/batch.rs::a_batch_of_publications_goes_through_each_phase_in_one_call_per_node_and_group` (e, com o mesmo padrão, `operations_waiting_for_the_same_node_travel_in_fewer_calls_than_operations` e `with_max_items_1_every_operation_goes_in_a_call_of_its_own`).
+- **Sintoma:** no job do servidor em arm64 do pull request #62, `batch.rs:436` falhou com `362`: o teste esperava pelo menos 400 chamadas de registro e commit entre os nós para 100 publicações. Os outros 9 testes do arquivo passaram.
+- **Causa:** o teste, não o lote. O coordenador responde quando o quórum confirma o commit (o primário e mais um nó); o terceiro nó recebe o commit em segundo plano ([doc 10](10-publicacao.md)). O teste contava as chamadas da rede em memória logo depois da resposta, então num runner lento parte dos commits ainda não tinha saído.
+- **Correção:** os três testes esperam (`eventually`, até 30 s) que o número esperado de chamadas tenha passado antes de compará-lo com o número de lotes. O que eles provam continua igual. O código do servidor não mudou.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-07 | Uma falha em arm64 no #62. Testes corrigidos; 0 falhas em 40 execuções do arquivo inteiro (10 rodadas de 4 processos) no Windows. |
 
 ## Um segundo canal que não é fechado primeiro
 

@@ -3,7 +3,7 @@ title: Storage
 summary: Where each piece of node data lives — memory first, overflow to disk, one SQLite database per topic, the node database, the event database — and what happens on a restart.
 type: explanation
 status: stable
-verified-on: 2026-10-31 @ 5188786
+verified-on: 2026-11-07 @ d79a140
 sources: [crates/taba-node/src/storage, crates/taba-node/src/engine/messages/mod.rs, crates/taba-node/src/engine/messages/rates, crates/taba-node/src/engine/topics/mod.rs, crates/taba-node/src/engine/tokens/mod.rs]
 ---
 
@@ -91,9 +91,10 @@ It answers: the oldest message, the next ones to expire, the messages of a block
 A topic or token definition is **small data, rarely changed and of interest to the whole cluster**. **Every node knows all of them**; they are not partitioned by the ring.
 
 - **Definition owner.** Each definition has an **owner** on the ring: the first active node at the hash position of `topic:<name>` (or `token:<id>`). Creation, change and removal are **proposed to the owner** (`POST /cluster/definitions/propose`). It checks against its own state (name already exists, `expectedId`), assigns the **next version**, writes it to an **heir** (the next owner of the position that answers; if there are other owners and none answers, the change is **refused with `503`**) and applies it to itself. Then it sends the decided change to all the others (`POST /cluster/definitions/apply`) and answers the client after those that answer within `write.commit.timeout`; the rest receive it through the `definition` frame of the channel.
+- **Create or update (`PUT /topics/{topic}`):** the proposal (`upsert`) carries the declared definition and the owner decides, from its own table and under the lock of the name, whether to create, change, recreate or do nothing, so the choice and the change are one step. Nothing to change gives no new version ([16-client-api.md](16-client-api.md#create-or-update-a-topic-put-topicstopic)).
 - **Version:** a node only applies a version **greater than or equal to** the one it already has.
 - **Failure:** a partial change is never visible; a node only serves the new definition **at the commit**.
-- **Removal:** `DELETE /topics/{topic}` **always works**, even with pending messages: each node deletes all the topic's messages it has (memory, disk and metadata).
+- **Removal:** `DELETE /topics/{topic}` **always works**, even with pending messages: each node deletes all the topic's messages it has (memory, disk and metadata). With `?ifEmpty=true` it only removes a queue that holds no message on any node, and only the `id` it counted.
 - **Dead-letter:** has no definition of its own; it is derived from the source queue, created and deleted with it, and does not generate a row in `topics`.
 - **Tokens:** the secret **never travels between nodes**: only the salt and the hash. Validation is a **local in-memory** lookup. The node **does not trust** the tokens it finds on disk (they may be out of date); they come from the cluster.
 - **Consumption data** (depth, rates, histograms) **never goes to disk**: it stays in memory, per node.

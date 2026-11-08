@@ -499,6 +499,67 @@ namespace Taba.Tests
             Assert.That(rig.Handler.Requests.Count, Is.EqualTo(2));
         }
 
+        /// UC: UC-CNT-042
+        [Test]
+        public async Task create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome()
+        {
+            var rig = new Rig();
+            rig.Handler
+                .Reply(201, TopicJson)
+                .Reply(200, TopicJson)
+                .Reply(201, TopicJson, "application/json", "Taba-Topic-Recreated", "true")
+                .Reply(201, TopicJson);
+            ITabaTopicPutClient client = rig.Client;
+            var request = new TopicRequest { Name = "a b", Type = "queue", Fifo = true, Ttl = 60 };
+
+            TopicPut created = await client.CreateOrUpdateTopicAsync(request);
+            Assert.That(created.Outcome, Is.EqualTo(TopicOutcome.Created));
+            Assert.That(created.Topic.Id, Is.EqualTo("t1"));
+            Assert.That(client.CreateOrUpdateTopic(request).Outcome, Is.EqualTo(TopicOutcome.Updated));
+            Assert.That(client.CreateOrUpdateTopic(request, Recreate.Always).Outcome, Is.EqualTo(TopicOutcome.Recreated));
+            Assert.That((await client.CreateOrUpdateTopicAsync(request, Recreate.IfEmpty)).Outcome, Is.EqualTo(TopicOutcome.Created));
+
+            Seen first = rig.Handler.Requests[0];
+            Assert.That(first.Method + " " + first.PathAndQuery, Is.EqualTo("PUT /topics/a%20b"));
+            Assert.That(first.BodyText, Is.EqualTo("{\"type\":\"queue\",\"fifo\":true,\"ttl\":60}"));
+            Assert.That(rig.Handler.Requests[2].PathAndQuery, Is.EqualTo("/topics/a%20b?recreate=always"));
+            Assert.That(rig.Handler.Requests[3].PathAndQuery, Is.EqualTo("/topics/a%20b?recreate=if-empty"));
+        }
+
+        /// UC: UC-CNT-042
+        [Test]
+        public void create_or_update_topic_fails_with_the_code_and_repeats_after_a_503()
+        {
+            var rig = new Rig();
+            rig.Handler
+                .Reply(409, Error("topic.immutable-mismatch"))
+                .Reply(409, Error("topic.not-empty"))
+                .Reply(503, Error("cluster.commit-timeout"), "application/json", "Retry-After", "2")
+                .Reply(200, TopicJson);
+            var request = new TopicRequest { Name = "orders", Type = "queue" };
+
+            var mismatch = Assert.Throws<TabaException>(() => rig.Client.CreateOrUpdateTopic(request));
+            Assert.That(mismatch.Status, Is.EqualTo(409));
+            Assert.That(mismatch.Code, Is.EqualTo("topic.immutable-mismatch"));
+            var notEmpty = Assert.Throws<TabaException>(() => rig.Client.CreateOrUpdateTopic(request, Recreate.IfEmpty));
+            Assert.That(notEmpty.Code, Is.EqualTo("topic.not-empty"));
+            Assert.That(rig.Client.CreateOrUpdateTopic(request).Outcome, Is.EqualTo(TopicOutcome.Updated));
+            Assert.That(rig.Handler.Requests.Count, Is.EqualTo(4));
+            Assert.That(rig.Waits, Is.EqualTo(new[] { TimeSpan.FromSeconds(2) }));
+        }
+
+        /// UC: UC-CNT-043
+        [Test]
+        public void delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error()
+        {
+            var rig = new Rig();
+            rig.Handler.Reply(409, Error("topic.not-empty")).Reply(204);
+            var error = Assert.Throws<TabaException>(() => rig.Client.DeleteTopicIfEmpty("a b"));
+            Assert.That(error.Code, Is.EqualTo("topic.not-empty"));
+            rig.Client.DeleteTopicIfEmpty("a b");
+            Assert.That(rig.Handler.Last.Method + " " + rig.Handler.Last.PathAndQuery, Is.EqualTo("DELETE /topics/a%20b?ifEmpty=true"));
+        }
+
         /// UC: UC-CNT-012
         [Test]
         public void gateway_errors_are_only_repeated_when_publishing_to_a_fifo()

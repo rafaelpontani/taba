@@ -1,6 +1,6 @@
 ---
 título: Gateway para os SDKs da AWS
-resumo: Os gateways de SQS e SNS dentro do nó: uma aplicação que usa o SDK da AWS aponta o endpoint para uma porta do Taba e mantém o código. O que é suportado (filas padrão e FIFO, protocolos JSON e Query, tópicos do SNS que publicam em filas, SigV4), como uma chamada vira chamada à API do cliente, como funcionam o arquivo de credenciais e as permissões, onde ficam os atributos da mensagem, como um tópico e uma assinatura são guardados e cada diferença do SQS e do SNS que a aplicação precisa conhecer.
+resumo: "Os gateways de SQS e SNS dentro do nó: uma aplicação que usa o SDK da AWS aponta o endpoint para uma porta do Taba e mantém o código. O que é suportado (filas padrão e FIFO, protocolos JSON e Query, tópicos do SNS que publicam em filas, SigV4), como uma chamada vira chamada à API do cliente, como funcionam o arquivo de credenciais e as permissões, onde ficam os atributos da mensagem, como um tópico e uma assinatura são guardados e cada diferença do SQS e do SNS que a aplicação precisa conhecer."
 tipo: guia
 status: parcial
 verificado-em: 2026-11-04 @ a3bdab9

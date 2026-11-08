@@ -113,6 +113,37 @@ namespace Taba
             await SendAsync(call, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <inheritdoc/>
+        public async Task<TopicPut> CreateOrUpdateTopicAsync(TopicRequest request, Recreate recreate = Recreate.Never, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException("request");
+            }
+            var call = new ApiCall(HttpMethod.Put, "/topics/" + Segment(request.Name ?? string.Empty)).Json(RequestJson.Put(request));
+            if (recreate == Recreate.IfEmpty)
+            {
+                call.With("recreate", "if-empty");
+            }
+            else if (recreate == Recreate.Always)
+            {
+                call.With("recreate", "always");
+            }
+            ApiReply reply = await SendAsync(call, cancellationToken).ConfigureAwait(false);
+            TopicOutcome outcome = reply.Status != 201
+                ? TopicOutcome.Updated
+                : reply.Recreated ? TopicOutcome.Recreated : TopicOutcome.Created;
+            return new TopicPut(ModelParser.ParseTopic(reply.Text), outcome);
+        }
+
+        /// <inheritdoc/>
+        public async Task DeleteTopicIfEmptyAsync(string name, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            var call = new ApiCall(HttpMethod.Delete, "/topics/" + Segment(name)).With("ifEmpty", true);
+            call.Recover.Add(new KeyValuePair<int, string>(404, "topic.not-found"));
+            await SendAsync(call, cancellationToken).ConfigureAwait(false);
+        }
+
 
     }
 }

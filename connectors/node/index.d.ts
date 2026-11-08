@@ -57,6 +57,21 @@ export interface TopicRequest {
   maxDeliveries?: number;
 }
 
+/**
+ * What `createOrUpdateTopic` does when the topic exists with another `type`, `fifo` or `volatile`: `'if-empty'`
+ * recreates it only if it holds no message (`409 topic.not-empty` otherwise), `'always'` removes it with its
+ * messages and creates it again. Left out, it is refused with `409 topic.immutable-mismatch`.
+ */
+export type Recreate = 'if-empty' | 'always';
+
+/** What `PUT /topics/{topic}` did: created (`201`), updated or already as declared (`200`), recreated with a new `id`. */
+export type TopicOutcome = 'created' | 'updated' | 'recreated';
+
+export interface TopicPut {
+  topic: Topic;
+  outcome: TopicOutcome;
+}
+
 /** `undefined` leaves the field out; `null` (where allowed) goes back to the server default. */
 export interface TopicUpdate {
   tags?: Record<string, string>;
@@ -216,7 +231,10 @@ export class TabaClient {
   listTopics(options?: { limit?: number; cursor?: string | null; name?: string } & CallOptions): Promise<Page<Topic>>;
   listAllTopics(options?: { name?: string } & CallOptions): Promise<Topic[]>;
   updateTopic(name: string, update: TopicUpdate, options?: CallOptions): Promise<Topic>;
-  deleteTopic(name: string, options?: CallOptions): Promise<void>;
+  /** `PUT /topics/{topic}`: the declared state (what is left out goes back to the default); `request.name` is the path. */
+  createOrUpdateTopic(request: TopicRequest, options?: { recreate?: Recreate } & CallOptions): Promise<TopicPut>;
+  /** With `ifEmpty: true`, only removes a queue that holds no message (`409 topic.not-empty` otherwise). */
+  deleteTopic(name: string, options?: { ifEmpty?: boolean } & CallOptions): Promise<void>;
 
   publish(topic: string, body: Buffer | Uint8Array | string, options?: PublishOptions): Promise<PublishResponse>;
   publishJson(topic: string, value: unknown, options?: PublishOptions): Promise<PublishResponse>;

@@ -3,7 +3,7 @@ título: Dependências
 resumo: O que o Taba usa para compilar, rodar e testar — bibliotecas do servidor e por quê, dependências de sistema, ferramentas e a regra de "zero dependências" dos conectores.
 tipo: referência
 status: estável
-verificado-em: 2026-10-14 @ efeb47a
+verificado-em: 2026-11-07 @ 4fbb808
 fontes: [Cargo.toml, crates/taba-node/Cargo.toml, connectors/rust/Cargo.toml, connectors/rust/client/Cargo.toml, connectors/csharp, Dockerfile, docker-compose.yml]
 ---
 
@@ -67,6 +67,7 @@ O Taba **não precisa** de banco de dados externo, broker, coordenador (ZooKeepe
 | `taba-cli` | `taba-client` | Sem outras |
 | C# (`Taba.Client`) | Nenhuma além da plataforma; alvos `net461`, `net5.0`, `net6.0`, `net8.0` e `net10.0` | C# 7.3. A extensão de injeção de dependência (`Taba.Client.Extensions.DependencyInjection`) é um pacote **separado** que usa `Microsoft.Extensions.*` |
 | Testes do C# | NUnit 3.14, `Microsoft.NET.Test.Sdk`, `Microsoft.Extensions.*` | Só nos testes |
+| Provider Terraform (`connectors/terraform`) | `terraform-plugin-framework` v1.19, `terraform-plugin-framework-validators` v0.19, `terraform-plugin-go` v0.31 e o conector Go; testes: `terraform-plugin-testing` v1.16; docs: `tfplugindocs` (um `go tool`) | **Fora da regra**: um plugin que o Terraform e o OpenTofu executam, não uma biblioteca que uma aplicação importa, então usa o framework da HashiCorp e um Go atual (1.25, que o framework exige) ([40-terraform.md](40-terraform.md)) |
 
 ## 4. Ferramentas de desenvolvimento
 

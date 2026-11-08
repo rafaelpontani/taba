@@ -66,6 +66,8 @@ catalog! {
     TopicAlreadyExists => ("topic.already-exists", 409),
     TopicWrongType => ("topic.wrong-type", 409),
     TopicReadOnly => ("topic.read-only", 409),
+    TopicImmutableMismatch => ("topic.immutable-mismatch", 409),
+    TopicNotEmpty => ("topic.not-empty", 409),
     MessageStaleReceipt => ("message.stale-receipt", 409),
     DrainConflict => ("drain.conflict", 409),
     ClusterConflict => ("cluster.conflict", 409),

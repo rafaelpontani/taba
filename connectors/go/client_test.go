@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -441,6 +442,30 @@ func TestBackoffWithoutRetryAfterIsOneTwoFourSecondsUpToMaxAttempts(t *testing.T
 	assertEqual(t, time.Second, f.sleep.recorded()[0], "first wait")
 }
 
+// UC: UC-CNT-010
+func TestRetryMaxWaitStopsBeforeAWaitThatWouldPassIt(t *testing.T) {
+	f := newFixture(t, func(c *Config) {
+		c.MaxAttempts = 100
+		c.RetryMaxWait = 12 * time.Second
+	})
+	defer f.close()
+	f.server.setFallback(reply(503, `{"code":"cluster.quorum-unavailable","message":"owner down"}`).with("Retry-After", "5"))
+	_, err := f.client.GetTopic(ctxb, "q")
+	assertError(t, "cluster.quorum-unavailable", err)
+	assertEqual(t, "[5s 5s]", fmt.Sprint(f.sleep.recorded()), "5 + 5 fit in 12 s; a third 5 would not")
+	assertEqual(t, 3, f.server.count(), "attempts")
+
+	g := newFixture(t, func(c *Config) {
+		c.MaxAttempts = 100
+		c.RetryMaxWait = 10 * time.Second
+	})
+	defer g.close()
+	g.server.setFallback(reply(503, `{"code":"cluster.unavailable","message":"x"}`))
+	_, err = g.client.GetTopic(ctxb, "q")
+	assertError(t, "cluster.unavailable", err)
+	assertEqual(t, "[1s 2s 4s]", fmt.Sprint(g.sleep.recorded()), "without Retry-After: 1 + 2 + 4 = 7; the next 8 would pass 10")
+}
+
 // UC: UC-CNT-011
 func TestAfterA503A409OnCreateAndA404OnDeleteCountAsSuccess(t *testing.T) {
 	f := newFixture(t)
@@ -476,6 +501,78 @@ func TestWithoutAPrevious503A409OrA404IsAPlainError(t *testing.T) {
 	assertError(t, "topic.already-exists", err)
 	assertError(t, "topic.not-found", f.client.DeleteTopic(ctxb, "q"))
 	assertEqual(t, 2, f.server.count(), "no retry")
+}
+
+// UC: UC-CNT-042
+func TestCreateOrUpdateTopicPutsTheBodyWithoutTheNameAndReadsTheOutcome(t *testing.T) {
+	f := newFixture(t)
+	defer f.close()
+	f.server.reply(
+		reply(201, topicJSON("a b")),
+		reply(200, topicJSON("a b")),
+		reply(201, topicJSON("a b")).with("Taba-Topic-Recreated", "true"),
+		reply(201, topicJSON("a b")),
+	)
+	fifo, ttl := true, 60
+	request := &TopicRequest{Name: "a b", Type: "queue", Fifo: &fifo, TTL: &ttl}
+	outcomes := []TopicOutcome{}
+	for _, recreate := range []Recreate{RecreateNever, RecreateNever, RecreateAlways, RecreateIfEmpty} {
+		put, err := f.client.CreateOrUpdateTopic(ctxb, request, recreate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertEqual(t, "t-a b", put.Topic.ID, "topic")
+		outcomes = append(outcomes, put.Outcome)
+	}
+	assertEqual(t, "[created updated recreated created]", fmt.Sprint(outcomes), "outcomes")
+
+	all := f.server.all()
+	assertEqual(t, "PUT /topics/a%20b", all[0].Method+" "+all[0].Path, "route")
+	assertEqual(t, `{"type":"queue","fifo":true,"ttl":60}`, all[0].text(), "body")
+	assertEqual(t, "", all[0].Raw, "no query")
+	assertEqual(t, "recreate=always", all[2].Raw, "always")
+	assertEqual(t, "recreate=if-empty", all[3].Raw, "if-empty")
+	_, err := f.client.CreateOrUpdateTopic(ctxb, request, Recreate("never"))
+	assertError(t, "client.invalid-request", err)
+	assertEqual(t, 4, f.server.count(), "a bad recreate is not sent")
+}
+
+// UC: UC-CNT-042
+func TestCreateOrUpdateTopicFailsWithTheCodeAndRepeatsAfterA503(t *testing.T) {
+	f := newFixture(t)
+	defer f.close()
+	f.server.reply(
+		reply(409, `{"code":"topic.immutable-mismatch","message":"x"}`),
+		reply(409, `{"code":"topic.not-empty","message":"x"}`),
+		reply(503, `{"code":"cluster.commit-timeout","message":"x"}`).with("Retry-After", "2"),
+		reply(200, topicJSON("q")),
+	)
+	request := &TopicRequest{Name: "q", Type: "queue"}
+	_, err := f.client.CreateOrUpdateTopic(ctxb, request, RecreateNever)
+	assertError(t, "topic.immutable-mismatch", err)
+	assertEqual(t, 409, err.(*Error).Status, "status")
+	_, err = f.client.CreateOrUpdateTopic(ctxb, request, RecreateIfEmpty)
+	assertError(t, "topic.not-empty", err)
+	put, err := f.client.CreateOrUpdateTopic(ctxb, request, RecreateNever)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEqual(t, TopicUpdated, put.Outcome, "outcome")
+	assertEqual(t, 4, f.server.count(), "requests")
+	assertEqual(t, "[2s]", fmt.Sprint(f.sleep.recorded()), "waits")
+}
+
+// UC: UC-CNT-043
+func TestDeleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError(t *testing.T) {
+	f := newFixture(t)
+	defer f.close()
+	f.server.reply(reply(409, `{"code":"topic.not-empty","message":"x"}`), reply(204, ""))
+	assertError(t, "topic.not-empty", f.client.DeleteTopicIfEmpty(ctxb, "a b"))
+	if err := f.client.DeleteTopicIfEmpty(ctxb, "a b"); err != nil {
+		t.Fatal(err)
+	}
+	second := f.server.all()[1]
+	assertEqual(t, "DELETE /topics/a%20b?ifEmpty=true", second.Method+" "+second.Path+"?"+second.Raw, "route")
 }
 
 // UC: UC-CNT-012
@@ -875,4 +972,39 @@ func TestARefusedRenewalMarksTheLeaseAsLostAndTheDeleteIsTolerated(t *testing.T)
 	}
 	assertEqual(t, 1, handled, "handled")
 	assertEqual(t, true, lost, "lease lost")
+}
+
+// UC: UC-CNT-001
+func TestATopicReadsEveryFieldTheServerReturns(t *testing.T) {
+	f := newFixture(t)
+	defer f.close()
+	f.server.reply(
+		reply(200, topicJSON("orders", map[string]interface{}{
+			"tags": map[string]string{"team": "a"}, "volatile": true, "idleTimeout": 60, "fifo": false,
+			"maxMessageBytes": nil, "ttl": 3600, "maxDeliveries": 5,
+			"effective": map[string]interface{}{"ttl": 3600},
+		})),
+		reply(200, topicJSON("orders.dlq", map[string]interface{}{"deadLetter": true, "source": "orders"})),
+		reply(200, topicJSON("fan", map[string]interface{}{"type": "distributor", "prefixes": []string{"orders."}})),
+	)
+
+	queue, err := f.client.GetTopic(ctxb, "orders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEqual(t, "a", queue.Tags["team"], "tags")
+	assertEqual(t, 60, *queue.IdleTimeout, "idleTimeout")
+	assertEqual(t, true, queue.MaxMessageBytes == nil, "a null maxMessageBytes follows the node default")
+	assertEqual(t, 3600, *queue.TTL, "ttl")
+	assertEqual(t, 5, *queue.MaxDeliveries, "maxDeliveries")
+	assertEqual(t, true, queue.Prefixes == nil, "a queue has no prefixes")
+	assertEqual(t, true, queue.DeadLetter == nil, "not a dead-letter")
+
+	dlq, _ := f.client.GetTopic(ctxb, "orders.dlq")
+	assertEqual(t, true, *dlq.DeadLetter, "deadLetter")
+	assertEqual(t, "orders", dlq.Source, "source")
+	assertEqual(t, 0, len(dlq.Tags), "no tags is an empty map")
+
+	fan, _ := f.client.GetTopic(ctxb, "fan")
+	assertEqual(t, "orders.", fan.Prefixes[0], "prefixes")
 }

@@ -18,6 +18,7 @@ from .models import (
     Page,
     PublishResponse,
     Topic,
+    TopicPut,
     TopicRequest,
     TopicUpdate,
     VisibilityResponse,
@@ -117,8 +118,29 @@ class Client:
         """A real `PATCH`, with no verb-override header."""
         return parse_topic(self._send(_calls.update_topic_call(name, update), cancel).text)
 
-    def delete_topic(self, name: str, *, cancel: Optional[CancelToken] = None) -> None:
-        self._send(_calls.delete_topic_call(name), cancel)
+    def create_or_update_topic(
+        self, request: TopicRequest, *, recreate: Optional[str] = None, cancel: Optional[CancelToken] = None
+    ) -> TopicPut:
+        """
+        `PUT /topics/{topic}`: brings the topic to the declared state, creating it if it does not exist. What is left
+        out goes back to the server default (a full replacement, unlike `update_topic`); `request.name` is the topic
+        of the path. Another `type`, `fifo` or `volatile` is `409 topic.immutable-mismatch` unless `recreate`
+        (`"if-empty"` or `"always"`) says otherwise. Repeated after a 503 like the other calls: the route is
+        idempotent.
+        """
+        reply = self._send(_calls.put_topic_call(request, recreate), cancel)
+        if reply.status == 201:
+            outcome = "recreated" if reply.recreated else "created"
+        else:
+            outcome = "updated"
+        return TopicPut(parse_topic(reply.text), outcome)
+
+    def delete_topic(self, name: str, *, if_empty: bool = False, cancel: Optional[CancelToken] = None) -> None:
+        """
+        `DELETE /topics/{topic}`. With `if_empty=True`, removes the queue only if it and its dead-letter hold no
+        message on any node (`409 topic.not-empty` otherwise; a distributor holds none).
+        """
+        self._send(_calls.delete_topic_call(name, if_empty), cancel)
 
     # -- publishing ----------------------------------------------------------------------------------------
 

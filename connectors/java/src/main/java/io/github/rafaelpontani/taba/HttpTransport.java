@@ -29,11 +29,18 @@ final class HttpTransport implements AutoCloseable {
         final int status;
         final byte[] body;
         final boolean recovered;
+        /** The response carries {@code Taba-Topic-Recreated: true} ({@code PUT /topics/{topic}}). */
+        final boolean recreated;
 
         Reply(int status, byte[] body, boolean recovered) {
+            this(status, body, recovered, false);
+        }
+
+        Reply(int status, byte[] body, boolean recovered, boolean recreated) {
             this.status = status;
             this.body = body;
             this.recovered = recovered;
+            this.recreated = recreated;
         }
 
         String text() {
@@ -215,7 +222,9 @@ final class HttpTransport implements AutoCloseable {
                 byte[] body = response.body();
                 int status = response.statusCode();
                 if (status < 400) {
-                    return new Reply(status, body, false);
+                    boolean recreated = "true".equalsIgnoreCase(
+                            response.headers().firstValue("Taba-Topic-Recreated").orElse("").trim());
+                    return new Reply(status, body, false, recreated);
                 }
                 if (afterRetryable && recovers(call, status, body)) {
                     return new Reply(status, body, true);

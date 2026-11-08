@@ -81,6 +81,30 @@ func createTopicCall(r *TopicRequest) (*apiCall, error) {
 	}
 	var o jsonObject
 	o.put("name", r.Name)
+	topicFields(&o, r)
+	call := (&apiCall{method: "POST", path: "/topics"}).withJSON(o.bytes())
+	call.recover = append(call.recover, recoverRule{409, "topic.already-exists"})
+	return call, nil
+}
+
+// putTopicCall is PUT /topics/{topic}: the fields of POST /topics without the name (it goes in the path).
+func putTopicCall(r *TopicRequest, recreate Recreate) (*apiCall, error) {
+	if r == nil {
+		return nil, clientError("client.invalid-request", "request is required")
+	}
+	if recreate != RecreateNever && recreate != RecreateIfEmpty && recreate != RecreateAlways {
+		return nil, clientError("client.invalid-request", "recreate must be RecreateIfEmpty or RecreateAlways")
+	}
+	var o jsonObject
+	topicFields(&o, r)
+	call := (&apiCall{method: "PUT", path: "/topics/" + segment(r.Name)}).withJSON(o.bytes())
+	if recreate != RecreateNever {
+		call.withQuery("recreate", string(recreate))
+	}
+	return call, nil
+}
+
+func topicFields(o *jsonObject, r *TopicRequest) {
 	o.put("type", r.Type)
 	if len(r.Tags) > 0 {
 		o.put("tags", r.Tags)
@@ -106,9 +130,6 @@ func createTopicCall(r *TopicRequest) (*apiCall, error) {
 	if r.MaxDeliveries != nil {
 		o.put("maxDeliveries", *r.MaxDeliveries)
 	}
-	call := (&apiCall{method: "POST", path: "/topics"}).withJSON(o.bytes())
-	call.recover = append(call.recover, recoverRule{409, "topic.already-exists"})
-	return call, nil
 }
 
 func getTopicCall(name string) *apiCall {

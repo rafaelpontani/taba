@@ -3,7 +3,7 @@ title: Errors and limits
 summary: The complete catalogue of error codes (each with its fixed HTTP status), the fixed validation limits, the configurable limits and the rate limits.
 type: reference
 status: stable
-verified-on: 2026-11-03 @ cc4da15
+verified-on: 2026-11-07 @ d79a140
 sources: [crates/taba-node/src/core/error/mod.rs, crates/taba-node/src/core/validation/mod.rs, crates/taba-node/src/http/ratelimit, crates/taba-node/src/config/params/mod.rs]
 ---
 
@@ -62,9 +62,11 @@ Every API error is an **`ErrorCode`** of the catalogue (`core/error`), with a **
 | `topic.already-exists` | A topic with the name already exists |
 | `topic.wrong-type` | `GET`/ack on a distributor; or `autoCreate` on a name that belongs to a distributor |
 | `topic.read-only` | `PATCH`/`DELETE` on a dead-letter queue |
+| `topic.immutable-mismatch` | `PUT /topics/{topic}` with another `type`, `fifo` or `volatile` and no `recreate` (each field in `details`) |
+| `topic.not-empty` | `PUT ?recreate=if-empty` or `DELETE ?ifEmpty=true` on a queue that still holds messages (it or its dead-letter, on any node) |
 | `message.stale-receipt` | The `receiptToken` is not the one of the last delivery (the message was redelivered) |
 | `drain.conflict` | `DELETE /node/drain` during deregistration, or with the process already stopping by signal |
-| `cluster.conflict` | Between nodes: another pending operation on the same resource, or the message is already invisible |
+| `cluster.conflict` | Between nodes: another pending operation on the same resource, or the message is already invisible; on a `PUT` that recreates, the topic changed during the request (`Retry-After: 1`, repeat it) |
 
 ## Limits and configuration — `413`, `415`, `421`, `422`, `429`
 

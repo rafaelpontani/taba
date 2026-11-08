@@ -246,6 +246,7 @@ fn requests() -> Vec<Request> {
         key: "pedidos".into(),
         body: serde_json::json!({"id": guid(8), "name": "pedidos", "type": "queue"}),
         expected_id: Some(guid(8)),
+        recreate: Default::default(),
     };
     let token = DefinitionApply {
         kind: DefinitionKind::Token,
@@ -254,6 +255,7 @@ fn requests() -> Vec<Request> {
         deleted: true,
         body: serde_json::Value::Null,
         relay: true,
+        outcome: None,
     };
     let t = || "pedidos".to_owned();
     let id = || guid(10);

@@ -111,6 +111,42 @@ func (c *Client) DeleteTopic(ctx context.Context, name string) error {
 	return err
 }
 
+// CreateOrUpdateTopic is PUT /topics/{topic}: brings the topic to the declared state, creating it if it does not
+// exist. What is left out goes back to the server default (a full replacement, unlike UpdateTopic); request.Name is
+// the topic of the path. Another type, fifo or volatile is 409 topic.immutable-mismatch unless recreate says
+// otherwise. Repeated after a 503 like the other calls: the route is idempotent.
+func (c *Client) CreateOrUpdateTopic(ctx context.Context, request *TopicRequest, recreate Recreate) (*TopicPut, error) {
+	call, err := putTopicCall(request, recreate)
+	if err != nil {
+		return nil, err
+	}
+	reply, err := c.t.send(ctx, call)
+	if err != nil {
+		return nil, err
+	}
+	t, err := parseTopic(reply.body)
+	if err != nil {
+		return nil, err
+	}
+	outcome := TopicUpdated
+	if reply.status == 201 {
+		outcome = TopicCreated
+		if reply.recreated {
+			outcome = TopicRecreated
+		}
+	}
+	return &TopicPut{Topic: t, Outcome: outcome}, nil
+}
+
+// DeleteTopicIfEmpty is DELETE /topics/{topic}?ifEmpty=true: removes the queue only if it and its dead-letter hold
+// no message on any node (409 topic.not-empty otherwise; a distributor holds none).
+func (c *Client) DeleteTopicIfEmpty(ctx context.Context, name string) error {
+	call := deleteTopicCall(name)
+	call.withQuery("ifEmpty", "true")
+	_, err := c.t.send(ctx, call)
+	return err
+}
+
 // -- publishing ----------------------------------------------------------------------------------------------
 
 // Publish is POST /topics/{topic}/messages. The body goes as bytes, without validation. options may be nil;

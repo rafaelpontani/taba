@@ -338,6 +338,59 @@ test('without a previous 503 a 409 or a 404 is a plain error', () =>
     assert.equal(server.requests.length, 2);
   }));
 
+/// UC: UC-CNT-042
+test('create or update topic puts the body without the name and reads the outcome', () =>
+  withClient({}, async (client, server) => {
+    server.reply(
+      json(201, topicJson('a b')),
+      json(200, topicJson('a b')),
+      json(201, topicJson('a b'), { 'Taba-Topic-Recreated': 'true' }),
+      json(201, topicJson('a b')),
+    );
+    const request = { name: 'a b', type: 'queue', fifo: true, ttl: 60 };
+    const created = await client.createOrUpdateTopic(request);
+    assert.equal(created.outcome, 'created');
+    assert.equal(created.topic.id, 't-a b');
+    assert.equal((await client.createOrUpdateTopic(request)).outcome, 'updated');
+    assert.equal((await client.createOrUpdateTopic(request, { recreate: 'always' })).outcome, 'recreated');
+    assert.equal((await client.createOrUpdateTopic(request, { recreate: 'if-empty' })).outcome, 'created');
+
+    assert.equal(`${server.requests[0].method} ${server.requests[0].url}`, 'PUT /topics/a%20b');
+    assert.equal(server.requests[0].bodyText, '{"type":"queue","fifo":true,"ttl":60}');
+    assert.equal(server.requests[2].url, '/topics/a%20b?recreate=always');
+    assert.equal(server.requests[3].url, '/topics/a%20b?recreate=if-empty');
+    assert.equal((await code(client.createOrUpdateTopic(request, { recreate: 'never' }))).code, 'client.invalid-request');
+    assert.equal(server.requests.length, 4);
+  }));
+
+/// UC: UC-CNT-042
+test('create or update topic fails with the code and repeats after a 503', () =>
+  withClient({}, async (client, server, sleep) => {
+    server.reply(
+      json(409, { code: 'topic.immutable-mismatch', message: 'x' }),
+      json(409, { code: 'topic.not-empty', message: 'x' }),
+      json(503, { code: 'cluster.commit-timeout', message: 'x' }, { 'Retry-After': '2' }),
+      json(200, topicJson('orders')),
+    );
+    const request = { name: 'orders', type: 'queue' };
+    const mismatch = await code(client.createOrUpdateTopic(request));
+    assert.equal(mismatch.status, 409);
+    assert.equal(mismatch.code, 'topic.immutable-mismatch');
+    assert.equal((await code(client.createOrUpdateTopic(request, { recreate: 'if-empty' }))).code, 'topic.not-empty');
+    assert.equal((await client.createOrUpdateTopic(request)).outcome, 'updated');
+    assert.equal(server.requests.length, 4);
+    assert.deepEqual(sleep.waits, [2000]);
+  }));
+
+/// UC: UC-CNT-043
+test('delete topic if empty sends if empty and a queue with messages is an error', () =>
+  withClient({}, async (client, server) => {
+    server.reply(json(409, { code: 'topic.not-empty', message: 'x' }), { status: 204, body: '' });
+    assert.equal((await code(client.deleteTopic('a b', { ifEmpty: true }))).code, 'topic.not-empty');
+    await client.deleteTopic('a b', { ifEmpty: true });
+    assert.equal(`${server.requests[1].method} ${server.requests[1].url}`, 'DELETE /topics/a%20b?ifEmpty=true');
+  }));
+
 /// UC: UC-CNT-012
 test('gateway errors are only repeated when publishing to a fifo', async () => {
   await withClient({}, async (client, server) => {

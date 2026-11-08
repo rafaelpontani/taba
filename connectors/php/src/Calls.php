@@ -40,7 +40,31 @@ final class Calls
     public static function createTopic($request)
     {
         $request = TopicRequest::from($request);
-        $body = array('name' => (string) $request->name, 'type' => (string) $request->type);
+        $body = array_merge(array('name' => (string) $request->name), self::topicFields($request));
+        $call = new ApiCall('POST', '/topics');
+        $call->withJson(self::encode($body));
+        $call->recover[] = array(409, 'topic.already-exists');
+        return $call;
+    }
+
+    /** `PUT /topics/{topic}`: the fields of `POST /topics` without `name` (it goes in the path). */
+    public static function putTopic($request, $recreate)
+    {
+        $request = TopicRequest::from($request);
+        if ($recreate !== null && $recreate !== 'if-empty' && $recreate !== 'always') {
+            throw TabaException::client('client.invalid-request', "recreate must be 'if-empty' or 'always'");
+        }
+        $call = new ApiCall('PUT', '/topics/' . Transport::segment((string) $request->name));
+        $call->withJson(self::encode(self::topicFields($request)));
+        if ($recreate !== null) {
+            $call->withQuery('recreate', $recreate);
+        }
+        return $call;
+    }
+
+    private static function topicFields(TopicRequest $request)
+    {
+        $body = array('type' => (string) $request->type);
         if ($request->tags) {
             $body['tags'] = $request->tags;
         }
@@ -52,10 +76,7 @@ final class Calls
                 $body[$name] = $request->$name;
             }
         }
-        $call = new ApiCall('POST', '/topics');
-        $call->withJson(self::encode($body));
-        $call->recover[] = array(409, 'topic.already-exists');
-        return $call;
+        return $body;
     }
 
     public static function getTopic($name)
@@ -93,9 +114,12 @@ final class Calls
         return $call->withJson(count($body) === 0 ? '{}' : self::encode($body));
     }
 
-    public static function deleteTopic($name)
+    public static function deleteTopic($name, $ifEmpty = false)
     {
         $call = new ApiCall('DELETE', '/topics/' . Transport::segment($name));
+        if ($ifEmpty) {
+            $call->withQuery('ifEmpty', 'true');
+        }
         $call->recover[] = array(404, 'topic.not-found');
         return $call;
     }

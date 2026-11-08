@@ -1,10 +1,10 @@
 ---
 title: Known issues
-summary: Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts.
+summary: "Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts."
 type: reference
 status: partial
-verified-on: 2026-11-05 @ 29af16e
-sources: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+verified-on: 2026-11-07 @ 689495f
+sources: [crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Known issues
@@ -17,6 +17,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [A message delivered twice after the reunion of a partition](#a-message-delivered-twice-after-the-reunion-of-a-partition) | Open | 2026-11-07 | — |
 | [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first) | Fixed | 2026-11-05 | 2026-11-05 |
 | [A node that stops answering and is not excluded in 30 s](#a-node-that-stops-answering-and-is-not-excluded-in-30-s) | Open | 2026-11-04 | — |
 | [A replication test whose 14 publications missed the isolated node](#a-replication-test-whose-14-publications-missed-the-isolated-node) | Fixed | 2026-11-03 | 2026-11-03 |
@@ -35,6 +36,38 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## A message delivered twice after the reunion of a partition
+
+**Status:** Open · **Found:** 2026-11-07 · **Fixed:** —
+
+- **Test:** `tests/partition.rs::the_half_that_loses_the_reunion_keeps_what_it_accepted_while_apart` (UC-FAL-026, the measurement of R1 in [37-guarantees.md](37-guarantees.md)).
+- **Symptom:** in the arm64 server job of the `release.yml` run of the #63 merge (run 42409549368), the test ended with `delivered twice: [(18, 2)]` at `partition.rs:147`: no message lost, but the one with `seq` 18 (published on node 3, in the half with 3 and 4) was delivered twice. The same commit passed on amd64, in the pull request CI and in `v0.3.8-rc.1`, which has the same server code.
+- **Cause:** not identified. Hypothesis to check: the test's `drain` receives with `visibilityTimeout=30` and moves the clock 1 s per round; an ack that fails while the life of the losing half is restored (the message's owner changes, or the restored copy is another one) lets the message come back 30 s of clock later. If so, the duplicate is the at-least-once delivery [37-guarantees.md](37-guarantees.md) already allows, and what is wrong is the test asserting "delivered once"; if the restored copy is a second message with the same body, it is a defect of the restoration (D181).
+- **Next step:** read in the log kept by the hunt (`target/hang-hunt/run_12_2.log`; run `docker/hang-hunt.sh partition` again for another one) whether the ack of the repeated message answered `204` and on which node each delivery happened.
+- **Do not:** change the test's assertion to "at least once" before the cause is known.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-07 | One failure on arm64 in the `release.yml` run of the #63 merge, which only changed connectors and documentation; the failed jobs were run again. |
+| 2026-11-07 | `docker/hang-hunt.sh partition` (8 processes at once) reproduced it in round 12: `delivered twice: [(17, 2)]`. The log is kept in `target/hang-hunt/run_12_2.log`, not read yet. |
+
+## A batch test that counted the calls before the background commit
+
+**Status:** Fixed · **Found on:** 2026-11-07 · **Fixed on:** 2026-11-07
+
+- **Test:** `tests/batch.rs::a_batch_of_publications_goes_through_each_phase_in_one_call_per_node_and_group` (and, with the same pattern, `operations_waiting_for_the_same_node_travel_in_fewer_calls_than_operations` and `with_max_items_1_every_operation_goes_in_a_call_of_its_own`).
+- **Symptom:** in the arm64 server job of pull request #62, `batch.rs:436` failed with `362`: the test expected at least 400 register and commit calls between nodes for 100 publications. The other 9 tests of the file passed.
+- **Cause:** the test, not the batch. The coordinator answers when the quorum confirms the commit (the primary and one more node); the third node gets its commit in the background ([doc 10](10-publishing.md)). The test counted the calls of the in-memory network right after the answer, so on a slow runner some commits had not been sent yet.
+- **Fix:** the three tests wait (`eventually`, up to 30 s) until the expected number of calls has gone through before comparing it with the number of batches. What they prove stays the same. The server code did not change.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-07 | One failure on arm64 in #62. Tests fixed; 0 failures in 40 runs of the whole file (10 rounds of 4 processes) on Windows. |
 
 ## A second channel that is not closed first
 

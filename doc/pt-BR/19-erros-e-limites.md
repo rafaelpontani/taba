@@ -3,7 +3,7 @@ título: Erros e limites
 resumo: O catálogo completo de códigos de erro (cada um com o status HTTP fixo), os limites fixos de validação, os limites configuráveis e os rate limits.
 tipo: referência
 status: estável
-verificado-em: 2026-11-03 @ cc4da15
+verificado-em: 2026-11-07 @ d79a140
 fontes: [crates/taba-node/src/core/error/mod.rs, crates/taba-node/src/core/validation/mod.rs, crates/taba-node/src/http/ratelimit, crates/taba-node/src/config/params/mod.rs]
 ---
 
@@ -62,9 +62,11 @@ Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status
 | `topic.already-exists` | Já existe um tópico com o nome |
 | `topic.wrong-type` | `GET`/ack num distribuidor; ou `autoCreate` num nome que pertence a um distribuidor |
 | `topic.read-only` | `PATCH`/`DELETE` numa fila de dead-letter |
+| `topic.immutable-mismatch` | `PUT /topics/{topic}` com outro `type`, `fifo` ou `volatile` e sem `recreate` (cada campo em `details`) |
+| `topic.not-empty` | `PUT ?recreate=if-empty` ou `DELETE ?ifEmpty=true` numa fila que ainda guarda mensagens (ela ou a sua dead-letter, em qualquer nó) |
 | `message.stale-receipt` | O `receiptToken` não é o da última entrega (a mensagem foi reentregue) |
 | `drain.conflict` | `DELETE /node/drain` durante o desregistro, ou com o processo já parando por sinal |
-| `cluster.conflict` | Entre nós: outra operação pendente no mesmo recurso, ou a mensagem já está invisível |
+| `cluster.conflict` | Entre nós: outra operação pendente no mesmo recurso, ou a mensagem já está invisível; num `PUT` que recria, o tópico mudou durante a chamada (`Retry-After: 1`, repetir) |
 
 ## Limites e configuração — `413`, `415`, `421`, `422`, `429`
 

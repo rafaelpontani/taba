@@ -872,3 +872,230 @@ async fn the_cluster_definition_is_the_topic_json_without_effective_dead_letter_
     assert_eq!(dead["deadLetter"], true);
     assert_eq!(dead["source"], "orders");
 }
+
+async fn put(h: &Harness, request: CreateTopic, recreate: Recreate) -> (TopicView, PutOutcome) {
+    h.topics.put(request, recreate, None).await.unwrap()
+}
+
+/// UC: UC-TOP-050
+#[tokio::test]
+async fn put_creates_and_an_equal_put_changes_nothing_and_keeps_the_id() {
+    let h = harness();
+    let (created, outcome) = put(&h, queue("orders"), Recreate::Never).await;
+    assert_eq!(outcome, PutOutcome::Created);
+    h.clock.advance(std::time::Duration::from_secs(5));
+    let (again, outcome) = put(&h, queue("orders"), Recreate::Never).await;
+    assert_eq!(outcome, PutOutcome::Unchanged);
+    assert_eq!(again.definition, created.definition);
+    assert_eq!(h.store.names(), ["orders"]);
+}
+
+/// UC: UC-TOP-051
+#[tokio::test]
+async fn put_replaces_the_mutable_fields_and_what_is_absent_goes_back_to_the_default() {
+    let h = harness();
+    let (created, _) = put(
+        &h,
+        CreateTopic {
+            ttl: Some(60),
+            max_deliveries: Some(3),
+            tags: Some([("team".to_owned(), "a".to_owned())].into()),
+            ..queue("orders")
+        },
+        Recreate::Never,
+    )
+    .await;
+    let (changed, outcome) = put(
+        &h,
+        CreateTopic {
+            max_message_bytes: Some(1024),
+            ..queue("orders")
+        },
+        Recreate::Never,
+    )
+    .await;
+    assert_eq!(outcome, PutOutcome::Updated);
+    assert_eq!(changed.definition.id, created.definition.id);
+    assert_eq!(changed.definition.created_ms, created.definition.created_ms);
+    let json = changed.to_json();
+    assert!(json["ttl"].is_null() && json["maxDeliveries"].is_null());
+    assert_eq!(json["maxMessageBytes"], 1024);
+    assert!(changed.definition.tags.is_empty());
+
+    let (_, outcome) = put(&h, distributor("fan", &["orders"]), Recreate::Never).await;
+    assert_eq!(outcome, PutOutcome::Created);
+    let (fan, outcome) = put(&h, distributor("fan", &["billing"]), Recreate::Never).await;
+    assert_eq!(outcome, PutOutcome::Updated);
+    assert_eq!(fan.to_json()["prefixes"], serde_json::json!(["billing"]));
+}
+
+/// UC: UC-TOP-052
+#[tokio::test]
+async fn put_with_another_type_fifo_or_volatile_is_refused_naming_each_field() {
+    let h = harness();
+    put(&h, queue("orders"), Recreate::Never).await;
+
+    let err = h
+        .topics
+        .put(distributor("orders", &["x"]), Recreate::Never, None)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::TopicImmutableMismatch);
+    let fields: Vec<&str> = err.details.iter().map(|d| d.field.as_str()).collect();
+    assert_eq!(fields, ["type"]);
+
+    let err = h
+        .topics
+        .put(
+            CreateTopic {
+                fifo: Some(true),
+                volatile: Some(true),
+                ..queue("orders")
+            },
+            Recreate::Never,
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::TopicImmutableMismatch);
+    let fields: Vec<&str> = err.details.iter().map(|d| d.field.as_str()).collect();
+    assert_eq!(fields, ["fifo", "volatile"]);
+    assert_eq!(
+        err.details[0].message,
+        "It is false; the request asks for true."
+    );
+
+    // Nothing changed.
+    assert_eq!(h.topics.get("orders").unwrap().to_json()["fifo"], false);
+}
+
+/// UC: UC-TOP-053
+#[tokio::test]
+async fn put_with_recreate_always_gives_a_new_id_with_the_new_shape() {
+    let h = harness();
+    let (old, _) = put(&h, queue("orders"), Recreate::Never).await;
+    h.clock.advance(std::time::Duration::from_secs(1));
+    let (new, outcome) = h
+        .topics
+        .put(
+            CreateTopic {
+                fifo: Some(true),
+                ..queue("orders")
+            },
+            Recreate::Always,
+            Some(old.definition.id.clone()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(outcome, PutOutcome::Recreated);
+    assert_ne!(new.definition.id, old.definition.id);
+    assert_eq!(new.to_json()["fifo"], true);
+
+    // `recreate` only matters when an immutable field differs.
+    let (same, outcome) = put(
+        &h,
+        CreateTopic {
+            fifo: Some(true),
+            ..queue("orders")
+        },
+        Recreate::Always,
+    )
+    .await;
+    assert_eq!(outcome, PutOutcome::Unchanged);
+    assert_eq!(same.definition.id, new.definition.id);
+}
+
+/// UC: UC-TOP-053, UC-TOP-054
+#[tokio::test]
+async fn the_owner_refuses_a_recreation_of_a_topic_that_changed_in_the_meantime() {
+    let h = harness();
+    let (current, _) = put(&h, queue("orders"), Recreate::Never).await;
+    let fifo = |_: &Harness| TopicDefinition {
+        spec: Spec::Queue(QueueSpec {
+            volatile: false,
+            idle_timeout: None,
+            fifo: true,
+            max_message_bytes: None,
+            ttl: None,
+            max_deliveries: None,
+        }),
+        ..(*current.definition).clone()
+    };
+
+    // Another `id` than the one found empty.
+    let err = h
+        .topics
+        .plan_put(fifo(&h), Recreate::Always, Some("another-id"))
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::ClusterConflict);
+    assert_eq!(err.retry_after, Some(1));
+    // `if-empty` reaches the owner only already resolved: the topic needs recreating after the count.
+    let err = h
+        .topics
+        .plan_put(fifo(&h), Recreate::IfEmpty, None)
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::ClusterConflict);
+    assert!(matches!(
+        h.topics
+            .plan_put(fifo(&h), Recreate::Always, Some(&current.definition.id))
+            .unwrap(),
+        PutPlan::Recreate(_)
+    ));
+}
+
+/// UC: UC-TOP-053, UC-TOP-054
+#[tokio::test]
+async fn needs_recreate_names_the_current_id_only_when_an_immutable_field_differs() {
+    let h = harness();
+    assert_eq!(h.topics.needs_recreate(&queue("orders")).unwrap(), None);
+    let (created, _) = put(&h, queue("orders"), Recreate::Never).await;
+    let ttl = CreateTopic {
+        ttl: Some(60),
+        ..queue("orders")
+    };
+    assert_eq!(h.topics.needs_recreate(&ttl).unwrap(), None);
+    let volatile = CreateTopic {
+        volatile: Some(true),
+        ..queue("orders")
+    };
+    assert_eq!(
+        h.topics.needs_recreate(&volatile).unwrap(),
+        Some(created.definition.id.clone())
+    );
+    assert_eq!(
+        h.topics
+            .needs_recreate(&distributor("orders", &["x"]))
+            .unwrap(),
+        Some(created.definition.id.clone())
+    );
+    assert_eq!(
+        h.topics.needs_recreate(&queue("a b")).unwrap_err().code,
+        ErrorCode::ValidationInvalidName
+    );
+}
+
+/// UC: UC-TOP-050
+#[tokio::test]
+async fn put_validates_like_create_and_refuses_the_dead_letter_name() {
+    let h = harness();
+    put(&h, queue("orders"), Recreate::Never).await;
+    let err = h
+        .topics
+        .put(queue("orders-dead-letter"), Recreate::Always, None)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::ValidationReservedName);
+    let err = h
+        .topics
+        .put(
+            CreateTopic {
+                ttl: Some(-1),
+                ..queue("orders")
+            },
+            Recreate::Never,
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::ValidationOutOfRange);
+}

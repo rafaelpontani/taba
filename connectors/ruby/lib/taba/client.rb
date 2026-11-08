@@ -124,9 +124,27 @@ module Taba
       Parser.topic(utf8(send_call(Calls.update_topic(name, update), cancel).body))
     end
 
-    def delete_topic(name, cancel: nil)
-      send_call(Calls.delete_topic(name), cancel)
+    # +DELETE /topics/{topic}+. With +if_empty: true+, removes the queue only if it and its dead-letter hold no
+    # message on any node (+409 topic.not-empty+ otherwise; a distributor holds none).
+    def delete_topic(name, if_empty: false, cancel: nil)
+      send_call(Calls.delete_topic(name, if_empty), cancel)
       nil
+    end
+
+    # +PUT /topics/{topic}+: brings the topic to the declared state, creating it if it does not exist. What is left
+    # out goes back to the server default (a full replacement, unlike +update_topic+); the name of the request is the
+    # topic of the path. Another +type+, +fifo+ or +volatile+ is +409 topic.immutable-mismatch+ unless +recreate+
+    # (+'if-empty'+ or +'always'+) says otherwise. Repeated after a 503 like the other calls: the route is
+    # idempotent. +request+ is a Taba::TopicRequest, or give its fields as options. Returns a Taba::TopicPut.
+    def create_or_update_topic(request = nil, recreate: nil, cancel: nil, **fields)
+      request = request.nil? ? TopicRequest.new(fields) : TopicRequest.from(request)
+      reply = send_call(Calls.put_topic(request, recreate), cancel)
+      outcome = if reply.status == 201
+                  reply.recreated ? TopicPut::RECREATED : TopicPut::CREATED
+                else
+                  TopicPut::UPDATED
+                end
+      TopicPut.new(Parser.topic(utf8(reply.body)), outcome)
     end
 
     # -- publishing -----------------------------------------------------------------------------------------

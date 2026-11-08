@@ -326,6 +326,8 @@ O `taba-cli`, a linha de comando de cliente ([connectors/rust/cli](connectors/ru
 
 **Driver do OpenMessaging Benchmark.** O [`connectors/omb`](connectors/omb/README.md) é um driver para o [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark), escrito sobre o conector Java, para medir o Taba com a mesma ferramenta e as mesmas cargas do RabbitMQ e do NATS. É ele que o [benchmark](#desempenho) usa.
 
+**Provider Terraform e OpenTofu.** O [`connectors/terraform`](connectors/terraform/README.md) gerencia filas, distribuidores e tokens de acesso como código (`rafaelpontani/taba`), com `plan`, detecção de desvio, `import`, uma proteção contra remover uma fila que ainda tem mensagens (`force_destroy`) e um `create_or_update` opcional que adota o que já existe. Está no [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba) (o OpenTofu Registry está revisando), e os zips dele também vêm em cada [Release](https://github.com/rafaelpontani/taba/releases) ([o guia](doc/pt-BR/40-terraform.md)).
+
 As outras linguagens (C e C++ ficam adiados, sem data) usam o próprio cliente HTTP. O desenho está no [guia dos conectores](doc/pt-BR/21-conectores.md).
 
 > As versões base são propostas e podem mudar até serem confirmadas (pendência D68, veja as [pendências](doc/pt-BR/31-pendencias.md)).

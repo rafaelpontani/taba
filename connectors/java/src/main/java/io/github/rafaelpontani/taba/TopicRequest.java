@@ -87,9 +87,20 @@ public final class TopicRequest {
     }
 
     String toJson() {
+        return toJson(true);
+    }
+
+    /** The body of {@code PUT /topics/{topic}}: the same fields without {@code name} (it goes in the path). */
+    String toPutJson() {
+        return toJson(false);
+    }
+
+    private String toJson(boolean withName) {
         StringBuilder out = new StringBuilder("{");
-        out.append("\"name\":").append(Json.quote(name == null ? "" : name));
-        out.append(",\"type\":").append(Json.quote(type == null ? "" : type));
+        if (withName) {
+            out.append("\"name\":").append(Json.quote(name == null ? "" : name)).append(',');
+        }
+        out.append("\"type\":").append(Json.quote(type == null ? "" : type));
         if (tags != null && !tags.isEmpty()) {
             out.append(",\"tags\":").append(map(tags));
         }

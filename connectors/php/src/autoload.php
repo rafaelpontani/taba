@@ -24,6 +24,7 @@ spl_autoload_register(function ($class) {
         'TopicUpdate' => 'Options.php',
         'BatchMessage' => 'Options.php',
         'Topic' => 'Models.php',
+        'TopicPut' => 'Models.php',
         'Page' => 'Models.php',
         'Message' => 'Models.php',
         'DistributorDelivery' => 'Models.php',

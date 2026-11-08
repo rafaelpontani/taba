@@ -3,7 +3,7 @@ título: Casos de uso e rastreabilidade
 resumo: O formato do código `UC-ÁREA-NNN`, os níveis de teste, como um teste cita um caso, a regra de cobertura que o `uc_coverage` confere, o índice das 38 áreas e como ler os dois catálogos (implementados e planejados).
 tipo: guia
 status: estável
-verificado-em: 2026-10-27 @ ada9ff1
+verificado-em: 2026-11-07 @ 4fbb808
 fontes: [crates/taba-node/tests/uc_coverage.rs, doc/pt-BR/26a-casos-de-uso-implementados.md, doc/pt-BR/26b-casos-de-uso-planejados.md]
 ---
 
@@ -91,6 +91,7 @@ Os dois são **mantidos à mão**, nas duas línguas: um caso novo entra como ca
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) |
 | `CNT` | Conectores |
 | `CLI` | O `taba-cli` |
+| `IAC` | Provider Terraform e OpenTofu: configuração, filas, distribuidores, tokens, desvio, import, `force_destroy` e `create_or_update` |
 
 **Nó e o caminho da mensagem:**
 

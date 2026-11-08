@@ -3,7 +3,7 @@ title: CI/CD and releases
 summary: How the repository is validated and published — the GitHub Actions workflows, the order of the release (nothing public before everything is green), automatic versioning (semantic-release, candidates and finals), floating tags by digest, publishing to Docker Hub, GHCR, crates.io and nuget.org, and how anyone verifies that an artifact came out of this pipeline.
 type: reference
 status: stable
-verified-on: 2026-10-27 @ ada9ff1
+verified-on: 2026-11-07 @ 689495f
 sources: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/scripts/package-connectors.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md]
 ---
 
@@ -47,11 +47,11 @@ feature/*  ── PR ──▶ ci.yml: build + tests (nothing is published, no t
 
 | File | Does |
 |---|---|
-| `ci.yml` | Calls `build-server`, `build-connector-rust`, `build-connector-csharp` and the builds of the Java, Node.js, Python, Go (`build-connector-go.yml`), PHP (`build-connector-php.yml`) and Ruby (`build-connector-ruby.yml`) connectors and of the OMB driver (`build-connector-omb.yml`); job `bench` (the plan of `bench/run.sh` and the report tests of the local benchmark; no benchmark runs on GitHub, [38-benchmarks.md](38-benchmarks.md)); `connector-contract` job (`contract-connectors.yml`, only on pull requests to `release`); `gateway-contract` job (`contract-gateway.yml`, only on pull requests to `release`); `helm` job (`deploy/helm/tests/run.sh static`); `rust-audit` job (`cargo audit` on both `Cargo.lock` files: fails on a RustSec advisory); `workflows` job (`actionlint` and `zizmor`, fails from `medium` up); `plans` job (fails when `doc/plans/` has a file: plans never reach `release` or `main`). `concurrency` cancels old runs of the same ref |
+| `ci.yml` | Calls `build-server`, `build-connector-rust`, `build-connector-csharp` and the builds of the Java, Node.js, Python, Go (`build-connector-go.yml`), PHP (`build-connector-php.yml`) and Ruby (`build-connector-ruby.yml`) connectors, of the OMB driver (`build-connector-omb.yml`) and of the Terraform provider (`build-connector-terraform.yml`: `connectors/terraform/scripts/test.sh unit`, `lint` and `docs`, [40-terraform.md](40-terraform.md#tests)); job `bench` (the plan of `bench/run.sh` and the report tests of the local benchmark; no benchmark runs on GitHub, [38-benchmarks.md](38-benchmarks.md)); `connector-contract` job (`contract-connectors.yml`, only on pull requests to `release`); `gateway-contract` job (`contract-gateway.yml`, only on pull requests to `release`); `helm` job (`deploy/helm/tests/run.sh static`); `rust-audit` job (`cargo audit` on both `Cargo.lock` files: fails on a RustSec advisory); `workflows` job (`actionlint` and `zizmor`, fails from `medium` up); `plans` job (fails when `doc/plans/` has a file: plans never reach `release` or `main`). `concurrency` cancels old runs of the same ref |
 | `build-server.yml` | **Server**, on **two native runners** (`amd64` on `ubuntu-latest`, `arm64` on `ubuntu-24.04-arm`): `cargo fmt --all --check` and `clippy -D warnings` **only on x86_64**, `cargo test --workspace --locked`, the **static musl binary** (`node-binary` action) uploaded as the `taba-node-<arch>` artifact |
 | `build-connector-rust.yml` | **Rust connector** (`connectors/rust` workspace), on both runners: `fmt`, `clippy`, `test`, `cargo package --workspace` (what crates.io would receive), `cargo build --release -p taba-cli` (musl); `taba-cli-<arch>` artifact |
 | `contract-gateway.yml` | **Contract tests of the SQS and SNS gateway**: two jobs. `emulator` runs `connectors/gateway-contract/run.sh --target emulator` (the scenarios of `scenarios/aws/` on ElasticMQ and moto: it is what shows that the tests are right). `taba` builds the server image from the commit, starts one node with `gateway.sqs` and `gateway.sns` on and runs `connectors/gateway-contract/run.sh` (the native AWS SDK of six languages, each in a current and an older version, then each language reading what the previous one sent; [39-gateway.md](39-gateway.md)). Called by `ci.yml` on pull requests to `release`, or by hand. Publishes nothing |
-| `contract-connectors.yml` | **Contract tests of the eight connectors** against a real node: builds the server image from the commit, starts one node (the one-node profile) and runs `connectors/contract/run.sh` (each connector in the container of its oldest runtime, then the eight reading each other's messages; [21-connectors.md](21-connectors.md#the-contract-tests)). Called by `ci.yml` on pull requests to `release`, or by hand. Publishes nothing |
+| `contract-connectors.yml` | **Contract tests of the eight connectors** against a real node: builds the server image from the commit, starts one node (the one-node profile) and runs `connectors/contract/run.sh` (each connector in the container of its oldest runtime, then the eight reading each other's messages; [21-connectors.md](21-connectors.md#the-contract-tests)). Then, against the same image, the acceptance tests of the Terraform provider with Terraform and OpenTofu (`connectors/terraform/scripts/test.sh acc`). Called by `ci.yml` on pull requests to `release`, or by hand. Publishes nothing |
 | `build-connector-csharp.yml` | **C# connector**: SDKs 6.0 and 8.0, `dotnet test` (without `TABA_URL`, the integration tests are **skipped**), `dotnet pack` of the **three packages** with the commit and the Release link; `nuget-packages` artifact (`.nupkg` and `.snupkg`) |
 | `chaos.yml` | Every night (and by hand): a sweep of 200 seeds of the chaos run (`tests/chaos.rs`, [37-guarantees.md](37-guarantees.md)), a different range each day. Outside the required checks; a failing seed is printed in the log |
 | `release.yml` | The release (below) |
@@ -70,13 +70,15 @@ Principle: **nothing public before everything is green, and everything public po
 | 2 | `server`, `connector-rust`, `connector-csharp` | Build and **test with the version**. Run on every push, even without a version |
 | 3 | `chart` | `set-version.sh` writes the exact `version` and `appVersion` to `Chart.yaml`; `run.sh static`; `helm package` |
 | 3 | `connector-packages` | `package-connectors.sh` builds the installable file of the Node.js (`.tgz`), Python (`.whl`), Ruby (`.gem`), Java (`.jar`) and PHP (`.zip`) connectors, each in the container of a current runtime, with the version of its own manifest. The same script runs in `ci.yml` (job `connector-packages`), so a broken package is found on the pull request |
+| 3 | `terraform-provider` | `connectors/terraform/scripts/package.sh` builds the files the Terraform and OpenTofu registries read: one zip per platform (13), the `_manifest.json` and the `_SHA256SUMS`, reproducible ([40-terraform.md](40-terraform.md#publication)) |
 | 4 | `images` | Builds `taba` and `taba-cli` (the two targets of `Dockerfile.ci`) for `linux/amd64` and `linux/arm64`, **compiling nothing**, with SLSA provenance (`mode=max`), SBOM and OCI labels (`revision` = commit). Pushes **only by digest, without a tag**, to Docker Hub and GHCR; attests (`attest-build-provenance`) and signs (cosign keyless) each digest |
-| 5 | `tag` | (needs `connector-packages` too, because the tag cannot be undone) Only now semantic-release creates the **tag** on `github.sha` and the **GitHub Release as a draft**. Fails if the version is not the planned one or if the tag does not point to the commit |
-| 6 | `release-assets` | Binaries (with the architecture in the name), `.nupkg`, `.snupkg`, the chart `.tgz`, the files of `connector-packages` and `SHA256SUMS`, all attested, on the draft, plus `taba-<version>.intoto.jsonl` (the provenance bundle as a Release file, which the OpenSSF Scorecard recognizes) |
+| 5 | `tag` | (needs `connector-packages` and `terraform-provider` too, because the tag cannot be undone) Only now semantic-release creates the **tag** on `github.sha` and the **GitHub Release as a draft**. Fails if the version is not the planned one or if the tag does not point to the commit |
+| 6 | `release-assets` | Binaries (with the architecture in the name), `.nupkg`, `.snupkg`, the chart `.tgz`, the files of `connector-packages` and of `terraform-provider` and `SHA256SUMS`, all attested, on the draft, plus `taba-<version>.intoto.jsonl` (the provenance bundle as a Release file, which the OpenSSF Scorecard recognizes) |
 | 7 | `crates`, `nuget`, `chart-publish` | crates.io and nuget.org by **Trusted Publishing** (OIDC); the chart at `oci://ghcr.io/rafaelpontani/charts`, attested and signed |
 | 8 | `finalize` | The Release leaves draft: `--prerelease` on candidates, `--latest` only on the highest final |
 | 9 | `floating` | Creates the Docker tags (exact and floating) with `docker buildx imagetools create` **pointing to the digest** (no rebuild) and moves the floating git tags |
 | 10 | `verify` | Checks from the outside: every git tag points to the commit; every Docker tag, on both registries, is the same digest, with the right `revision` label; `cosign verify` and `gh attestation verify` pass; the Release `SHA256SUMS` matches |
+| 11 | `terraform-registry` | Only with the variable `TERRAFORM_PROVIDER_REPO` (after `floating`, in the `release` environment): signs the `SHA256SUMS` of the provider with `TERRAFORM_GPG_PRIVATE_KEY`, runs `verify-release.sh` against the `taba:<version>` image just published (sums, signature, installation with Terraform and OpenTofu, apply, empty plan, destroy) and only then `mirror.sh` pushes the source, the tag and the Release to the mirror ([below](#terraform-provider)) |
 
 If the branch moves between `plan` and `tag`, semantic-release refuses ("local branch behind remote"), the `tag` job fails and the next run, already queued, releases the new commit. Nothing public is left behind: the images have no tag yet.
 
@@ -137,6 +139,7 @@ Only the **fixed** tag (`vX.Y.Z`, `vX.Y.Z-rc.N`) is immutable. The floating ones
 | GitHub Release | Binaries, packages (including the files of the connectors without a registry, D70.3), chart, `SHA256SUMS` | `GITHUB_TOKEN` | Always |
 | crates.io | `taba-client`, then `taba-cli` | Trusted Publishing (`rust-lang/crates-io-auth-action`); the first publish of each crate uses the `CARGO_REGISTRY_TOKEN` secret | Variable `PUBLISH_CRATES=true` |
 | nuget.org | `Taba.Client`, `.Abstractions`, `.Extensions.DependencyInjection` (+ `.snupkg`) | Trusted Publishing (`NuGet/login`) | Variable `NUGET_USER` (the account that owns the policy) |
+| Terraform Registry, OpenTofu Registry | `rafaelpontani/taba` (provider) | The mirror repository `rafaelpontani/terraform-provider-taba` (D211): `TERRAFORM_MIRROR_TOKEN` pushes, the registries read its signed Releases | Variable `TERRAFORM_PROVIDER_REPO` |
 
 nuget.org and crates.io **do not allow deleting a published version**; both jobs are idempotent (they skip a version that already exists) and candidates go out as semver pre-releases, which `cargo add`/`dotnet add` do not pick unless asked. The publishing jobs run in the **`release`** environment (restrict it to the `main` and `release` branches; manual approval of finals is optional).
 
@@ -176,9 +179,32 @@ What backs this trust:
 | Branch rulesets (`main`, `release`) | PR required, the `ci.yml` checks, no force-push, no deletion |
 | Tag ruleset (`v*.*.*`) | Only GitHub Actions creates; nobody updates or deletes. The floating ones (`v0`, `v0.1`, `v0.1-rc`) do not match the pattern and can move |
 | Releases | **Immutable Releases** on: once published, neither the tag nor the assets change |
-| `release` environment | Restricted to the `main` and `release` branches; holds the Docker Hub secrets |
-| Variables | `PUBLISH_CRATES`, `NUGET_USER`, `DOCKERHUB_NAMESPACE` (default `rafaelpontani`) |
+| `release` environment | Restricted to the `main` and `release` branches; holds the Docker Hub secrets and those of the Terraform provider (`TERRAFORM_GPG_PRIVATE_KEY`, `TERRAFORM_GPG_PASSPHRASE`, `TERRAFORM_MIRROR_TOKEN`) |
+| Variables | `PUBLISH_CRATES`, `NUGET_USER`, `DOCKERHUB_NAMESPACE` (default `rafaelpontani`), `TERRAFORM_PROVIDER_REPO` |
 | crates.io / nuget.org | The trusted publisher: repository `rafaelpontani/taba`, workflow `release.yml`, environment `release` |
+
+### Terraform provider
+
+The provider is packaged with every version and, since `v0.3.8-rc.3`, published on the registries through the mirror (D211, [40-terraform.md](40-terraform.md#publication)). The maintainer set it up once, with the steps below (kept to redo them: a new key, a new token, another repository); without the variable `TERRAFORM_PROVIDER_REPO` the `terraform-registry` job does not run and the zips are only in the Release.
+
+1. **The mirror repository:** public, `rafaelpontani/terraform-provider-taba`. It can be created empty: the first `mirror.sh` pushes the `main` branch, and after that it replaces its tree on each version.
+2. **The signing key:** an **RSA** key (4096 bits; the Terraform Registry refuses ECC), with a passphrase, used only for this: `gpg --full-generate-key` (kind "RSA and RSA"), then `gpg --armor --export-secret-keys <id>` for the secret one and `gpg --armor --export <id>` for the public one.
+3. **The mirror token:** a fine-grained personal access token (Settings → Developer settings → Fine-grained tokens) with the owner `rafaelpontani`, **Only select repositories** = `terraform-provider-taba`, the permission **Contents: Read and write** (Metadata read-only comes with it) and an expiry date; nothing on `rafaelpontani/taba`. In the current form the permission is added with **Add permissions** → Contents, then **Read and write**; a token with only the repository selected can clone but its push gets `403`. The `GITHUB_TOKEN` of a workflow cannot write to another repository.
+4. **In the `release` environment** of `rafaelpontani/taba`: the secrets `TERRAFORM_GPG_PRIVATE_KEY` (the secret key in ASCII armor), `TERRAFORM_GPG_PASSPHRASE` and `TERRAFORM_MIRROR_TOKEN`; then the repository variable `TERRAFORM_PROVIDER_REPO=rafaelpontani/terraform-provider-taba` (last: it turns the job on). The `gh secret set` prompts look the same, so a swap is easy and only shows in the job: the token in the passphrase gives `gpg: signing failed: Bad passphrase`, the passphrase in the token gives `URL rejected: No host part in the URL` at `mirror.sh`. To set the passphrase only when it signs, as the job does:
+
+   ```bash
+   read -rsp "passphrase: " P; echo
+   echo test | gpg --batch --pinentry-mode loopback --passphrase "$P" -u <id> --clearsign >/dev/null \
+     && printf "%s" "$P" | gh secret set TERRAFORM_GPG_PASSPHRASE --env release -R rafaelpontani/taba
+   unset P
+   ```
+5. **After the first Release in the mirror:**
+   - **Terraform Registry:** the publication moved into **HCP Terraform** (registry.terraform.io/sign-in only leads there). On app.terraform.io, in an organization (`taba`), **Registry → Public namespaces**: claim the namespace `rafaelpontani` (it installs the HCP Terraform GitHub App on the account; a popup blocker makes it fail), add the public key in the namespace **Settings → GPG keys**, then **Publish provider** with the mirror repository (category Communication & Messaging). A namespace belongs to one organization.
+   - **OpenTofu Registry:** the issue forms of `opentofu/registry`, **Submit new Provider** (`rafaelpontani/terraform-provider-taba`) and **Submit new Provider Signing Key** (namespace `rafaelpontani`, the public key); only through the form in the browser, not `gh`. A bot validates each one and opens a pull request that the OpenTofu team merges.
+
+   The registries read the next Releases by themselves.
+
+The token expires: renew it before the date, or the job fails at `mirror.sh` after everything else is published (the job can run again for the same version: `mirror.sh` is idempotent).
 
 ## What is not yet automated
 
@@ -195,6 +221,7 @@ What backs this trust:
 |---|---|
 | Markdown links between files of `doc/pt-BR` and to the repository | The file or the anchor does not exist |
 | Metadata | `resumo`, `status`, `verificado-em` or `fontes` is missing at the top, or the "Fontes e provas" section is missing |
+| Metadata in valid YAML (every language folder) | A value without quotes has `: ` or ` #`, or starts with a YAML indicator (`` ` `` `[` `{` `"` …): the GitHub page and the VS Code preview fail to read the block. `node doc/pt-BR/scripts/metadados.mjs --corrigir` puts those values in double quotes |
 | Configuration parameters | A key of `config/params/mod.rs` does not appear in [22-configuration.md](22-configuration.md), or the document cites a nonexistent key |
 | Error codes | An `ErrorCode` of the code does not appear in [19-errors-and-limits.md](19-errors-and-limits.md) (or vice versa) |
 | Routes | A route registered in the code (`.route(…)` and the cluster map) is not cited in the API documents |

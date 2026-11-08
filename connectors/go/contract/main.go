@@ -233,16 +233,30 @@ type operation func(c *taba.Client, p map[string]string) (result, error)
 
 var ctx = context.Background()
 
-func opCreateTopic(c *taba.Client, p map[string]string) (result, error) {
-	t, err := c.CreateTopic(ctx, &taba.TopicRequest{
+func topicRequest(p map[string]string) *taba.TopicRequest {
+	return &taba.TopicRequest{
 		Name: p["name"], Type: p["type"], Fifo: flag(p, "fifo"), Prefixes: list(p, "prefixes"), Tags: tags(p, "tags"),
 		Volatile: flag(p, "volatile"), TTL: num(p, "ttl"), MaxDeliveries: num(p, "maxDeliveries"),
 		MaxMessageBytes: num(p, "maxMessageBytes"), IdleTimeout: num(p, "idleTimeout"),
-	})
+	}
+}
+
+func opCreateTopic(c *taba.Client, p map[string]string) (result, error) {
+	t, err := c.CreateTopic(ctx, topicRequest(p))
 	if err != nil {
 		return nil, err
 	}
 	return topicFields(t), nil
+}
+
+func opCreateOrUpdateTopic(c *taba.Client, p map[string]string) (result, error) {
+	put, err := c.CreateOrUpdateTopic(ctx, topicRequest(p), taba.Recreate(p["recreate"]))
+	if err != nil {
+		return nil, err
+	}
+	out := topicFields(&put.Topic)
+	out["outcome"] = string(put.Outcome)
+	return out, nil
 }
 
 func opListTopics(c *taba.Client, p map[string]string) (result, error) {
@@ -441,7 +455,8 @@ func opDrain(c *taba.Client, p map[string]string) (result, error) {
 }
 
 var operations = map[string]operation{
-	"createTopic": opCreateTopic,
+	"createTopic":         opCreateTopic,
+	"createOrUpdateTopic": opCreateOrUpdateTopic,
 	"getTopic": func(c *taba.Client, p map[string]string) (result, error) {
 		t, err := c.GetTopic(ctx, p["name"])
 		if err != nil {
@@ -452,6 +467,9 @@ var operations = map[string]operation{
 	"listTopics":  opListTopics,
 	"updateTopic": opUpdateTopic,
 	"deleteTopic": func(c *taba.Client, p map[string]string) (result, error) {
+		if b := flag(p, "ifEmpty"); b != nil && *b {
+			return result{}, c.DeleteTopicIfEmpty(ctx, p["name"])
+		}
 		return result{}, c.DeleteTopic(ctx, p["name"])
 	},
 	"publishText": func(c *taba.Client, p map[string]string) (result, error) {

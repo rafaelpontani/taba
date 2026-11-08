@@ -7,11 +7,23 @@ namespace Taba
     {
         public static string Create(TopicRequest request)
         {
-            var fields = new List<string>
+            return Topic(request, true);
+        }
+
+        /// <summary>The body of <c>PUT /topics/{topic}</c>: the same fields without <c>name</c> (it goes in the path).</summary>
+        public static string Put(TopicRequest request)
+        {
+            return Topic(request, false);
+        }
+
+        private static string Topic(TopicRequest request, bool withName)
+        {
+            var fields = new List<string>();
+            if (withName)
             {
-                "\"name\":" + Json.Quote(request.Name ?? string.Empty),
-                "\"type\":" + Json.Quote(request.Type ?? string.Empty),
-            };
+                fields.Add("\"name\":" + Json.Quote(request.Name ?? string.Empty));
+            }
+            fields.Add("\"type\":" + Json.Quote(request.Type ?? string.Empty));
             if (request.Tags != null && request.Tags.Count > 0)
             {
                 fields.Add("\"tags\":" + JsonWriter.Map(request.Tags));

@@ -201,6 +201,7 @@ async fn a_late_change_does_not_bring_a_removed_topic_back() {
         deleted: false,
         body: creation,
         relay: false,
+        outcome: None,
     };
     let peer = cluster.network.transport(host_of(1));
     for number in [2, 3] {
@@ -278,6 +279,7 @@ async fn two_copies_with_the_same_version_end_the_same_in_any_arrival_order() {
             body
         },
         relay: false,
+        outcome: None,
     };
     let (first, second) = (copy("alpha"), copy("beta"));
     let sender = cluster.network.transport(host_of(1));
@@ -405,6 +407,7 @@ async fn a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the
         deleted: false,
         body: creation,
         relay: false,
+        outcome: None,
     };
     cluster
         .network
@@ -454,6 +457,7 @@ async fn the_owner_refuses_a_change_that_does_not_fit_the_current_state() {
             key: name.clone(),
             body: json!({"name": name, "id": "01927f3a-0000-7000-8000-000000000001"}),
             expected_id: expected_id.map(str::to_owned),
+            recreate: Default::default(),
         })
     };
 
@@ -636,5 +640,195 @@ async fn a_node_that_was_down_gets_the_latest_state_of_each_definition_from_the_
         .find(|i| i["name"] == name.as_str())
         .expect("the topic");
     assert_eq!(topic["tags"], json!({"v": "2"}));
+    cluster.shutdown().await;
+}
+
+async fn put_topic(
+    cluster: &TestCluster,
+    number: usize,
+    name: &str,
+    query: &str,
+    body: serde_json::Value,
+) -> reqwest::Response {
+    let node = cluster.node(number);
+    node.client
+        .put(node.client_url(&format!("/topics/{name}{query}")))
+        .json(&body)
+        .send()
+        .await
+        .expect("request")
+}
+
+async fn delete_if_empty(cluster: &TestCluster, number: usize, name: &str) -> reqwest::Response {
+    let node = cluster.node(number);
+    node.client
+        .delete(node.client_url(&format!("/topics/{name}?ifEmpty=true")))
+        .send()
+        .await
+        .expect("request")
+}
+
+async fn topic_json(cluster: &TestCluster, number: usize, name: &str) -> serde_json::Value {
+    let response = cluster
+        .node(number)
+        .client_get(&format!("/topics/{name}"))
+        .await;
+    assert_eq!(response.status(), 200, "node {number}");
+    response.json().await.expect("json")
+}
+
+async fn publish_to(cluster: &TestCluster, number: usize, name: &str) {
+    let node = cluster.node(number);
+    let response = node
+        .client
+        .post(node.client_url(&format!("/topics/{name}/messages")))
+        .body("1")
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(response.status(), 201);
+}
+
+/// Two `PUT`s that create the same name at once, on different nodes: the owner decides, one creates and the
+/// other finds it as declared.
+/// UC: UC-TOP-057
+#[tokio::test]
+async fn two_puts_creating_the_same_name_at_once_create_one_topic() {
+    let cluster = TestCluster::start(3).await;
+    let name = name_owned_by(&cluster, 3, "put-race-");
+    let body = json!({ "type": "queue", "ttl": 60 });
+
+    let (first, second) = tokio::join!(
+        put_topic(&cluster, 1, &name, "", body.clone()),
+        put_topic(&cluster, 2, &name, "", body.clone()),
+    );
+    let mut statuses = [first.status().as_u16(), second.status().as_u16()];
+    statuses.sort_unstable();
+    assert_eq!(statuses, [200, 201]);
+    let first: serde_json::Value = first.json().await.unwrap();
+    let second: serde_json::Value = second.json().await.unwrap();
+    assert_eq!(first["id"], second["id"]);
+    cluster.shutdown().await;
+}
+
+/// Two `PUT`s with different bodies at once: each is a whole state, and every node ends on the same one.
+/// UC: UC-TOP-057
+#[tokio::test]
+async fn two_puts_changing_a_topic_at_once_leave_the_same_state_on_every_node() {
+    let cluster = TestCluster::start(3).await;
+    let name = name_owned_by(&cluster, 2, "put-both-");
+    assert_eq!(create(&cluster, 1, &name).await.status(), 201);
+    let a = json!({ "type": "queue", "tags": { "v": "a" }, "ttl": 60 });
+    let b = json!({ "type": "queue", "tags": { "v": "b" } });
+
+    let (first, second) = tokio::join!(
+        put_topic(&cluster, 1, &name, "", a),
+        put_topic(&cluster, 3, &name, "", b),
+    );
+    assert_eq!(first.status(), 200);
+    assert_eq!(second.status(), 200);
+    eventually_async("the same definition on every node", || async {
+        let one = topic_json(&cluster, 1, &name).await;
+        let mut same = true;
+        for number in 2..=3 {
+            same &= topic_json(&cluster, number, &name).await == one;
+        }
+        same
+    })
+    .await;
+    let last = topic_json(&cluster, 1, &name).await;
+    // One of the two bodies, never a mix.
+    let is_a = last["tags"]["v"] == "a" && last["ttl"] == 60;
+    let is_b = last["tags"]["v"] == "b" && last["ttl"].is_null();
+    assert!(is_a || is_b, "{last}");
+    cluster.shutdown().await;
+}
+
+/// `recreate=always` received by a node that is not the owner: every node gets the new `id` and no node delivers
+/// the messages of the old queue.
+/// UC: UC-TOP-053, UC-TOP-058
+#[tokio::test]
+async fn a_recreation_reaches_every_node_and_drops_the_messages_everywhere() {
+    let cluster = TestCluster::start(3).await;
+    let name = name_owned_by(&cluster, 2, "put-again-");
+    assert_eq!(create(&cluster, 1, &name).await.status(), 201);
+    let old = topic_json(&cluster, 1, &name).await;
+    for number in 1..=3 {
+        publish_to(&cluster, number, &name).await;
+    }
+
+    let fifo = json!({ "type": "queue", "fifo": true });
+    let response = put_topic(&cluster, 3, &name, "?recreate=always", fifo).await;
+    assert_eq!(response.status(), 201);
+    assert_eq!(response.headers()["taba-topic-recreated"], "true");
+    let new: serde_json::Value = response.json().await.unwrap();
+    assert_ne!(new["id"], old["id"]);
+    for number in 1..=3 {
+        eventually_async("the new id on every node", || async {
+            topic_json(&cluster, number, &name).await["id"] == new["id"]
+        })
+        .await;
+    }
+    for number in 1..=3 {
+        let response = cluster
+            .node(number)
+            .client_get(&format!("/topics/{name}/messages?maxMessages=10"))
+            .await;
+        assert_eq!(response.status(), 200);
+        let body: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(body["messages"], json!([]), "node {number}");
+    }
+    cluster.shutdown().await;
+}
+
+/// `if-empty` counts on every node: a message held only by a node that neither received the call nor owns the
+/// definition is enough to refuse it. With a node that does not answer, nothing changes and the answer is `503`.
+/// UC: UC-TOP-054, UC-TOP-055, UC-TOP-058
+#[tokio::test]
+async fn if_empty_counts_the_messages_of_every_node_and_a_silent_node_is_503() {
+    let cluster = TestCluster::start(3).await;
+    let name = name_owned_by(&cluster, 2, "put-empty-");
+    assert_eq!(create(&cluster, 1, &name).await.status(), 201);
+    let old = topic_json(&cluster, 1, &name).await;
+    publish_to(&cluster, 3, &name).await;
+    let volatile = json!({ "type": "queue", "volatile": true });
+
+    let response = put_topic(&cluster, 1, &name, "?recreate=if-empty", volatile.clone()).await;
+    assert_eq!(error_code(response, 409).await, "topic.not-empty");
+    let response = delete_if_empty(&cluster, 1, &name).await;
+    assert_eq!(error_code(response, 409).await, "topic.not-empty");
+
+    let empty = name_owned_by(&cluster, 2, "put-silent-");
+    assert_eq!(create(&cluster, 1, &empty).await.status(), 201);
+    let before = topic_json(&cluster, 1, &empty).await;
+    cluster.network.isolate(&host_of(3));
+    let response = put_topic(&cluster, 1, &empty, "?recreate=if-empty", volatile).await;
+    assert_eq!(response.status(), 503);
+    assert_eq!(delete_if_empty(&cluster, 1, &empty).await.status(), 503);
+    cluster.network.restore(&host_of(3));
+
+    for number in 1..=3 {
+        assert_eq!(topic_json(&cluster, number, &name).await["id"], old["id"]);
+        let now = topic_json(&cluster, number, &empty).await;
+        assert_eq!(now["id"], before["id"]);
+    }
+    cluster.shutdown().await;
+}
+
+/// The owner is down and still in the table: the `PUT` fails with `503` and nothing was applied (D107).
+/// UC: UC-TOP-058
+#[tokio::test]
+async fn a_put_whose_owner_is_unreachable_fails_with_503() {
+    let cluster = TestCluster::start(3).await;
+    let name = name_owned_by(&cluster, 3, "put-orphan-");
+    cluster.network.isolate(&host_of(3));
+
+    let response = put_topic(&cluster, 1, &name, "", json!({ "type": "queue" })).await;
+    assert_eq!(
+        error_code(response, 503).await,
+        "cluster.quorum-unavailable"
+    );
+    assert!(!has_topic(&cluster, 1, &name).await);
+    assert!(!has_topic(&cluster, 2, &name).await);
     cluster.shutdown().await;
 }

@@ -40,7 +40,7 @@ use crate::core::ring;
 use crate::core::token::TokenRecord;
 use crate::core::topic::TopicDefinition;
 use crate::engine::tokens::{TokenChange, TokenReplicator, Tokens};
-use crate::engine::topics::{TopicChange, TopicReplicator, Topics};
+use crate::engine::topics::{PutOutcome, PutPlan, Recreate, TopicChange, TopicReplicator, Topics};
 use crate::storage::versions::{VersionRow, VersionStore};
 use crate::telemetry::metrics::DEFINITION_CONFLICTS;
 
@@ -198,13 +198,13 @@ impl Definitions {
 
     // ---- Who proposes ----
 
-    /// Takes the change to the owner and only returns when it already applies on this node too.
-    async fn propose(&self, proposal: DefinitionProposal) -> Result<(), TabaError> {
+    /// Takes the change to the owner and only returns when it already applies on this node too. Returns what the
+    /// owner decided (with the `outcome`, on an `upsert`).
+    async fn propose(&self, proposal: DefinitionProposal) -> Result<DefinitionApply, TabaError> {
         let owners = self.owners(proposal.kind, &proposal.key)?;
         let owner = &owners[0];
         if self.service.is_self(owner) {
-            self.coordinate(proposal).await?;
-            return Ok(());
+            return self.coordinate(proposal).await;
         }
         match self
             .service
@@ -216,7 +216,7 @@ impl Definitions {
                 let key = (done.kind, done.key.clone());
                 let _guard = self.lock_key(&key).await;
                 self.apply_unlocked(&done).await?;
-                Ok(())
+                Ok(done)
             }
             Ok(_) => Err(TabaError::internal()),
             Err(CallError::Remote(error)) => Err(error),
@@ -246,6 +246,7 @@ impl Definitions {
                 proposal.body.clone()
             },
             relay: false,
+            outcome: None,
         })
     }
 
@@ -257,13 +258,77 @@ impl Definitions {
         if !self.service.is_self(&owners[0]) {
             return Err(unavailable("This node is not the definition's owner."));
         }
+        if proposal.operation == DefinitionOperation::Upsert {
+            return self.coordinate_put(&proposal, &owners).await;
+        }
         let decided = self.decide(&proposal)?;
+        self.commit(decided, &owners).await
+    }
+
+    /// An `upsert` on the owner, under the definition's lock: [`Topics::plan_put`] decides from this node's table,
+    /// and each change it implies goes through [`Self::commit`] (a recreation is a removal, then a creation).
+    async fn coordinate_put(
+        &self,
+        proposal: &DefinitionProposal,
+        owners: &[Member],
+    ) -> Result<DefinitionApply, TabaError> {
+        if proposal.kind != DefinitionKind::Topic {
+            return Err(bad("Only a topic accepts upsert."));
+        }
+        let desired = TopicDefinition::from_json(&proposal.body).map_err(bad)?;
+        if desired.name != proposal.key {
+            return Err(bad("The topic name is not the proposal's key."));
+        }
+        let plan =
+            self.topics
+                .plan_put(desired, proposal.recreate, proposal.expected_id.as_deref())?;
+        let (kind, key) = (DefinitionKind::Topic, proposal.key.clone());
+        let next = |definition: &TopicDefinition| DefinitionApply {
+            kind,
+            key: key.clone(),
+            version: self.version_of(kind, &key) + 1,
+            deleted: false,
+            body: definition.to_json(),
+            relay: false,
+            outcome: None,
+        };
+        let (done, outcome) = match plan {
+            PutPlan::Create(d) => (self.commit(next(&d), owners).await?, PutOutcome::Created),
+            PutPlan::Update(d) => (self.commit(next(&d), owners).await?, PutOutcome::Updated),
+            PutPlan::Recreate(d) => {
+                let removal = DefinitionApply {
+                    deleted: true,
+                    body: Value::Null,
+                    ..next(&d)
+                };
+                self.commit(removal, owners).await?;
+                (self.commit(next(&d), owners).await?, PutOutcome::Recreated)
+            }
+            PutPlan::Unchanged(_) => (
+                self.current(kind, &key).ok_or_else(TabaError::internal)?,
+                PutOutcome::Unchanged,
+            ),
+        };
+        tracing::info!(topic = %key, outcome = outcome.as_str(), "topic put");
+        Ok(DefinitionApply {
+            outcome: Some(outcome),
+            ..done
+        })
+    }
+
+    /// Writes the decided change to the heir, applies it to this node and spreads it to the others.
+    async fn commit(
+        &self,
+        decided: DefinitionApply,
+        owners: &[Member],
+    ) -> Result<DefinitionApply, TabaError> {
         // The change must exist on another node before the owner answers: the first following
         // owner that confirms is its heir (if it falls, the change is not lost).
         let mut heir: Option<&Member> = None;
         for candidate in &owners[1..] {
             let for_heir = DefinitionApply {
                 relay: true,
+                outcome: None,
                 ..decided.clone()
             };
             match self
@@ -353,6 +418,7 @@ impl Definitions {
             deleted,
             body,
             relay: false,
+            outcome: None,
         })
     }
 
@@ -671,6 +737,7 @@ impl Definitions {
                             deleted: false,
                             body: definition.to_json(),
                             relay: false,
+                            outcome: None,
                         },
                         topic_id: None,
                     });
@@ -689,6 +756,7 @@ impl Definitions {
                             deleted: false,
                             body: token_to_json(&record),
                             relay: false,
+                            outcome: None,
                         },
                         topic_id: None,
                     });
@@ -721,6 +789,7 @@ impl Definitions {
                     deleted: true,
                     body: Value::Null,
                     relay: false,
+                    outcome: None,
                 },
                 topic_id: row.topic_id.clone(),
             });
@@ -799,6 +868,7 @@ impl Definitions {
                 deleted: false,
                 body: definition.to_json(),
                 relay: false,
+                outcome: None,
             })
             .await?;
         }
@@ -811,6 +881,7 @@ impl Definitions {
                 deleted: false,
                 body: token_to_json(&record),
                 relay: false,
+                outcome: None,
             })
             .await?;
         }
@@ -844,6 +915,7 @@ impl Definitions {
             deleted: true,
             body: Value::Null,
             relay: false,
+            outcome: None,
         };
         self.apply_with(&change, topic_id).await.map(|_| ())
     }
@@ -1035,6 +1107,7 @@ fn topic_change(proposal: &DefinitionProposal) -> Result<TopicChange, TabaError>
                 expected_id: proposal.expected_id.clone(),
             })
         }
+        DefinitionOperation::Upsert => Err(bad("An upsert is decided by `plan_put`.")),
     }
 }
 
@@ -1050,6 +1123,7 @@ fn token_change(proposal: &DefinitionProposal) -> Result<TokenChange, TabaError>
         DefinitionOperation::Create => Ok(TokenChange::Create(record()?)),
         DefinitionOperation::Update => Ok(TokenChange::Update(record()?)),
         DefinitionOperation::Delete => Ok(TokenChange::Revoke(proposal.key.clone())),
+        DefinitionOperation::Upsert => Err(bad("A token does not accept upsert.")),
     }
 }
 
@@ -1089,8 +1163,31 @@ impl TopicReplicator for Definitions {
                 key,
                 body,
                 expected_id,
+                recreate: Recreate::Never,
             })
             .await
+            .map(|_| ())
+        })
+    }
+
+    fn put(
+        &self,
+        desired: TopicDefinition,
+        recreate: Recreate,
+        expected_id: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<PutOutcome, TabaError>> + Send + '_>> {
+        Box::pin(async move {
+            let done = self
+                .propose(DefinitionProposal {
+                    kind: DefinitionKind::Topic,
+                    operation: DefinitionOperation::Upsert,
+                    key: desired.name.clone(),
+                    body: desired.to_json(),
+                    expected_id,
+                    recreate,
+                })
+                .await?;
+            done.outcome.ok_or_else(TabaError::internal)
         })
     }
 }
@@ -1118,8 +1215,10 @@ impl TokenReplicator for Definitions {
                 key,
                 body,
                 expected_id: None,
+                recreate: Recreate::Never,
             })
             .await
+            .map(|_| ())
         })
     }
 }

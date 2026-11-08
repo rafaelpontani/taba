@@ -3,7 +3,7 @@ title: Pending items
 summary: Everything that remains open in the project — design questions (D…), problems of logic, risk or limit (PRB-…) and the known limits, each with its evidence.
 type: reference
 status: partial
-verified-on: 2026-11-03 @ cc4da15
+verified-on: 2026-11-07 @ 4fbb808
 sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 ---
 
@@ -13,7 +13,7 @@ sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 >
 > **Legend:** `[ ]` open, undecided; `[~]` partially resolved (the text carries **only the questions still missing**, each with its sub-code); **Depends on** = the question can only be answered after another.
 >
-> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D182** and **PRB-081**).
+> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D221** and **PRB-109**; D212, D213, D217 and PRB-108 are taken by plans still in development).
 
 ## Known limits
 
@@ -109,6 +109,26 @@ Found while adding the SQS gateway ([39-gateway.md](39-gateway.md), D201 to D206
 | **PRB-098** | **A subscription reaches every queue whose name starts with the name subscribed, and a topic and a queue share the name space.** A subscription is a prefix of the distributor (D207), and the node copies to every queue that starts with it: subscribing `orders` also copies to `orders-eu` and `orders2`, where SNS reaches only the queue subscribed. And a topic is a Taba topic, so an SNS topic `orders` and an SQS queue `orders` cannot exist together (`CreateTopic` or `CreateQueue` on a taken name is refused) | Documented (doc 39): name the queues so that no name starts with another one, and the topics apart from the queues. An exact-match entry in the list of the distributor (a Taba change) would end the first; the second stays as long as topics and queues are one name space |
 | **PRB-099** | **Two changes of the subscriptions of one topic at the same instant can lose one.** `Subscribe` and `Unsubscribe` read the list of prefixes of the distributor, change it and write all of it (`PATCH /topics/{topic}` replaces the list). Two on the same topic at the same time, on different nodes or on the same one, can overwrite each other: the last write wins and the other subscription is lost without an error | Documented (doc 39); an application that subscribes at start-up usually does it once. A fix is an operation of the Taba API that adds or removes one prefix inside the node that owns the definition |
 | **PRB-100** | **SNS FIFO topics are refused.** The distributor is not FIFO: it copies each publication to the queues with no group and no order, so a `.fifo` topic (and `FifoTopic`, `MessageGroupId`, `MessageDeduplicationId` on a topic) would give the application an order and a deduplication that it would not have | Refused with a clear error (doc 39). A FIFO distributor would be a Taba change (copy with the group and the deduplication id to FIFO queues); only worth it with a real demand |
+
+## Declaring a topic (new problems and limits)
+
+Found while implementing `PUT /topics/{topic}` and `DELETE ?ifEmpty=true` ([16-client-api.md](16-client-api.md#create-or-update-a-topic-put-topicstopic), D210, D214 to D216).
+
+| Code | Effect | Proposal |
+|---|---|---|
+| **PRB-103** | **The emptiness of `recreate=if-empty` and of `DELETE ?ifEmpty=true` is best-effort, and a recreation is not seamless.** The node that receives the call counts the messages of every node and only then asks the owner to remove; a publication that arrives in between is lost with the topic. Between the removal and the creation of a recreation, a publication or a consumption may get `404 topic.not-found`, and the `id` changes. If the creation fails after the removal, the topic stays removed until the `PUT` is repeated | Documented, with the recipe of a new queue for a change without loss. Holding the publications of the topic during the count would need a lock that the cluster does not have today; only worth it with a real case |
+| **PRB-104** | **During a rolling upgrade, a `PUT` can fail.** The cluster runs one Taba version (D214); a `PUT` that reaches an updated node whose definition owner still runs the previous version is refused by the owner, which does not know the `upsert` operation | Repeat once every node is updated (the IaC tools repeat by themselves on the next run). If upgrades need it, a fallback to `create`/`update` when the owner refuses `upsert` |
+| **PRB-105** | **The `200` of the `PUT` does not say whether something changed** ("updated" and "unchanged" are the same answer), so a connector reports `updated` in both cases and `taba-cli` cannot print `unchanged`. The owner knows it (the `outcome` of the answer between nodes and the `info` log say `unchanged`) | A response header (`Taba-Topic-Outcome`) if an IaC tool needs to show the difference |
+
+## Terraform and OpenTofu provider (new problems and limits)
+
+Found while implementing the provider ([40-terraform.md](40-terraform.md), D211, D218 to D221).
+
+| Code | Effect | Proposal |
+|---|---|---|
+| **PRB-106** | **The adoption of a token by `create_or_update` is not atomic.** It is a list by name and then a `PATCH` on the client side, so two `apply` at the same time, with the token missing, both create it: two tokens with the same name, and the next `apply` reports the ambiguity. Topics do not have it (the `PUT` is decided by the owner) | Accepted for IaC (one state per resource). An upsert of tokens on the server would need a unique name, which the API does not have |
+| **PRB-107** | **After a lost creation answer, the provider could revoke a token someone else created.** On a `503 cluster.quorum-unavailable` of `POST /tokens`, the orphan is the equal token (name, permissions, prefixes) that was not in the list made before the call; an equal token created by another client between that list and the `503` would be revoked in its place. With two or more candidates nothing is revoked | Documented ([16-client-api.md](16-client-api.md#tokens)). A request id the server keeps with the token (an idempotency key on `POST /tokens`) would remove the guess |
+| **PRB-109** | **Only the Go connector administers tokens**, so the contract scenario of the connectors (`connectors/contract/scenarios/`) does not cover `/tokens`, and the other seven connectors cannot create a token | When a second connector needs it (the Pulumi provider uses the Terraform one), add the five calls to every connector and a contract scenario with authentication on |
 
 ## 1. Unblocked
 

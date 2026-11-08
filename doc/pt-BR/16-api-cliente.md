@@ -3,7 +3,7 @@ título: API de cliente
 resumo: Manual rota a rota da API que as aplicações usam — tópicos, mensagens (publicar, consumir, invisibilidade, ack, prune), tokens, quem é o token, os nós e as estatísticas, e as operações de cluster e de nó para o token raiz — com parâmetros, DTOs, status e exemplos.
 tipo: referência
 status: estável
-verificado-em: 2026-11-03 @ cc4da15
+verificado-em: 2026-11-07 @ 4fbb808
 fontes: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, crates/taba-node/src/http/tokens, crates/taba-node/src/http/auth, crates/taba-node/src/http/nodes, crates/taba-node/src/http/topic_stats, crates/taba-node/src/core/topic, crates/taba-node/src/core/validation, crates/taba-node/src/core/content]
 ---
 
@@ -71,7 +71,7 @@ O que o documento **não** diz: as categorias do rate limit, a ordem em que as v
 | `ttl` | 60 a 31 536 000 s (365 dias) |
 | `maxDeliveries` | 1 a 1000 |
 | `maxMessageBytes` | 1 até `message.hard-limit` |
-| `prefixes` | até 20 prefixos de 1 a 100 caracteres (`A-Za-z0-9_-`); vazio é recusado |
+| `prefixes` | até 20 prefixos de 1 a 100 caracteres (`A-Za-z0-9_-`); lista vazia é aceita (o distribuidor não copia para ninguém) |
 
 ### `POST /topics`
 
@@ -149,9 +149,68 @@ Devolve o `Topic`. Na dead-letter, os valores são os da fila de origem, somente
 
 **Imutáveis:** `name`, `id`, `type`, `volatile`, `fifo`: enviá-los, **mesmo com o valor atual**, é `400 validation.immutable-field`. Erros: `404`, `409 topic.read-only` (a dead-letter segue a fila de origem), `503`.
 
+### Criar ou atualizar um tópico (`PUT /topics/{topic}`)
+
+Leva o tópico ao **estado declarado**: cria se não existe; se existe, aplica o corpo como o estado inteiro. É a rota de quem declara os tópicos (Terraform, Pulumi, um script de implantação), e repeti-la não faz mal. Quem decide é o **dono da definição**, com a tabela dele e sob o bloqueio do nome ([08-armazenamento.md](08-armazenamento.md#definições-de-tópico-e-tokens-quem-decide)): criar, alterar, recriar ou deixar como está. Dois `PUT` ao mesmo tempo terminam no estado de um deles em todos os nós, e duas criações ao mesmo tempo criam **um** tópico (um `201` e um `200`).
+
+**Corpo:** o `TopicCreateRequest` do `POST /topics` **sem `name`** (o nome é o do caminho; `name` no corpo é `400 validation.unknown-field`), com a mesma validação, os mesmos nomes reservados (nome de dead-letter é `400 validation.reserved-name`) e a mesma conferência dos prefixos do token. **Permissão:** `manage` (que inclui `create`), qualquer que seja o desfecho; quem só quer que a fila exista, com um token de `create`, usa o `POST` e trata o `409`.
+
+**Substituição completa** ([D215](30-decisoes.md#declarar-um-tópico-d210-d214-a-d216)). O que fica de fora volta ao padrão: `ttl`, `maxDeliveries` e `maxMessageBytes` para `null`, `tags` para `{}`, `prefixes` para `[]`, `idleTimeout` para 600 numa fila volátil; `fifo` e `volatile` contam como `false`. É a diferença para as outras duas rotas:
+
+| | `POST /topics` | `PATCH /topics/{topic}` | `PUT /topics/{topic}` |
+|---|---|---|---|
+| O tópico não existe | Cria (`201`) | `404 topic.not-found` | Cria (`201`) |
+| O tópico existe | `409 topic.already-exists` | Muda só o que foi enviado | Aplica o corpo inteiro; o que ficou de fora volta ao padrão (`200`) |
+| Nada a mudar | — | Versão nova mesmo assim | `200`, sem versão nova |
+| Outro `type`, `fifo` ou `volatile` | — | `400 validation.immutable-field` | `409 topic.immutable-mismatch`, ou recria com `recreate` |
+| Permissão | `create` | `manage` | `manage` |
+
+```bash
+curl -s -X PUT localhost:8080/topics/pedidos -H 'Content-Type: application/json' \
+  -d '{"type":"queue","ttl":86400,"tags":{"time":"financeiro"}}'
+# 201 na primeira vez; 200 depois, e o ttl volta a null se um PUT seguinte o deixar de fora
+```
+
+**Resposta:**
+
+| Status | Quando |
+|---|---|
+| `201` com `Location: /topics/{nome}` e o `Topic` | Criado |
+| `201` com `Taba-Topic-Recreated: true` e o `Topic` | Recriado (`id` novo) |
+| `200` com o `Topic` | Já existia e agora está como declarado, **também quando nada mudou**: a resposta não separa "alterado" de "igual" |
+
+**Mudar o que é imutável** ([D216](30-decisoes.md#declarar-um-tópico-d210-d214-a-d216)). O tipo, `fifo` e `volatile` não mudam no lugar (as mensagens guardadas se perderiam ou seriam lidas com outro sentido). Com outro valor, o parâmetro `recreate` da query decide:
+
+| `recreate` | Resultado |
+|---|---|
+| ausente | `409 topic.immutable-mismatch`, com cada campo, o valor atual e o pedido em `details`. Nada muda |
+| `if-empty` | Recria só se a fila e a dead-letter não tiverem nenhuma mensagem em **todos** os nós; senão `409 topic.not-empty` (com a contagem). Um nó que não responde à contagem é `503 cluster.quorum-unavailable`: nunca recria às cegas |
+| `always` | Remove o tópico, as mensagens e a dead-letter e cria de novo, como `DELETE` + `POST` |
+
+Sem diferença nos imutáveis, `recreate` é ignorado; outro valor é `400 validation.failed`. Quem conta é o nó que recebeu a chamada (a mesma coleta das estatísticas de tópico), que diz ao dono o `id` contado; o dono só recria esse `id`, e um tópico que mudou nesse meio-tempo é `409 cluster.conflict` com `Retry-After: 1` (repita o `PUT`). Numa fila volátil, o `PUT` não conta como atividade (só o consumo conta).
+
+| Status | Códigos | Quando |
+|---|---|---|
+| `400` | `validation.failed`, `required`, `invalid-name`, `reserved-name`, `not-applicable`, `out-of-range`, `max-bytes-above-hard-limit`, `unknown-field` | Corpo ou `recreate` inválido |
+| `401`/`403` | `auth.unauthorized`, `auth.forbidden`, `auth.out-of-scope` | Sem `manage`, ou nome/`prefixes` fora dos prefixos do token |
+| `409` | `topic.immutable-mismatch`, `topic.not-empty`, `cluster.conflict` | Acima |
+| `429` | `rate-limit.exceeded` | — |
+| `503` | `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`, `cluster.quorum-unavailable` | Como no `POST`. A rota é idempotente: os conectores repetem o `PUT` depois de um `503`, sem regra especial |
+
+**Limites** ([PRB-103, PRB-104, PRB-105](31-pendencias.md#declarar-um-tópico-problemas-e-limites-novos)):
+
+- O vazio do `recreate=if-empty` (e do `DELETE ?ifEmpty=true`) é conferido no melhor esforço: uma publicação que chega entre a contagem e a remoção se perde com o tópico.
+- Entre a remoção e a criação de uma recriação, uma publicação ou um consumo pode receber `404 topic.not-found`, e o `id` muda. Se a criação falhar depois da remoção, o tópico fica removido: repetir o `PUT` o cria.
+- O `200` não diz se algo mudou.
+- O cluster roda uma versão só do Taba (D214): durante uma atualização gradual, um `PUT` que chega a um nó já atualizado cujo dono da definição ainda está na versão antiga falha (o nó antigo não conhece a operação). Repita quando todos os nós estiverem atualizados.
+
+**Trocar o tipo sem perder mensagens.** O servidor não faz isso por você: crie uma fila com outro nome e o tipo novo (ou `fifo`), aponte os produtores para ela, deixe os consumidores esvaziarem a antiga e remova-a com `DELETE /topics/{antiga}?ifEmpty=true`, que recusa enquanto sobrar mensagem.
+
 ### `DELETE /topics/{topic}`
 
-Remove o tópico e **todas as suas mensagens, mesmo as pendentes**: **sempre funciona**, sem checagem. Remove também a dead-letter. Falha no registro cancela (rollback); falha no commit, já decidido, não cancela: o coordenador insiste. Nunca há remoção parcial visível. `204`. Em `503 cluster.commit-timeout` a remoção **vai se completar** (um `GET` depois dará `404`). `409 topic.read-only` na dead-letter.
+Remove o tópico e **todas as suas mensagens, mesmo as pendentes**: sem `ifEmpty`, **sempre funciona**, sem checagem. Remove também a dead-letter. Falha no registro cancela (rollback); falha no commit, já decidido, não cancela: o coordenador insiste. Nunca há remoção parcial visível. `204`. Em `503 cluster.commit-timeout` a remoção **vai se completar** (um `GET` depois dará `404`). `409 topic.read-only` na dead-letter.
+
+**`?ifEmpty=true`** ([D216](30-decisoes.md#declarar-um-tópico-d210-d214-a-d216)) só remove uma fila sem nenhuma mensagem, contando a fila e a dead-letter em todos os nós: senão `409 topic.not-empty` (nada é removido), e `503 cluster.quorum-unavailable` se algum nó não responder à contagem. Só remove o `id` que contou, então um tópico recriado nesse meio-tempo fica. Num distribuidor não muda nada (distribuidor não guarda mensagem). Valor diferente de `true` ou `false` é `400 validation.failed`. O mesmo limite de melhor esforço do `recreate=if-empty` ([acima](#criar-ou-atualizar-um-tópico-put-topicstopic)).
 
 ---
 
@@ -357,7 +416,7 @@ Só existem com a **autenticação ligada** e só aceitam o **token raiz**. Sem 
 
 `Token`: `id`, `name`, `permissions`, `topicPrefixes`, `createdAt`, `expiresAt` (`TokenCreated` = `Token` + `token`).
 
-Erros: `400` (`validation.*`: permissão desconhecida, lista vazia, prefixo inválido, `expiresAt` no passado), `401`/`403` (só o raiz), `404`, `503` (registro não confirmado: tente de novo).
+Erros: `400` (`validation.*`: permissão desconhecida, lista vazia, prefixo inválido, `expiresAt` no passado), `401`/`403` (só o raiz), `404`, `503` (registro não confirmado). Um `503 cluster.quorum-unavailable` no `POST /tokens` pode vir **depois** de o dono da definição criar o token, quando a resposta dele se perdeu: uma nova tentativa simples pode deixar dois tokens, o primeiro com um segredo que ninguém tem. Antes de tentar de novo, procure-o com `GET /tokens?name=` (um token com o mesmo nome, permissões e prefixos que não existia antes da chamada) e revogue-o, como faz o provider Terraform ([40-terraform.md](40-terraform.md#tokens), PRB-107). As outras rotas podem ser simplesmente repetidas.
 
 ## Quem é o token, os nós e as estatísticas
 
@@ -421,5 +480,5 @@ Ligar ou matar **processos** não é oferecido: é tarefa do orquestrador (o `dr
 
 - `http/nodes`, `http/topic_stats` (`client_routes`), `http/messages/prune.rs`, `http/topics`, `http/messages`, `http/tokens`, `http/auth`, `core/topic` (definição), `core/validation` (faixas), `core/content` (forma do corpo), `engine/topics`, `engine/messages`.
 - Todos os exemplos acima foram executados contra um nó real; as respostas são cópias.
-- Casos de uso: UC-TOP (prune: 044 a 048), UC-MSG (publicação e corpo), UC-CNS (consumo), UC-ACK, UC-VIS, UC-AUT (tokens; 037 a 039: `required`, `auth/me`, quem vê o quê), UC-OPS (046 a 051: os nós e as leituras consolidadas), UC-PAG; veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/topics.rs`, `messages.rs`, `auth.rs`, `definitions.rs`, `nodes_api.rs`.
+- Casos de uso: UC-TOP (prune: 044 a 048; `PUT` e `ifEmpty`: 050 a 058), UC-MSG (publicação e corpo), UC-CNS (consumo), UC-ACK, UC-VIS, UC-AUT (tokens; 037 a 039: `required`, `auth/me`, quem vê o quê), UC-OPS (046 a 051: os nós e as leituras consolidadas), UC-PAG; veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/topics.rs`, `messages.rs`, `auth.rs`, `definitions.rs`, `nodes_api.rs`.
 - Histórico: `06a-api-cliente.md`.

@@ -3,7 +3,7 @@ título: Pendências
 resumo: Tudo o que continua em aberto no projeto — dúvidas de design (D…), problemas de lógica, risco ou limite (PRB-…) e os limites conhecidos, cada um com a evidência.
 tipo: referência
 status: parcial
-verificado-em: 2026-11-03 @ cc4da15
+verificado-em: 2026-11-07 @ 4fbb808
 fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 ---
 
@@ -13,7 +13,7 @@ fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 >
 > **Legenda:** `[ ]` em aberto, sem decisão; `[~]` parcialmente resolvida (o texto traz **só as perguntas que faltam**, cada uma com seu sub-código); **Depende de** = a dúvida só se responde depois de outra.
 >
-> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D182** e **PRB-081**).
+> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D221** e **PRB-109**; D212, D213, D217 e PRB-108 estão tomados por planos ainda em desenvolvimento).
 
 ## Limites conhecidos
 
@@ -109,6 +109,26 @@ Achados ao acrescentar o gateway de SQS ([39-gateway.md](39-gateway.md), D201 a 
 | **PRB-098** | **Uma assinatura alcança toda fila cujo nome começa com o nome assinado, e um tópico e uma fila dividem o espaço de nomes.** Uma assinatura é um prefixo do distribuidor (D207), e o nó copia para toda fila que começa com ele: assinar `orders` também copia para `orders-eu` e `orders2`, onde o SNS alcança só a fila assinada. E um tópico é um tópico do Taba, então um tópico `orders` do SNS e uma fila `orders` do SQS não podem existir juntos (`CreateTopic` ou `CreateQueue` num nome ocupado é recusado) | Documentado (doc 39): nomear as filas de modo que nenhum nome comece com outro, e os tópicos à parte das filas. Uma entrada de casamento exato na lista do distribuidor (uma mudança no Taba) acabaria com o primeiro; o segundo fica enquanto tópicos e filas forem um espaço de nomes só |
 | **PRB-099** | **Duas mudanças nas assinaturas de um tópico no mesmo instante podem perder uma.** O `Subscribe` e o `Unsubscribe` leem a lista de prefixos do distribuidor, mudam e escrevem tudo (`PATCH /topics/{tópico}` substitui a lista). Duas no mesmo tópico ao mesmo tempo, em nós diferentes ou no mesmo, podem se sobrescrever: a última escrita vence e a outra assinatura se perde sem erro | Documentado (doc 39); uma aplicação que assina na partida costuma fazê-lo uma vez. A correção é uma operação da API do Taba que soma ou tira um prefixo dentro do nó dono da definição |
 | **PRB-100** | **Tópicos FIFO do SNS são recusados.** O distribuidor não é FIFO: copia cada publicação para as filas sem grupo e sem ordem, então um tópico `.fifo` (e `FifoTopic`, `MessageGroupId`, `MessageDeduplicationId` num tópico) daria à aplicação uma ordem e uma deduplicação que ela não teria | Recusado com um erro claro (doc 39). Um distribuidor FIFO seria uma mudança no Taba (copiar com o grupo e o id de deduplicação para filas FIFO); só vale com demanda real |
+
+## Declarar um tópico (problemas e limites novos)
+
+Achados ao implementar o `PUT /topics/{topic}` e o `DELETE ?ifEmpty=true` ([16-api-cliente.md](16-api-cliente.md#criar-ou-atualizar-um-tópico-put-topicstopic), D210, D214 a D216).
+
+| Código | Efeito | Proposta |
+|---|---|---|
+| **PRB-103** | **O vazio do `recreate=if-empty` e do `DELETE ?ifEmpty=true` é de melhor esforço, e uma recriação não é contínua.** O nó que recebe a chamada conta as mensagens de todos os nós e só depois pede a remoção ao dono; uma publicação que chega nesse meio-tempo se perde com o tópico. Entre a remoção e a criação de uma recriação, uma publicação ou um consumo pode receber `404 topic.not-found`, e o `id` muda. Se a criação falhar depois da remoção, o tópico fica removido até o `PUT` ser repetido | Documentado, com a receita da fila nova para uma troca sem perda. Segurar as publicações do tópico durante a contagem exigiria um bloqueio que o cluster não tem hoje; só vale com um caso real |
+| **PRB-104** | **Durante uma atualização gradual, um `PUT` pode falhar.** O cluster roda uma versão só do Taba (D214); um `PUT` que chega a um nó já atualizado cujo dono da definição ainda roda a versão anterior é recusado pelo dono, que não conhece a operação `upsert` | Repetir quando todos os nós estiverem atualizados (as ferramentas de IaC repetem sozinhas na execução seguinte). Se as atualizações precisarem, cair para `create`/`update` quando o dono recusar o `upsert` |
+| **PRB-105** | **O `200` do `PUT` não diz se algo mudou** ("alterado" e "igual" são a mesma resposta), então um conector informa `updated` nos dois casos e o `taba-cli` não consegue imprimir `unchanged`. O dono sabe (o `outcome` da resposta entre nós e o log `info` dizem `unchanged`) | Um cabeçalho de resposta (`Taba-Topic-Outcome`) se uma ferramenta de IaC precisar mostrar a diferença |
+
+## Provider Terraform e OpenTofu (problemas e limites novos)
+
+Achados ao implementar o provider ([40-terraform.md](40-terraform.md), D211, D218 a D221).
+
+| Código | Efeito | Proposta |
+|---|---|---|
+| **PRB-106** | **A adoção de um token pelo `create_or_update` não é atômica.** É uma lista por nome e depois um `PATCH` do lado do cliente, então dois `apply` ao mesmo tempo, com o token ausente, criam os dois: dois tokens com o mesmo nome, e o `apply` seguinte acusa a ambiguidade. Os tópicos não têm isso (o `PUT` é decidido pelo dono) | Aceito para IaC (um estado por recurso). Um upsert de tokens no servidor exigiria nome único, que a API não tem |
+| **PRB-107** | **Depois de uma resposta de criação perdida, o provider pode revogar um token que outra pessoa criou.** Num `503 cluster.quorum-unavailable` do `POST /tokens`, o órfão é o token igual (nome, permissões, prefixos) que não estava na lista feita antes da chamada; um token igual criado por outro cliente entre essa lista e o `503` seria revogado no lugar dele. Com dois candidatos ou mais nada é revogado | Documentado ([16-api-cliente.md](16-api-cliente.md#tokens)). Um id de requisição que o servidor guardasse com o token (uma chave de idempotência no `POST /tokens`) tiraria a adivinhação |
+| **PRB-109** | **Só o conector Go administra tokens**, então o cenário de contrato dos conectores (`connectors/contract/scenarios/`) não cobre `/tokens`, e os outros sete conectores não criam um token | Quando um segundo conector precisar (o provider Pulumi usa o do Terraform), pôr as cinco chamadas em todos os conectores e um cenário de contrato com a autenticação ligada |
 
 ## 1. Sem bloqueio
 

@@ -85,6 +85,8 @@ fn each_route_asks_for_its_own_permission() {
     assert_eq!(want(Method::GET, "/topics"), "any");
     assert_eq!(want(Method::GET, "/topics/{topic}"), "any");
     assert_eq!(want(Method::PATCH, "/topics/{topic}"), "manage");
+    // The `PUT` also needs `create`, checked by the handler (it may create the topic).
+    assert_eq!(want(Method::PUT, "/topics/{topic}"), "manage");
     assert_eq!(want(Method::DELETE, "/topics/{topic}"), "manage");
     assert_eq!(want(Method::POST, "/topics/{topic}/messages"), "publish");
     assert_eq!(want(Method::GET, "/topics/{topic}/messages"), "consume");

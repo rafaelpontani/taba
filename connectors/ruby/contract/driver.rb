@@ -90,6 +90,15 @@ def text(value)
   value.nil? ? '' : value.to_s
 end
 
+def topic_request(p)
+  Taba::TopicRequest.new(
+    name: p['name'], type: p['type'], fifo: flag(p, 'fifo'), prefixes: items(p, 'prefixes'),
+    tags: tags_of(p, 'tags'), volatile: flag(p, 'volatile'), ttl: num(p, 'ttl'),
+    max_deliveries: num(p, 'maxDeliveries'), max_message_bytes: num(p, 'maxMessageBytes'),
+    idle_timeout: num(p, 'idleTimeout')
+  )
+end
+
 def topic_fields(t)
   { 'id' => t.id, 'name' => t.name, 'type' => t.type, 'fifo' => text(t.fifo), 'volatile' => text(t.volatile), 'raw' => t.raw }
 end
@@ -123,13 +132,10 @@ end
 # ---- the operations -------------------------------------------------------------------------------------
 
 OPERATIONS = {
-  'createTopic' => lambda do |c, p|
-    topic_fields(c.create_topic(
-                   name: p['name'], type: p['type'], fifo: flag(p, 'fifo'), prefixes: items(p, 'prefixes'),
-                   tags: tags_of(p, 'tags'), volatile: flag(p, 'volatile'), ttl: num(p, 'ttl'),
-                   max_deliveries: num(p, 'maxDeliveries'), max_message_bytes: num(p, 'maxMessageBytes'),
-                   idle_timeout: num(p, 'idleTimeout')
-    ))
+  'createTopic' => ->(c, p) { topic_fields(c.create_topic(topic_request(p))) },
+  'createOrUpdateTopic' => lambda do |c, p|
+    put = c.create_or_update_topic(topic_request(p), recreate: p['recreate'])
+    topic_fields(put.topic).merge('outcome' => put.outcome)
   end,
   'getTopic' => ->(c, p) { topic_fields(c.get_topic(p['name'])) },
   'listTopics' => lambda do |c, p|
@@ -145,7 +151,7 @@ OPERATIONS = {
     fields[:idle_timeout] = num(p, 'idleTimeout') if p.key?('idleTimeout')
     topic_fields(c.update_topic(p['name'], **fields))
   end,
-  'deleteTopic' => ->(c, p) { c.delete_topic(p['name']) && {} || {} },
+  'deleteTopic' => ->(c, p) { c.delete_topic(p['name'], if_empty: flag(p, 'ifEmpty') == true) && {} || {} },
   'publishText' => ->(c, p) { publish_fields(c.publish_text(p['topic'], p['body'], **publish_options(p))) },
   'publishJson' => ->(c, p) { publish_fields(c.publish_raw_json(p['topic'], p['body'], **publish_options(p))) },
   'publishBytes' => lambda do |c, p|

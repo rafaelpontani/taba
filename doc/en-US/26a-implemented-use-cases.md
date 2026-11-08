@@ -3,8 +3,8 @@ title: Implemented use cases
 summary: The catalogue of Taba use cases that have at least one test citing them, by area, with the case, the level and the tests that prove it.
 type: reference
 status: stable
-verified-on: 2026-11-03 @ cc4da15
-sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp]
+verified-on: 2026-11-07 @ 4fbb808
+sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp, connectors/terraform]
 ---
 
 # Implemented use cases
@@ -59,6 +59,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `BKP` | Optional S3 backup | 46 | 0 |
 | `CHS` | Chaos with a verified history | 5 | 0 |
 | `BNC` | Local comparative benchmark (`bench/run.sh`) | 5 | 1 |
+| `IAC` | Terraform and OpenTofu provider | 23 | 0 |
 
 ## TOP: Topics: create, list, read, change and remove
 
@@ -528,6 +529,111 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/nodes_api.rs::a_prune_that_fails_on_a_node_names_it_and_repeating_it_is_safe`
+
+---
+
+### UC-TOP-050
+
+**Case:** `PUT /topics/{topic}` of a topic that does not exist, then the same `PUT` again  
+**Then:** `201` with `Location` and the topic; the second answers `200` with the same topic (same `id`, `createdAt` and version: nothing changed, nothing replicated). The body is validated like the `POST` (name from the path; the dead-letter name is `400 validation.reserved-name`).  
+**Level:** U, I  
+**Tests:**
+  - `src/engine/topics/tests.rs::put_creates_and_an_equal_put_changes_nothing_and_keeps_the_id`
+  - `src/engine/topics/tests.rs::put_validates_like_create_and_refuses_the_dead_letter_name`
+  - `tests/topics.rs::put_creates_with_201_changes_with_200_and_an_equal_put_keeps_the_version`
+
+---
+
+### UC-TOP-051
+
+**Case:** `PUT` of an existing topic with other mutable fields, leaving some out  
+**Then:** `200`: the topic is as declared, what was left out goes back to the default (`ttl`, `maxDeliveries`, `maxMessageBytes` to `null`, `tags` to `{}`), `id` and `createdAt` stay (D215). A distributor's prefixes are replaced.  
+**Level:** U, I  
+**Tests:**
+  - `src/engine/topics/tests.rs::put_replaces_the_mutable_fields_and_what_is_absent_goes_back_to_the_default`
+  - `tests/topics.rs::put_creates_with_201_changes_with_200_and_an_equal_put_keeps_the_version`
+
+---
+
+### UC-TOP-052
+
+**Case:** `PUT` with another `type`, `fifo` or `volatile`, without `recreate`; `name` in the body; `type` missing; `recreate` with another value  
+**Then:** `409 topic.immutable-mismatch` with each field that differs in `details` (only `type` when the type differs) and nothing changes; `400 validation.unknown-field`; `400`; `400 validation.failed` on `query.recreate`.  
+**Level:** U, I  
+**Tests:**
+  - `src/engine/topics/tests.rs::put_with_another_type_fifo_or_volatile_is_refused_naming_each_field`
+  - `tests/topics.rs::put_refuses_another_type_fifo_or_volatile_and_bad_bodies`
+
+---
+
+### UC-TOP-053
+
+**Case:** `PUT ?recreate=always` with another `type`, `fifo` or `volatile`  
+**Then:** `201` with `Taba-Topic-Recreated: true` and `Location`: the topic was removed (with its messages and dead-letter) and created again with a new `id`, on every node. Without an immutable difference, `recreate` changes nothing. The owner refuses with `409 cluster.conflict` (`Retry-After: 1`) when the topic changed between the count and the decision.  
+**Level:** U, I, C  
+**Tests:**
+  - `src/engine/topics/tests.rs::put_with_recreate_always_gives_a_new_id_with_the_new_shape`
+  - `src/engine/topics/tests.rs::the_owner_refuses_a_recreation_of_a_topic_that_changed_in_the_meantime`
+  - `src/engine/topics/tests.rs::needs_recreate_names_the_current_id_only_when_an_immutable_field_differs`
+  - `tests/topics.rs::put_with_recreate_always_drops_the_messages_and_gives_a_new_id`
+  - `tests/definitions.rs::a_recreation_reaches_every_node_and_drops_the_messages_everywhere`
+
+---
+
+### UC-TOP-054
+
+**Case:** `PUT ?recreate=if-empty` with another immutable field, on a queue with messages (visible or in flight) or empty  
+**Then:** With messages: `409 topic.not-empty` (`details` on `messages`) and nothing changes; empty: recreated as with `always`. The node that receives the call counts on every node and the owner only recreates the `id` that was counted.  
+**Level:** U, I, C  
+**Tests:**
+  - `src/engine/topics/tests.rs::the_owner_refuses_a_recreation_of_a_topic_that_changed_in_the_meantime`
+  - `src/engine/topics/tests.rs::needs_recreate_names_the_current_id_only_when_an_immutable_field_differs`
+  - `tests/topics.rs::put_with_recreate_if_empty_refuses_while_there_are_messages`
+  - `tests/definitions.rs::if_empty_counts_the_messages_of_every_node_and_a_silent_node_is_503`
+
+---
+
+### UC-TOP-055
+
+**Case:** `DELETE /topics/{topic}?ifEmpty=true` on a queue with messages, on an empty one and on a distributor  
+**Then:** With messages: `409 topic.not-empty`, the queue stays; empty or a distributor: `204`; `ifEmpty=false` is the plain `DELETE`; another value is `400 validation.failed`.  
+**Level:** I, C  
+**Tests:**
+  - `tests/topics.rs::delete_if_empty_refuses_a_queue_with_messages`
+  - `tests/definitions.rs::if_empty_counts_the_messages_of_every_node_and_a_silent_node_is_503`
+
+---
+
+### UC-TOP-056
+
+**Case:** `PUT` with a `create` token, with a `manage` token and outside the token's prefixes  
+**Then:** `create` alone: `403 auth.forbidden` with `required: "manage"`; `manage` (which includes `create`): `201` and `200`; another prefix: `403 auth.out-of-scope`.  
+**Level:** I  
+**Tests:**
+  - `tests/auth.rs::put_needs_manage_on_the_topic_and_create_alone_is_refused`
+
+---
+
+### UC-TOP-057
+
+**Case:** Two `PUT`s at the same time on different nodes: creating the same name, or changing a topic with different bodies  
+**Then:** The owner decides one at a time: one topic is created (one `201`, one `200`, same `id`); with different bodies, every node ends on one of the two bodies, never a mix.  
+**Level:** C  
+**Tests:**
+  - `tests/definitions.rs::two_puts_creating_the_same_name_at_once_create_one_topic`
+  - `tests/definitions.rs::two_puts_changing_a_topic_at_once_leave_the_same_state_on_every_node`
+
+---
+
+### UC-TOP-058
+
+**Case:** `PUT` on a cluster: received by a node that is not the owner, with a node that does not answer or with the owner unreachable  
+**Then:** The recreation reaches every node and no node delivers the old messages; `if-empty` counts the messages held by any node; a node that does not answer the count gives `503` and the `ifEmpty` `DELETE` too, with nothing changed; the owner unreachable gives `503 cluster.quorum-unavailable` and nothing applied.  
+**Level:** C  
+**Tests:**
+  - `tests/definitions.rs::a_recreation_reaches_every_node_and_drops_the_messages_everywhere`
+  - `tests/definitions.rs::if_empty_counts_the_messages_of_every_node_and_a_silent_node_is_503`
+  - `tests/definitions.rs::a_put_whose_owner_is_unreachable_fails_with_503`
 
 ---
 
@@ -3673,6 +3779,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/python/tests/test_client.py::test_create_topic_sends_only_what_was_filled`
   - `connectors/go/client_test.go::TestTheNineOperationsBuildTheExpectedRoutes`
   - `connectors/go/client_test.go::TestCreateTopicSendsOnlyWhatWasFilled`
+  - `connectors/go/client_test.go::TestATopicReadsEveryFieldTheServerReturns`
   - `connectors/php/tests/ClientTest.php::testTheNineOperationsBuildTheExpectedRoutes`
   - `connectors/php/tests/ClientTest.php::testCreateTopicSendsOnlyWhatWasFilled`
   - `connectors/php/tests/RealHttpTest.php::testTheRequestGoesOnTheWireWithTheRightVerbHeadersAndBody`
@@ -3850,6 +3957,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/python/tests/test_client.py::test_backoff_without_retry_after_is_one_two_four_seconds_up_to_max_attempts`
   - `connectors/go/client_test.go::TestRetries429And503WaitingForRetryAfterThenBackoff`
   - `connectors/go/client_test.go::TestBackoffWithoutRetryAfterIsOneTwoFourSecondsUpToMaxAttempts`
+  - `connectors/go/client_test.go::TestRetryMaxWaitStopsBeforeAWaitThatWouldPassIt`
   - `connectors/php/tests/ClientTest.php::testRetries429And503WaitingForRetryAfterThenBackoff`
   - `connectors/php/tests/ClientTest.php::testBackoffWithoutRetryAfterIsOneTwoFourSecondsUpToMaxAttempts`
   - `connectors/php/tests/RealHttpTest.php::testAnErrorResponseBecomesATabaExceptionWithItsHeaders`
@@ -4447,6 +4555,65 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-CNT-042
+
+**Case:** A connector declares a topic with `createOrUpdateTopic` (`create_or_update_topic`, `CreateOrUpdateTopicAsync`...), with or without `recreate` (`if-empty`, `always`)  
+**Then:** `PUT /topics/{topic}` with the name in the encoded path and the body of `createTopic` without `name`; `recreate` in the query only when given (another value is `client.invalid-request`, nothing sent); the answer carries the topic and the outcome (`created` on `201`, `updated` on `200`, `recreated` on `201` with `Taba-Topic-Recreated: true`); `409 topic.immutable-mismatch` and `topic.not-empty` are errors with the code; after a `503` the `PUT` is repeated like the other calls, with no `recover` rule; `createTopic` does not change  
+**Level:** K  
+**Tests:**
+  - `connectors/rust/client/src/client/tests.rs::create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome`
+  - `connectors/rust/client/src/client/tests.rs::create_or_update_topic_fails_with_the_code_and_repeats_after_a_503`
+  - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome`
+  - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::create_or_update_topic_fails_with_the_code_and_repeats_after_a_503`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::createOrUpdateTopicPutsTheBodyWithoutTheNameAndReadsTheOutcome`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::createOrUpdateTopicFailsWithTheCodeAndRepeatsAfterA503`
+  - `connectors/node/test/client.test.js::create or update topic puts the body without the name and reads the outcome`
+  - `connectors/node/test/client.test.js::create or update topic fails with the code and repeats after a 503`
+  - `connectors/python/tests/test_client.py::test_create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome`
+  - `connectors/python/tests/test_client.py::test_create_or_update_topic_fails_with_the_code_and_repeats_after_a_503`
+  - `connectors/python/tests/test_client.py::test_the_async_client_creates_or_updates_and_deletes_only_if_empty`
+  - `connectors/go/client_test.go::TestCreateOrUpdateTopicPutsTheBodyWithoutTheNameAndReadsTheOutcome`
+  - `connectors/go/client_test.go::TestCreateOrUpdateTopicFailsWithTheCodeAndRepeatsAfterA503`
+  - `connectors/php/tests/ClientTest.php::testCreateOrUpdateTopicPutsTheBodyWithoutTheNameAndReadsTheOutcome`
+  - `connectors/php/tests/ClientTest.php::testCreateOrUpdateTopicFailsWithTheCodeAndRepeatsAfterA503`
+  - `connectors/ruby/test/client_test.rb::test_create_or_update_topic_puts_the_body_without_the_name_and_reads_the_outcome`
+  - `connectors/ruby/test/client_test.rb::test_create_or_update_topic_fails_with_the_code_and_repeats_after_a_503`
+
+---
+
+### UC-CNT-043
+
+**Case:** A connector removes a topic only if it is empty (`deleteTopic(name, {ifEmpty: true})`, `delete_topic(name, if_empty=True)`, `DeleteTopicIfEmpty`...)  
+**Then:** `DELETE /topics/{topic}?ifEmpty=true`; a queue with messages is the error `409 topic.not-empty` and stays; the `deleteTopic` without the option does not change  
+**Level:** K  
+**Tests:**
+  - `connectors/rust/client/src/client/tests.rs::delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error`
+  - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::deleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError`
+  - `connectors/node/test/client.test.js::delete topic if empty sends if empty and a queue with messages is an error`
+  - `connectors/python/tests/test_client.py::test_the_async_client_creates_or_updates_and_deletes_only_if_empty`
+  - `connectors/python/tests/test_client.py::test_delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error`
+  - `connectors/go/client_test.go::TestDeleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError`
+  - `connectors/php/tests/ClientTest.php::testDeleteTopicIfEmptySendsIfEmptyAndAQueueWithMessagesIsAnError`
+  - `connectors/ruby/test/client_test.rb::test_delete_topic_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error`
+
+### UC-CNT-044
+
+**Case:** The Go connector administers the access tokens (`CreateToken`, `GetToken`, `ListTokens`/`ListAllTokens`, `UpdateToken`, `RevokeToken`), which the Terraform provider uses  
+**Then:** `POST` and `GET /tokens` and `GET`, `PATCH` and `DELETE /tokens/{id}`, sending only what was filled in; the secret comes only in the creation answer; `UpdateToken` sends `expiresAt: null` to remove the deadline; a `503 cluster.quorum-unavailable` on the creation is returned without a new attempt (the owner may have created the token, and a second attempt could create another one), while the other `503`s are repeated; a `404` after a `503` on the revocation counts as revoked  
+**Level:** K  
+**Tests:**
+  - `connectors/go/tokens_test.go::TestTheTokenCallsBuildTheExpectedRoutes`
+  - `connectors/go/tokens_test.go::TestCreateTokenSendsOnlyWhatWasFilledAndReturnsTheSecret`
+  - `connectors/go/tokens_test.go::TestCreateTokenDoesNotRepeatA503WhoseOwnerMayHaveCreatedIt`
+  - `connectors/go/tokens_test.go::TestCreateTokenRepeatsA503ThatDidNotReachTheOwner`
+  - `connectors/go/tokens_test.go::TestACreationAnswerWithoutTheSecretIsAnInvalidResponse`
+  - `connectors/go/tokens_test.go::TestUpdateTokenSendsANullDeadlineAndADate`
+  - `connectors/go/tokens_test.go::TestListAllTokensReadsEveryPage`
+  - `connectors/go/tokens_test.go::TestAnExpiredOrRevokedTokenIsNotFoundAndARevokeAfterA503Succeeds`
+
+---
+
 
 ## CLI: `taba-cli`, the client command line
 
@@ -4909,6 +5076,27 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** K  
 **Tests:**
   - `connectors/rust/cli/tests/commands.rs::outside_a_terminal_the_profile_command_prints_help_and_exits_2`
+
+---
+
+### UC-CLI-037
+
+**Case:** `topic create <name> --or-update` declares the topic with `PUT /topics/{topic}` (body without `name`), with `--recreate if-empty|always`  
+**Then:** prints the topic like `create` and the outcome (`created`, `updated`, `recreated`) on the error output (nothing with `-q`); `--recreate` without `--or-update` or with another value is a usage error (`2`) with nothing sent; `--recreate always` asks for confirmation (off a terminal only with `--yes`); `409 topic.immutable-mismatch` is shown with the code.  
+**Level:** K  
+**Tests:**
+  - `connectors/rust/cli/tests/commands.rs::topic_create_or_update_puts_the_body_without_the_name_and_says_the_outcome`
+  - `connectors/rust/cli/tests/commands.rs::topic_create_or_update_checks_recreate_and_asks_before_always`
+
+---
+
+### UC-CLI-038
+
+**Case:** `topic delete <name> --if-empty`  
+**Then:** sends `DELETE /topics/{topic}?ifEmpty=true`; a queue with messages is `409 topic.not-empty` (exit `1`); the confirmation is still asked (off a terminal only with `--yes`).  
+**Level:** K  
+**Tests:**
+  - `connectors/rust/cli/tests/commands.rs::topic_delete_if_empty_sends_if_empty_and_a_queue_with_messages_is_an_error`
 
 ---
 
@@ -10954,9 +11142,286 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+## IAC: Terraform and OpenTofu provider
+
+### UC-IAC-001
+
+**Case:** The provider configuration comes from the attributes or, when left out, from `TABA_URL`, `TABA_TOKEN`, `TABA_CA_CERT` and `TABA_CREATE_OR_UPDATE` ([40-terraform.md](40-terraform.md))  
+**Then:** The defaults are applied (`request_timeout` 30s, `retry_max_wait` 3m; `0s` turns the new attempts off); a missing endpoint, an invalid duration or certificate, or a negative wait is a configuration error; the private CA comes from the PEM, the file or the environment  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/provider_test.go::TestTheSchemasAreValid`
+  - `connectors/terraform/internal/provider/provider_test.go::TestTheConfigurationFallsBackToTheEnvironmentAndAppliesTheDefaults`
+  - `connectors/terraform/internal/provider/provider_test.go::TestAnInvalidConfigurationIsRefused`
+  - `connectors/terraform/internal/provider/provider_test.go::TestTheCertificateAuthorityComesFromThePEMTheFileOrTheEnvironment`
+
+---
+
+### UC-IAC-002
+
+**Case:** `taba_queue` creates a queue with only what was declared ([40-terraform.md](40-terraform.md))  
+**Then:** The `POST /topics` body leaves out what was not declared (the node default applies); the state is filled from the answer (`id`, `created_at`, `dead_letter_name`, `effective_*`), and the plan right after the `apply` is empty  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueue`
+  - `connectors/terraform/internal/provider/topics_test.go::TestTheQueueBodyCarriesOnlyWhatWasDeclared`
+  - `connectors/terraform/internal/provider/topics_test.go::TestCreatingAQueueFillsTheStateFromTheServer`
+
+---
+
+### UC-IAC-003
+
+**Case:** The topic configuration is checked at `plan`, before reaching the node ([40-terraform.md](40-terraform.md))  
+**Then:** Name rules (characters, length, no `-dead-letter` suffix), ranges and tags are refused at plan; `idle_timeout` needs `volatile = true`; the `effective_*` are planned from the field they follow, with no false difference; `idle_timeout` not declared is 600 on a volatile queue and `null` on the others  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/provider_test.go::TestTheTopicNameRulesAreCheckedAtPlan`
+  - `connectors/terraform/internal/provider/provider_test.go::TestIdleTimeoutNeedsAVolatileQueue`
+  - `connectors/terraform/internal/provider/provider_test.go::TestTheEffectiveValuesArePlannedFromTheFieldTheyFollow`
+  - `connectors/terraform/internal/provider/provider_test.go::TestIdleTimeoutNotDeclaredIsTheServerDefaultOnlyOnAVolatileQueue`
+
+---
+
+### UC-IAC-004
+
+**Case:** A change of a mutable field of a queue (`tags`, `ttl`, `max_deliveries`, `max_message_bytes`, `idle_timeout`) is applied in place ([40-terraform.md](40-terraform.md))  
+**Then:** The update sends the whole declared state by `PUT /topics/{topic}` (no `recreate`), so a field taken out of the configuration goes back to the node default; a `201` (someone removed the queue between the read and the `apply`) gives a warning that it was created again  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueue`
+  - `connectors/terraform/internal/provider/topics_test.go::TestUpdatingAQueueSendsTheWholeDeclaredStateByPut`
+  - `connectors/terraform/internal/provider/topics_test.go::TestUpdatingAQueueSomeoneRemovedWarnsThatItWasCreatedAgain`
+
+---
+
+### UC-IAC-005
+
+**Case:** A change of an immutable field of a queue (`name`, `fifo`, `volatile`) or of the name of a distributor ([40-terraform.md](40-terraform.md))  
+**Then:** The plan shows a replacement (`-/+`): the topic is removed (with the protection of `force_destroy`) and created again  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueue`
+
+---
+
+### UC-IAC-006
+
+**Case:** A queue changed or removed outside Terraform (drift) ([40-terraform.md](40-terraform.md))  
+**Then:** The read brings the node state, so the next plan shows the difference to put back; a queue that is gone (`404`) leaves the state and the plan proposes creating it  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueueDrift`
+  - `connectors/terraform/internal/provider/topics_test.go::TestReadingAQueueThatIsGoneRemovesItFromTheState`
+
+---
+
+### UC-IAC-007
+
+**Case:** Import of a topic by name (`terraform import` or the `import {}` block) ([40-terraform.md](40-terraform.md))  
+**Then:** The imported state gives an empty plan with the same configuration, and `force_destroy` starts as `false`; importing a distributor as `taba_queue` (or the opposite) or a dead-letter queue is an error, not a replacement  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueue`
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccImportWrongType`
+  - `connectors/terraform/internal/provider/topics_test.go::TestReadingADistributorOrADeadLetterAsAQueueIsAnError`
+  - `connectors/terraform/internal/provider/topics_test.go::TestReadingAQueueKeepsForceDestroyAndAnImportStartsWithFalse`
+
+---
+
+### UC-IAC-008
+
+**Case:** Removing or replacing a queue that still holds messages, with `force_destroy` ([40-terraform.md](40-terraform.md))  
+**Then:** Without `force_destroy` (the default) the removal uses `DELETE /topics/{topic}?ifEmpty=true`, and a queue or dead-letter with messages is an error that says how many and the two ways out (empty it, or apply `force_destroy = true` first); with `true`, a plain `DELETE`; a topic already gone counts as removed  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccQueueForceDestroy`
+  - `connectors/terraform/internal/provider/topics_test.go::TestRemovingAQueueOnlyIfEmptyUnlessForced`
+  - `connectors/terraform/internal/provider/topics_test.go::TestAQueueWithMessagesIsNotRemovedAndTheErrorSaysHowToProceed`
+  - `connectors/terraform/internal/provider/topics_test.go::TestRemovingATopicThatIsAlreadyGoneSucceeds`
+
+---
+
+### UC-IAC-009
+
+**Case:** Creating a topic that already exists, with `create_or_update` off ([40-terraform.md](40-terraform.md))  
+**Then:** The `409 topic.already-exists` is an error that names both ways out: `import`, or `create_or_update = true`  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithoutCreateOrUpdateAnExistingTopicIsAnErrorThatNamesBothWays`
+  - `connectors/terraform/internal/provider/topics_test.go::TestAQueueThatAlreadyExistsIsAnErrorThatPointsToImport`
+
+---
+
+### UC-IAC-010
+
+**Case:** A creation whose answer was a `503 cluster.commit-timeout` and whose new attempt gets `409 topic.already-exists` ([40-terraform.md](40-terraform.md))  
+**Then:** The provider reads the topic and takes it as its own creation only if it is what was declared (same type and fields); otherwise the `409` is the error  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/topics_test.go::TestACreationInterruptedByA503IsOursOnlyIfTheTopicIsWhatWasDeclared`
+
+---
+
+### UC-IAC-011
+
+**Case:** `taba_distributor` creates and changes a distributor ([40-terraform.md](40-terraform.md))  
+**Then:** The `prefixes` and `tags` change in place, the prefixes kept in the declared order; the plan after each `apply` is empty, and the import gives no difference  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccDistributor`
+  - `connectors/terraform/internal/provider/topics_test.go::TestADistributorIsCreatedAndUpdatedWithItsPrefixesInOrder`
+
+---
+
+### UC-IAC-012
+
+**Case:** The data sources `taba_topic`, `taba_topics`, `taba_token` and `taba_tokens` read what another configuration manages ([40-terraform.md](40-terraform.md))  
+**Then:** `taba_topics` filters by name fragment, type, tags and with or without the dead-letter queues; `taba_tokens` lists by name fragment, oldest first, and never a secret  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccDataSources`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestTheTokensAreListedOldestFirst`
+  - `connectors/terraform/internal/provider/topics_test.go::TestListingTopicsFiltersByTypeTagsAndDeadLetter`
+
+---
+
+### UC-IAC-013
+
+**Case:** `taba_token` creates an access token ([40-terraform.md](40-terraform.md))  
+**Then:** The body carries only what was declared (no deadline and no prefixes are left out); the secret (`token`, sensitive) comes only in the creation answer and is kept in the state by the reads; the declared date text is kept while it is the same instant  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccToken`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestCreatingATokenSendsTheDeclaredTokenAndKeepsTheSecret`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestATokenWithoutDeadlineOrPrefixesLeavesThemOut`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestReadingATokenKeepsTheSecretAndTheDeclaredDate`
+
+---
+
+### UC-IAC-014
+
+**Case:** Changing or losing a token managed by Terraform ([40-terraform.md](40-terraform.md))  
+**Then:** `name` and `expires_at` change in place by `PATCH` (only what changed; `null` removes the deadline) and the secret is kept; other `permissions` or `topic_prefixes` replace the token; a token revoked outside leaves the state and is created again; revoking a token already gone succeeds  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccToken`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestReadingATokenThatIsGoneRemovesItButAuthenticationOffIsAnError`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestUpdatingATokenPatchesOnlyWhatChanged`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestRevokingATokenAlreadyGoneSucceeds`
+
+---
+
+### UC-IAC-015
+
+**Case:** The token configuration is checked at `plan` ([40-terraform.md](40-terraform.md))  
+**Then:** An `expires_at` in the past (including a token that expired) and `admin` with `topic_prefixes` are refused at plan, before anything changes; the same instant written another way (`…00Z` and `…00.000Z`) is not a change  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccTokenPastDeadlineIsRefusedAtPlan`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestTheTokenConfigurationIsCheckedAtPlan`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestTheSameInstantWrittenAnotherWayIsNotAChange`
+
+---
+
+### UC-IAC-016
+
+**Case:** Tokens on a node with authentication off, or with a provider token that cannot administer tokens ([40-terraform.md](40-terraform.md))  
+**Then:** `404 route.not-found`, `401` and `403 auth.forbidden` become errors with a hint (turn authentication on, use the root token); a read with authentication off is an error and does not take the token out of the state  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/tokens_test.go::TestTokensWithAuthenticationOffOrAWeakTokenGiveAHint`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestReadingATokenThatIsGoneRemovesItButAuthenticationOffIsAnError`
+
+---
+
+### UC-IAC-017
+
+**Case:** The creation of a token gets `503 cluster.quorum-unavailable` (the owner of the definition may have created it and the answer was lost) ([40-terraform.md](40-terraform.md))  
+**Then:** The provider lists the tokens with the name before the `POST`; after the `503` it revokes the one equal token (name, permissions, prefixes) that was not on that list and tries again, within `retry_max_wait` (the `Retry-After` of the node, otherwise 1, 2, 4… s); two or more candidates: error with the ids, nothing revoked; the budget spent: error after revoking (PRB-107)  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/tokens_test.go::TestALostCreationAnswerRevokesTheOrphanAndCreatesAgain`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestALostCreationAnswerWithTwoCandidatesRevokesNothing`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestLostCreationAnswersAreRepeatedWithinRetryMaxWaitAndStopAfterRevoking`
+  - `connectors/terraform/internal/provider/tokens_test.go::TestALostCreationAnswerThenTheNodeIsBackCreatesTheToken`
+
+---
+
+### UC-IAC-018
+
+**Case:** `create_or_update` is set on the provider (attribute or `TABA_CREATE_OR_UPDATE`) and on each resource ([40-terraform.md](40-terraform.md))  
+**Then:** The resource value wins over the provider one, which wins over the environment; off by default; another text in the variable is a configuration error  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestCreateOrUpdateComesFromTheProviderOrTheEnvironmentAndTheResourceWins`
+
+---
+
+### UC-IAC-019
+
+**Case:** With `create_or_update`, a queue or distributor is created or taken over by `PUT /topics/{topic}?recreate=if-empty` ([40-terraform.md](40-terraform.md))  
+**Then:** Missing: created with no warning. Existing: brought to the declared state (what was not declared goes back to the node default) with a "Took over" warning. A `503` says nothing was changed; a `409 cluster.conflict` is repeated  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccCreateOrUpdateTopics`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAnExistingQueueIsTakenOverWithAPut`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAMissingQueueIsCreatedWithoutAWarning`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAPutRefusedForAMissingCountSaysNothingChanged`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAConflictIsRepeated`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAnExistingDistributorIsTakenOverWithAPut`
+
+---
+
+### UC-IAC-020
+
+**Case:** With `create_or_update`, the existing topic has another type, `fifo` or `volatile` ([40-terraform.md](40-terraform.md))  
+**Then:** Empty (queue and dead-letter): recreated as declared, with a "Recreated" warning. With messages: `409 topic.not-empty` becomes an error with the counts and the hint of `import` + `force_destroy`, and the topic is not touched (adoption never uses `recreate=always`)  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccCreateOrUpdateTopics`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateAnEmptyTopicOfAnotherKindIsRecreatedWithAWarning`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateATopicOfAnotherKindWithMessagesIsNotTouched`
+
+---
+
+### UC-IAC-021
+
+**Case:** With `create_or_update`, a token is created or taken over by its exact name ([40-terraform.md](40-terraform.md))  
+**Then:** No token with exactly that name: created. One with the same permissions and prefixes: taken over, its deadline patched only when it is another instant, `token` null and a warning that the secret cannot be recovered (`-replace`). A token that disappears before the `PATCH`: error asking for a new `apply`  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/acceptance_test.go::TestAccCreateOrUpdateToken`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateATokenWithoutTheExactNameIsCreated`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestWithCreateOrUpdateTheOnlyTokenWithTheNameIsTakenOverWithoutTheSecret`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestATokenTakenOverGetsTheDeclaredDeadline`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestATokenThatDisappearsWhileTakenOverIsAnError`
+
+---
+
+### UC-IAC-022
+
+**Case:** With `create_or_update`, the token name is ambiguous ([40-terraform.md](40-terraform.md))  
+**Then:** Several tokens with the name, or one with other permissions or prefixes: error listing the ids (and both versions), nothing changed (PRB-106 is the race of two `apply`)  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestSeveralTokensWithTheNameAreNotTakenOver`
+  - `connectors/terraform/internal/provider/create_or_update_test.go::TestATokenWithOtherPermissionsOrPrefixesIsNotTakenOver`
+
+---
+
+### UC-IAC-023
+
+**Case:** An error answer of the node with `details` ([40-terraform.md](40-terraform.md))  
+**Then:** Each detail becomes a `- field: message` line of the diagnostic  
+**Level:** K  
+**Tests:**
+  - `connectors/terraform/internal/provider/topics_test.go::TestTheErrorDetailsAreShownAsLines`
+
+---
 ## Sources and evidence
 
 - The cases came from `doc/20a`, `20b` and `20c` (the historical catalogue, removed in commit `efeb47a`); the tests, from the `/// UC:` lines of the code. The test `crates/taba-node/tests/uc_coverage.rs` checks the codes.
 - The `UC-BKP` cases (S3 backup) do not come from the historical catalogue: they were written by hand in this file, in the same format, and the test list of each one is checked by `uc_coverage`.
 - The `UC-BNC` cases (local benchmark) were written by hand in this file; their tests are Node.js files in `bench/`, which `uc_coverage` also reads.
+- The `UC-IAC` cases (Terraform and OpenTofu provider) were written by hand in this file; their tests are Go files in `connectors/terraform/internal/provider/` (the units with a fake server and the acceptance tests, which run against a real node only with `TF_ACC=1`), which `uc_coverage` also reads.
 - Maintained by hand: a new test that cites a case goes into its card ([26-use-cases.md](26-use-cases.md)).

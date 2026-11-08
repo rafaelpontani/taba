@@ -96,6 +96,35 @@ class Client
         $this->send(Calls::deleteTopic($name), $cancel);
     }
 
+    /**
+     * `PUT /topics/{topic}`: brings the topic to the declared state, creating it if it does not exist. What is left
+     * out goes back to the server default (a full replacement, unlike `updateTopic`); the name of the request is the
+     * topic of the path. Another `type`, `fifo` or `volatile` is `409 topic.immutable-mismatch` unless
+     * `$recreate` (`'if-empty'` or `'always'`) says otherwise. Repeated after a 503 like the other calls: the route
+     * is idempotent. `$request` is a TopicRequest or an array of its fields.
+     *
+     * @return TopicPut
+     */
+    public function createOrUpdateTopic($request, $recreate = null, $cancel = null)
+    {
+        $reply = $this->send(Calls::putTopic($request, $recreate), $cancel);
+        if ($reply->status === 201) {
+            $outcome = $reply->recreated ? TopicPut::RECREATED : TopicPut::CREATED;
+        } else {
+            $outcome = TopicPut::UPDATED;
+        }
+        return new TopicPut(Parser::topic($reply->body), $outcome);
+    }
+
+    /**
+     * `DELETE /topics/{topic}?ifEmpty=true`: removes the queue only if it and its dead-letter hold no message on any
+     * node (`409 topic.not-empty` otherwise; a distributor holds none).
+     */
+    public function deleteTopicIfEmpty($name, $cancel = null)
+    {
+        $this->send(Calls::deleteTopic($name, true), $cancel);
+    }
+
     // -- publishing -----------------------------------------------------------------------------------------
 
     /**

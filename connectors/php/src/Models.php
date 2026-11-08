@@ -17,6 +17,28 @@ class Topic
     public $raw;
 }
 
+/** What `createOrUpdateTopic` did and the topic as it is now. */
+class TopicPut
+{
+    /** It did not exist (`201`). */
+    const CREATED = 'created';
+    /** It existed: the mutable fields are now the declared ones, or already were (`200`). */
+    const UPDATED = 'updated';
+    /** It was removed and created again with a new `id` (`201` with `Taba-Topic-Recreated: true`). */
+    const RECREATED = 'recreated';
+
+    /** @var Topic */
+    public $topic;
+    /** `created`, `updated` or `recreated`. */
+    public $outcome;
+
+    public function __construct($topic, $outcome)
+    {
+        $this->topic = $topic;
+        $this->outcome = $outcome;
+    }
+}
+
 class Page
 {
     /** @var Topic[] */
