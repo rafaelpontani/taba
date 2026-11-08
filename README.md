@@ -326,7 +326,7 @@ The `taba-cli`, the client command line ([connectors/rust/cli](connectors/rust/c
 
 **OpenMessaging Benchmark driver.** [`connectors/omb`](connectors/omb/README.md) is a driver for the [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark), written on the Java connector, so Taba can be measured with the same tool and the same workloads as RabbitMQ and NATS. It is what the [benchmark](#performance) uses.
 
-**Terraform and OpenTofu provider.** [`connectors/terraform`](connectors/terraform/README.md) manages queues, distributors and access tokens as code (`rafaelpontani/taba`), with plan, drift detection, import, a guard against removing a queue that still holds messages (`force_destroy`) and an optional `create_or_update` that takes over what already exists. Its zips come with each [Release](https://github.com/rafaelpontani/taba/releases); the registries come next ([the guide](doc/en-US/40-terraform.md)).
+**Terraform and OpenTofu provider.** [`connectors/terraform`](connectors/terraform/README.md) manages queues, distributors and access tokens as code (`rafaelpontani/taba`), with plan, drift detection, import, a guard against removing a queue that still holds messages (`force_destroy`) and an optional `create_or_update` that takes over what already exists. It is on the [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba) (the OpenTofu Registry is reviewing it), and its zips also come with each [Release](https://github.com/rafaelpontani/taba/releases) ([the guide](doc/en-US/40-terraform.md)).
 
 Other languages (C and C++ are deferred, with no date) use their own HTTP client. The design is in [the connectors guide](doc/en-US/21-connectors.md).
 

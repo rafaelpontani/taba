@@ -3,7 +3,7 @@ title: CI/CD and releases
 summary: How the repository is validated and published — the GitHub Actions workflows, the order of the release (nothing public before everything is green), automatic versioning (semantic-release, candidates and finals), floating tags by digest, publishing to Docker Hub, GHCR, crates.io and nuget.org, and how anyone verifies that an artifact came out of this pipeline.
 type: reference
 status: stable
-verified-on: 2026-11-07 @ 4fbb808
+verified-on: 2026-11-07 @ 689495f
 sources: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/scripts/package-connectors.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md]
 ---
 
@@ -185,13 +185,24 @@ What backs this trust:
 
 ### Terraform provider
 
-The provider is packaged with every version; its publication on the registries is turned on by the maintainer, once (D211, [40-terraform.md](40-terraform.md#publication)). Until then the `terraform-registry` job does not run and the zips are only in the Release.
+The provider is packaged with every version and, since `v0.3.8-rc.3`, published on the registries through the mirror (D211, [40-terraform.md](40-terraform.md#publication)). The maintainer set it up once, with the steps below (kept to redo them: a new key, a new token, another repository); without the variable `TERRAFORM_PROVIDER_REPO` the `terraform-registry` job does not run and the zips are only in the Release.
 
-1. **The mirror repository:** public, `rafaelpontani/terraform-provider-taba`, with a `main` branch (an initial commit; a README is enough). `mirror.sh` replaces its tree on each version.
+1. **The mirror repository:** public, `rafaelpontani/terraform-provider-taba`. It can be created empty: the first `mirror.sh` pushes the `main` branch, and after that it replaces its tree on each version.
 2. **The signing key:** an **RSA** key (4096 bits; the Terraform Registry refuses ECC), with a passphrase, used only for this: `gpg --full-generate-key` (kind "RSA and RSA"), then `gpg --armor --export-secret-keys <id>` for the secret one and `gpg --armor --export <id>` for the public one.
-3. **The mirror token:** a fine-grained personal access token (Settings → Developer settings → Fine-grained tokens) with the owner `rafaelpontani`, **Only select repositories** = `terraform-provider-taba`, the permission **Contents: Read and write** (Metadata read-only comes with it) and an expiry date; nothing on `rafaelpontani/taba`. The `GITHUB_TOKEN` of a workflow cannot write to another repository.
-4. **In the `release` environment** of `rafaelpontani/taba`: the secrets `TERRAFORM_GPG_PRIVATE_KEY` (the secret key in ASCII armor), `TERRAFORM_GPG_PASSPHRASE` and `TERRAFORM_MIRROR_TOKEN`; then the repository variable `TERRAFORM_PROVIDER_REPO=rafaelpontani/terraform-provider-taba` (last: it turns the job on).
-5. **After the first Release in the mirror:** on registry.terraform.io, sign in with GitHub, add the public key to the namespace (User settings → Signing keys) and publish the provider choosing the mirror repository; on OpenTofu, the submission of the provider and of the key in `opentofu/registry` (an issue form each). The registries read the next Releases by themselves.
+3. **The mirror token:** a fine-grained personal access token (Settings → Developer settings → Fine-grained tokens) with the owner `rafaelpontani`, **Only select repositories** = `terraform-provider-taba`, the permission **Contents: Read and write** (Metadata read-only comes with it) and an expiry date; nothing on `rafaelpontani/taba`. In the current form the permission is added with **Add permissions** → Contents, then **Read and write**; a token with only the repository selected can clone but its push gets `403`. The `GITHUB_TOKEN` of a workflow cannot write to another repository.
+4. **In the `release` environment** of `rafaelpontani/taba`: the secrets `TERRAFORM_GPG_PRIVATE_KEY` (the secret key in ASCII armor), `TERRAFORM_GPG_PASSPHRASE` and `TERRAFORM_MIRROR_TOKEN`; then the repository variable `TERRAFORM_PROVIDER_REPO=rafaelpontani/terraform-provider-taba` (last: it turns the job on). The `gh secret set` prompts look the same, so a swap is easy and only shows in the job: the token in the passphrase gives `gpg: signing failed: Bad passphrase`, the passphrase in the token gives `URL rejected: No host part in the URL` at `mirror.sh`. To set the passphrase only when it signs, as the job does:
+
+   ```bash
+   read -rsp "passphrase: " P; echo
+   echo test | gpg --batch --pinentry-mode loopback --passphrase "$P" -u <id> --clearsign >/dev/null \
+     && printf "%s" "$P" | gh secret set TERRAFORM_GPG_PASSPHRASE --env release -R rafaelpontani/taba
+   unset P
+   ```
+5. **After the first Release in the mirror:**
+   - **Terraform Registry:** the publication moved into **HCP Terraform** (registry.terraform.io/sign-in only leads there). On app.terraform.io, in an organization (`taba`), **Registry → Public namespaces**: claim the namespace `rafaelpontani` (it installs the HCP Terraform GitHub App on the account; a popup blocker makes it fail), add the public key in the namespace **Settings → GPG keys**, then **Publish provider** with the mirror repository (category Communication & Messaging). A namespace belongs to one organization.
+   - **OpenTofu Registry:** the issue forms of `opentofu/registry`, **Submit new Provider** (`rafaelpontani/terraform-provider-taba`) and **Submit new Provider Signing Key** (namespace `rafaelpontani`, the public key); only through the form in the browser, not `gh`. A bot validates each one and opens a pull request that the OpenTofu team merges.
+
+   The registries read the next Releases by themselves.
 
 The token expires: renew it before the date, or the job fails at `mirror.sh` after everything else is published (the job can run again for the same version: `mirror.sh` is idempotent).
 
