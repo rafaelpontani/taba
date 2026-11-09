@@ -172,7 +172,7 @@ Use cases `UC-IAC-024` to `UC-IAC-034` ([26a](26a-implemented-use-cases.md), [26
 
 | Destination | Variable | What |
 |---|---|---|
-| Mirror `rafaelpontani/pulumi-taba` (D213) | `PULUMI_PROVIDER_REPO` and the secret `PULUMI_MIRROR_TOKEN` | `scripts/mirror.sh`: the Go SDK (`sdk/`), the schema, the examples and the README on `main`, the tags `v<version>` and `sdk/v<version>` (the Go module is in `sdk/`, so Go reads its versions from `sdk/` tags), and a Release with the files, which is what `pulumi plugin install --server github://...` downloads |
+| Mirror `rafaelpontani/pulumi-taba` (D213) | `PULUMI_PROVIDER_REPO` and the secret `PULUMI_MIRROR_TOKEN` | `scripts/mirror.sh`: the Go SDK (`sdk/`), the schema, the examples and the README on `main`, the tags `v<version>` and `sdk/v<version>` (the Go module is in `sdk/`, so Go reads its versions from `sdk/` tags), and a Release with the files, which is what `pulumi plugin install --server github://...` downloads; what the GitHub API answers with a 5xx is tried again (up to 5 times) and a Release that was created only in part is completed |
 | npm | `PULUMI_NPM=true` | Trusted Publishing; `--tag next` on a candidate; then installs the package from npm and checks it |
 | PyPI | `PULUMI_PYPI=true` | Trusted Publishing; `skip-existing` |
 | nuget.org | `PULUMI_NUGET_USER` | Trusted Publishing (`NuGet/login`); `--skip-duplicate` |
