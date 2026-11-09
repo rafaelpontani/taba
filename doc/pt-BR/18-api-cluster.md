@@ -3,8 +3,8 @@ título: API do cluster
 resumo: As rotas que os nós usam entre si — membros e canal, definições, mensagens, sincronização, recuperação, observabilidade e repasse — com o protocolo de duas fases, os streams NDJSON e os DTOs.
 tipo: referência
 status: estável
-verificado-em: 2026-11-07 @ d79a140
-fontes: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/protocol/http.rs, crates/taba-node/src/cluster/protocol, crates/taba-node/src/http/cluster_api, crates/taba-node/src/cluster/service, crates/taba-node/src/cluster/channel]
+verificado-em: 2026-11-09 @ edcf155
+fontes: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/protocol/http.rs, crates/taba-node/src/cluster/protocol, crates/taba-node/src/http/cluster_api, crates/taba-node/src/cluster/service, crates/taba-node/src/cluster/channel, crates/taba-node/src/cluster/recovery/finish.rs]
 ---
 
 # API do cluster
@@ -161,7 +161,7 @@ Todos os streams seguem o contrato [NDJSON](#streams-ndjson).
 | `POST /cluster/messages/recover[?replicate=false][&durable=true]` | Um nó que **volta** envia ao responsável as mensagens que achou na lista de perdas. **Corpo é um stream NDJSON** (`Content-Type: application/x-ndjson`) de `MessageRecord` com a linha final; resposta `RecoverResult` (`end`, `count` aplicadas). Com `replicate=false` só grava no disco local; com `durable=true` quem grava põe a mensagem **em disco**, e não só na memória (a restauração das vidas anteriores usa isso entre os donos). `415` com outro `Content-Type` |
 | `POST /cluster/topics/{topic}/messages/restore[?topicId=]` | O nó que guarda a **pasta de uma vida anterior** envia ao **novo primário** do bloco as mensagens dela, com o ID original ([07-cluster.md](07-cluster.md), seção 10.6). Corpo NDJSON como o de `recover`; `topicId` é o do tópico quando a pasta foi criada. O primário confere o tópico (excluído, ou recriado com outro `topicId`, descarta), o log de excluídos dele, o dos outros nós presentes e o diário do S3, e ativa o que está vivo pelo caminho de `recover` (disco e quórum). Resposta `RecoverResult`: `count` é o que ficou **resolvido** (ativado, já existente ou descartado). Só membros |
 | `POST /cluster/topics/{topic}/messages/dead` | Corpo `{"ids":[...]}`; responde `{"dead":[...]}` com os IDs que constam no **log de excluídos** deste nó. É a consulta, em lote, que o primário que restaura faz aos nós presentes. Só membros |
-| `GET /cluster/restore` | O estado da restauração das vidas anteriores do nó ([07-cluster.md](07-cluster.md), seção 10.8): `status` (`unknown`, `restoring` ou `restored`), `finished` (enviou tudo o que as vidas dele guardam), `forced`, `missing` (os nós antigos ainda esperados) e `lives` (os manifestos das vidas que ele guarda, com a marca d'água). Os nós o consultam a cada 500 ms enquanto restauram. Só membros |
+| `GET /cluster/restore` | O estado da restauração das vidas anteriores do nó ([07-cluster.md](07-cluster.md), seção 10.8): `status` (`unknown`, `restoring` ou `restored`), `finished` (enviou tudo o que as vidas dele guardam), `forced`, `logsReady` (os logs de excluídos das vidas dele já estão no próprio, então a resposta dele a `messages/dead` os tem; ausente numa versão anterior, que conta como pronto), `missing` (os nós antigos ainda esperados) e `lives` (os manifestos das vidas que ele guarda, com a marca d'água). Os nós o consultam a cada 500 ms enquanto restauram. Só membros |
 | `POST /cluster/restore/decided` | O coordenador (o de menor ID) avisa cada nó de que a votação fechou: o nó deduplica as filas FIFO, as libera e marca o cluster **restaurado do disco**. Idempotente. Só membros |
 | `POST /cluster/restore/force` | O forçar do operador, espalhado pelo nó que o recebeu ([17-api-operacao.md](17-api-operacao.md)): o nó decide na hora, seja qual for a votação. Só membros |
 

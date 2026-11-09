@@ -125,9 +125,16 @@ async fn two_groups(env: &[(&str, &str)]) -> (TestCluster, String, Vec<Fallen>) 
     common::cluster::create_queue(cluster.node(1), PLAIN).await;
     cluster.clock.advance(Duration::from_secs(60));
     let old_id = cluster.node_id(1);
+    // The same table on every disk: the network is cut before the falls (see `cold_start.rs::fall_all`).
+    for number in 1..=3 {
+        cluster.network.isolate(&host_of(number));
+    }
     let mut fallen = Vec::new();
     while !cluster.nodes.is_empty() {
         fallen.push(fall(&mut cluster).await);
+    }
+    for number in 1..=3 {
+        cluster.network.restore(&host_of(number));
     }
     fallen.reverse();
     cluster.network.add_balancer(balancer(), Vec::new());

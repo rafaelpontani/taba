@@ -8,6 +8,7 @@
 //! a node that joins late, or misses a notice, catches up with the next poll.
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -29,6 +30,9 @@ struct PeerState {
     status: Status,
     finished: bool,
     forced: bool,
+    /// The node's lives' logs are in its own log (`logsReady`; a node of an earlier version does not tell, and counts
+    /// as ready, as before).
+    logs_ready: bool,
     lives: Vec<Manifest>,
 }
 
@@ -39,6 +43,7 @@ impl PeerState {
             status: Status::parse(value["status"].as_str().unwrap_or_default()),
             finished: value["finished"].as_bool().unwrap_or(false),
             forced: value["forced"].as_bool().unwrap_or(false),
+            logs_ready: value["logsReady"].as_bool().unwrap_or(true),
             lives: value["lives"]
                 .as_array()
                 .into_iter()
@@ -64,6 +69,7 @@ impl Recovery {
             "status": snapshot.status.as_str(),
             "finished": snapshot.finished,
             "forced": snapshot.forced,
+            "logsReady": self.logs_ready.load(Ordering::Acquire),
             "missing": snapshot.missing,
             "lives": lives,
         })
@@ -123,6 +129,9 @@ impl Recovery {
     /// disk and the node has sent its lives. Returns what the pass did; the folders are deleted afterwards
     /// ([`drop_lives`](Self::drop_lives)).
     pub async fn restoration(self: &Arc<Self>) -> RestoreSummary {
+        // The logs of the lives first: the query of the dead of any primary may ask this node from now on.
+        self.import_logs().await;
+        self.logs_ready.store(true, Ordering::Release);
         self.raise_floor_from(
             &self
                 .lives()
@@ -170,8 +179,13 @@ impl Recovery {
             }
             if !passed {
                 let expected = restore::expected_nodes(&manifests);
-                let mut announced: Vec<String> =
-                    manifests.iter().map(|m| m.node_id.clone()).collect();
+                // A life counts as announced once its node has the logs of its lives in: before that, its answer
+                // to the query of the dead would miss what they recorded.
+                let mut announced: Vec<String> = peers
+                    .iter()
+                    .filter(|p| p.logs_ready)
+                    .flat_map(|p| p.lives.iter().map(|m| m.node_id.clone()))
+                    .collect();
                 announced.sort();
                 announced.dedup();
                 let elapsed =

@@ -8392,11 +8392,14 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-028
 
 **Case:** The `id` is in the primary's **log of excluded messages**, or in the one of **any other present node** (the query goes in a batch, per topic, to all the present nodes, not only to the block's owners)
-**Then:** the message is discarded; the other nodes' log answers through `POST /cluster/topics/{topic}/messages/dead`.
+**Then:** the message is discarded; the other nodes' log answers through `POST /cluster/topics/{topic}/messages/dead`. Each owner reads its own log again under the same hold of the topic as the store, so a copy acknowledged after the check (another life's copy of the same message) is not stored again (`Dead`). The logs of the lives are in the node's log before it sends the first message of any of them and before it tells the others `logsReady`: a newer life may hold the ack of a message an older life keeps.
 **Level:** C
 **Tests:**
   - `tests/restore_lives.rs::the_new_primary_discards_what_its_own_log_or_the_log_of_any_present_node_says_is_dead`
+  - `tests/restore_lives.rs::the_log_of_a_newer_life_is_in_before_the_messages_of_an_older_one_are_sent`
+  - `tests/restore_lives.rs::a_node_tells_its_lives_logs_are_in_only_when_its_answer_to_the_dead_has_them`
   - `src/engine/messages/tests/lives.rs::the_node_tells_which_ids_its_log_of_excluded_messages_has`
+  - `src/engine/messages/tests/lives.rs::a_copy_of_a_message_acknowledged_after_the_check_of_the_dead_is_not_stored_again`
   - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
   - `src/cluster/protocol/tests.rs::the_restore_and_dead_routes_refuse_a_wrong_media_type_and_an_unknown_parameter`
 
@@ -8702,10 +8705,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-058
 
 **Case:** A definition offered by a node that joined reaches **every member of the table**, not only the peers the channel knows at that instant
-**Then:** besides the frame of the channel, the node sends a `definition-apply` to each member (a change decided by an owner does the same), so a node that registered a few milliseconds later and is still synchronizing records it with the events and applies it; the key's lock is released before the spread (doc 36, "A definition offered to a node that was still joining").
+**Then:** besides the frame of the channel, the node sends a `definition-apply` to each member (a change decided by an owner does the same), so a node that registered a few milliseconds later and is still synchronizing records it with the events and applies it; when the wait for the answers ends the table is read again, and a member that came in meanwhile gets it too; the key's lock is released before the spread (doc 36, "A definition offered to a node that was still joining").
 **Level:** C
 **Tests:**
   - `tests/cold_start.rs::an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to_the_peers_the_channel_knows`
+  - `tests/cold_start.rs::a_node_that_registers_while_an_offer_is_spreading_also_receives_it`
 
 ---
 ### UC-RTN-016

@@ -927,7 +927,7 @@ impl Syncer {
                 got.insert(id);
             }
             // It expired by ttl, or the topic was removed: there is nothing to store or to charge for.
-            Ok(Loaded::Expired | Loaded::UnknownTopic) => {
+            Ok(Loaded::Expired | Loaded::UnknownTopic | Loaded::Dead) => {
                 got.insert(id);
             }
             Err(e) => {

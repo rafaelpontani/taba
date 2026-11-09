@@ -359,19 +359,47 @@ impl Definitions {
 
     /// Sends the change to the other nodes and waits for those that answer in `write.commit.timeout`; the
     /// others stay pending and the owner insists on them.
+    ///
+    /// When the wait ends the table is read again, and the members that came in meanwhile receive the change too: a
+    /// node whose register committed after the first reading pulls the definitions from a member that may still be
+    /// applying this change, and the frame of `relay` does not reach it (doc 36, "A definition offered to a node that
+    /// was still joining"). A node that is not in the table at the second reading has not finished its register yet,
+    /// so it pulls only later, from members that already applied.
     async fn spread(&self, decided: &DefinitionApply, done: &[String]) {
         let Some(table) = self.service.membership().table() else {
             return;
         };
-        let skip: HashSet<&str> = done.iter().map(String::as_str).collect();
-        let mut pending: HashMap<String, Member> = table
+        let mut sent: HashSet<String> = done.iter().cloned().collect();
+        let first: Vec<Member> = table
             .members
             .iter()
-            .filter(|m| !skip.contains(m.node_id.as_str()))
-            .map(|m| (m.node_id.clone(), m.clone()))
+            .filter(|m| !sent.contains(&m.node_id))
+            .cloned()
             .collect();
+        sent.extend(first.iter().map(|m| m.node_id.clone()));
+        self.send_and_wait(decided, first).await;
+        let Some(table) = self.service.membership().table() else {
+            return;
+        };
+        let late: Vec<Member> = table
+            .members
+            .iter()
+            .filter(|m| !sent.contains(&m.node_id))
+            .cloned()
+            .collect();
+        if !late.is_empty() {
+            self.send_and_wait(decided, late).await;
+        }
+    }
+
+    /// Sends the change with a `definition-apply` to each member and waits up to `write.commit.timeout` for the
+    /// answers; the calls that did not answer go on in the background.
+    async fn send_and_wait(&self, decided: &DefinitionApply, members: Vec<Member>) {
+        if members.is_empty() {
+            return;
+        }
         let mut set = JoinSet::new();
-        for member in pending.values().cloned() {
+        for member in members {
             let (service, change) = (self.service.clone(), decided.clone());
             set.spawn(boxed(async move {
                 let result = service
@@ -382,15 +410,10 @@ impl Definitions {
         }
         let _ = tokio::time::timeout(self.service.rules().commit_timeout, async {
             while let Some(joined) = set.join_next().await {
-                match joined {
-                    Ok((member, Ok(_))) => {
-                        pending.remove(&member.node_id);
-                    }
-                    Ok((member, Err(CallError::Remote(error)))) if error.status() < 500 => {
-                        tracing::warn!(node_id = %member.node_id, code = %error.code, "definition refused by a node");
-                        pending.remove(&member.node_id);
-                    }
-                    _ => {}
+                if let Ok((member, Err(CallError::Remote(error)))) = joined
+                    && error.status() < 500
+                {
+                    tracing::warn!(node_id = %member.node_id, code = %error.code, "definition refused by a node");
                 }
             }
         })

@@ -13,7 +13,7 @@ fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 >
 > **Legenda:** `[ ]` em aberto, sem decisão; `[~]` parcialmente resolvida (o texto traz **só as perguntas que faltam**, cada uma com seu sub-código); **Depende de** = a dúvida só se responde depois de outra.
 >
-> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D224** e **PRB-110**; D217 e PRB-108 estão tomados por planos ainda em desenvolvimento).
+> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D224** e **PRB-111**; D217 e PRB-108 estão tomados por planos ainda em desenvolvimento).
 
 ## Limites conhecidos
 
@@ -137,6 +137,14 @@ Achados ao implementar o provider ([41-pulumi.md](41-pulumi.md), D212, D213, D22
 | Código | Efeito | Proposta |
 |---|---|---|
 | **PRB-110** | **Parte do provider Pulumi não é provada por um programa.** Os SDKs .NET e Go são só compilados (`test.sh acc`), e nenhum programa nessas linguagens roda `up` e `preview`; e o job `verify` final do `release.yml` não instala nenhum dos pacotes publicados (o do npm é conferido pelo `pulumi-npm`, os do PyPI e do NuGet não são). Os casos `UC-IAC-025`, `026` e `030` a `034` são cobertos por scripts de shell, que o `uc_coverage` não lê | Um programa mínimo em cada linguagem em `examples/` e um passo no `verify` que instala os três pacotes publicados e roda `pulumi preview`. Levar os cenários para um executor de testes que o `uc_coverage` leia tiraria os casos do [26b](26b-casos-de-uso-planejados.md) |
+
+## Testes intermitentes (novos problemas e limites)
+
+Achados ao caçar os testes intermitentes ([36-problemas-conhecidos.md](36-problemas-conhecidos.md)).
+
+| Código | Efeito | Proposta |
+|---|---|---|
+| **PRB-111** | **Um nó excluído enquanto sincroniza fica fora do cluster por 5 minutos.** Um nó que se registrou e ainda sincroniza é membro da tabela, então uma queda do canal dele abre a votação de exclusão como para qualquer membro (`channel-down`). Excluído, ele percebe e refaz a entrada, mas o ID dele está congelado (D106, `left_secs=300`) e toda entrada é recusada até o congelamento acabar. Visto num teste sob carga ([36-problemas-conhecidos.md](36-problemas-conhecidos.md#um-nó-excluído-enquanto-sincroniza-que-não-consegue-voltar)) | Não congelar um nó que nunca ficou ativo (a exclusão dele só limpa a tabela), ou deixar que um membro que sincroniza só seja excluído pelo prazo da sincronização e não por uma queda do canal. Depois, um teste que derruba o canal de um nó que sincroniza |
 
 ## 1. Sem bloqueio
 
