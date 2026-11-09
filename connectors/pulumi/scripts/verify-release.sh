@@ -26,6 +26,14 @@ for f in "Taba.Pulumi.$version.nupkg" "pulumi-taba-go-sdk-$version.tar.gz"; do
   grep -q "[ *]$f$" "$dir/$sums" || contract_die "$f is not in $sums"
 done
 
+# What nuget.org shows (and cannot be changed after the push): the id, the version and the README of the package.
+nuspec="$(unzip -p "$dir/Taba.Pulumi.$version.nupkg" Taba.Pulumi.nuspec)"
+for want in "<id>Taba.Pulumi</id>" "<version>$version</version>" "<readme>README.md</readme>"; do
+  case "$nuspec" in *"$want"*) ;; *) contract_die "the nuspec of Taba.Pulumi.$version.nupkg has no $want" ;; esac
+done
+files="$(unzip -Z1 "$dir/Taba.Pulumi.$version.nupkg")"
+case "$files" in *README.md*) ;; *) contract_die "README.md is not in Taba.Pulumi.$version.nupkg" ;; esac
+
 pulumi_tools_install
 if [ -n "${TABA_IMAGE:-}" ] && ! docker image inspect "$TABA_IMAGE" >/dev/null 2>&1; then
   contract_step "Pulling $TABA_IMAGE"
