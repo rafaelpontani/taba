@@ -17,6 +17,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [Um teste de token que achou um pedaço do segredo no sal](#um-teste-de-token-que-achou-um-pedaço-do-segredo-no-sal) | Corrigido | 2026-11-09 | 2026-11-09 |
 | [Uma mensagem confirmada trazida de volta por uma vida mais antiga](#uma-mensagem-confirmada-trazida-de-volta-por-uma-vida-mais-antiga) | Corrigido | 2026-11-09 | 2026-11-09 |
 | [Uma votação da partida a frio que não fecha em 30 s](#uma-votação-da-partida-a-frio-que-não-fecha-em-30-s) | Corrigido | 2026-11-09 | 2026-11-09 |
 | [Uma sondagem que não termina com o nó faltando em 30 s](#uma-sondagem-que-não-termina-com-o-nó-faltando-em-30-s) | Corrigido | 2026-11-09 | 2026-11-09 |
@@ -42,6 +43,22 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## Um teste de token que achou um pedaço do segredo no sal
+
+**Status:** Corrigido · **Achado em:** 2026-11-09 · **Solução em:** 2026-11-09
+
+- **Teste:** `tests/stored_definition.rs::each_token_is_a_row_with_the_salted_hash_and_never_the_secret`.
+- **Sintoma:** `the secret is not in the row` (`stored_definition.rs:153`), no `cargo test` completo de 2026-11-09; 1 em 30 execuções do teste sozinho.
+- **Causa (no teste):** o token é `tb_<id>.<secret>`, e o teste tomava como segredo o que vem depois do último `_` (`full.rsplit('_')`). O segredo é base64url e pode ter um `_`; aí o "segredo" era um pedaço de poucos caracteres, que aparecia por acaso dentro do sal ou do hash (também base64url) da linha.
+- **Correção:** o segredo é o que vem depois do `.` (`split_once('.')`), 43 caracteres.
+- **Verificação:** 40 execuções do teste sozinho, nenhuma falha; o `cargo test` completo passa.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-09 | Visto na suíte completa ao atualizar o `rusqlite` (sem relação com ele: a causa acima está no teste); corrigido no teste. |
 
 ## Uma mensagem confirmada trazida de volta por uma vida mais antiga
 

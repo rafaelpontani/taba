@@ -17,6 +17,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [A token test that found a piece of the secret in the salt](#a-token-test-that-found-a-piece-of-the-secret-in-the-salt) | Fixed | 2026-11-09 | 2026-11-09 |
 | [An acknowledged message brought back by an older life](#an-acknowledged-message-brought-back-by-an-older-life) | Fixed | 2026-11-09 | 2026-11-09 |
 | [A cold-start vote that does not close in 30 s](#a-cold-start-vote-that-does-not-close-in-30-s) | Fixed | 2026-11-09 | 2026-11-09 |
 | [A probe that does not end with the node missing in 30 s](#a-probe-that-does-not-end-with-the-node-missing-in-30-s) | Fixed | 2026-11-09 | 2026-11-09 |
@@ -42,6 +43,22 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## A token test that found a piece of the secret in the salt
+
+**Status:** Fixed · **Found on:** 2026-11-09 · **Fixed on:** 2026-11-09
+
+- **Test:** `tests/stored_definition.rs::each_token_is_a_row_with_the_salted_hash_and_never_the_secret`.
+- **Symptom:** `the secret is not in the row` (`stored_definition.rs:153`), in the full `cargo test` of 2026-11-09; 1 in 30 runs of the test alone.
+- **Cause (in the test):** the token is `tb_<id>.<secret>`, and the test took the secret as what follows the last `_` (`full.rsplit('_')`). The secret is base64url and may hold a `_`; then the "secret" was a piece of a few characters, which showed up by chance inside the salt or the hash (also base64url) of the row.
+- **Fix:** the secret is what follows the `.` (`split_once('.')`), 43 characters.
+- **Verification:** 40 runs of the test alone, no failure; the full `cargo test` passes.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-09 | Seen in the full suite while updating `rusqlite` (unrelated to it: the cause above is in the test); fixed in the test. |
 
 ## An acknowledged message brought back by an older life
 

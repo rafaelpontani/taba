@@ -129,9 +129,8 @@ impl Recovery {
     /// disk and the node has sent its lives. Returns what the pass did; the folders are deleted afterwards
     /// ([`drop_lives`](Self::drop_lives)).
     pub async fn restoration(self: &Arc<Self>) -> RestoreSummary {
-        // The logs of the lives first: the query of the dead of any primary may ask this node from now on.
-        self.import_logs().await;
-        self.logs_ready.store(true, Ordering::Release);
+        // The generator above the old lives before anything else: the import of the logs below may take long, and this
+        // node already generates IDs.
         self.raise_floor_from(
             &self
                 .lives()
@@ -139,6 +138,9 @@ impl Recovery {
                 .map(|l| l.manifest)
                 .collect::<Vec<_>>(),
         );
+        // Then the logs of the lives: the query of the dead of any primary may ask this node from now on.
+        self.import_logs().await;
+        self.logs_ready.store(true, Ordering::Release);
         let state = self.service.restoration();
         if !state.is_restoring() {
             // The joining node asks if the cluster it joined is restoring.
