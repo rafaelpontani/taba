@@ -81,6 +81,19 @@ if has dotnet; then
     rm -rf bin obj
     # The version is read from version.txt (an embedded resource) and used by the project as the package version.
     echo "$VERSION" > version.txt
+    # The README of the package is the one of connectors/pulumi (the generator writes a one-line file): nuget.org
+    # shows it on the page of the package.
+    cp /repo/connectors/pulumi/README.md README.md
+    cat > Directory.Build.props <<"PROPS"
+<Project>
+  <PropertyGroup>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>
+PROPS
     # The generated project packs on build (GeneratePackageOnBuild); the .nupkg lands in bin/Release.
     dotnet build -c Release -v q -p:Version="$VERSION" 2>&1 | grep -E " error " || true
     cp bin/Release/*.nupkg /out/
