@@ -172,7 +172,7 @@ O `release.yml` empacota o provider a cada versão (`scripts/package.sh`: seis a
 
 | Destino | Variável | O quê |
 |---|---|---|
-| Espelho `rafaelpontani/pulumi-taba` (D213) | `PULUMI_PROVIDER_REPO` e o segredo `PULUMI_MIRROR_TOKEN` | `scripts/mirror.sh`: o SDK Go (`sdk/`), o schema, os exemplos e o README na `main`, as tags `v<versão>` e `sdk/v<versão>` (o módulo Go está em `sdk/`, então o Go lê as versões das tags `sdk/`) e uma Release com os arquivos, que é o que `pulumi plugin install --server github://...` baixa |
+| Espelho `rafaelpontani/pulumi-taba` (D213) | `PULUMI_PROVIDER_REPO` e o segredo `PULUMI_MIRROR_TOKEN` | `scripts/mirror.sh`: o SDK Go (`sdk/`), o schema, os exemplos e o README na `main`, as tags `v<versão>` e `sdk/v<versão>` (o módulo Go está em `sdk/`, então o Go lê as versões das tags `sdk/`) e uma Release com os arquivos, que é o que `pulumi plugin install --server github://...` baixa; o que a API do GitHub responde com 5xx é tentado de novo (até 5 vezes) e uma Release criada só em parte é completada |
 | npm | `PULUMI_NPM=true` | Trusted Publishing; `--tag next` num candidato; depois instala o pacote do npm e confere |
 | PyPI | `PULUMI_PYPI=true` | Trusted Publishing; `skip-existing` |
 | nuget.org | `PULUMI_NUGET_USER` | Trusted Publishing (`NuGet/login`); `--skip-duplicate` |
