@@ -148,7 +148,9 @@ async fn each_token_is_a_row_with_the_salted_hash_and_never_the_secret() {
     assert_eq!(row[2].as_deref(), Some("publish"));
     assert!(row[6].as_deref().is_some_and(|s| !s.is_empty()), "the salt");
     assert!(row[7].as_deref().is_some_and(|s| !s.is_empty()), "the hash");
-    let secret = full.rsplit('_').next().unwrap();
+    // The token is `tb_<id>.<secret>`, and the secret (base64url) may hold a `_`: only what follows the `.` is the
+    // secret, or a piece of a few characters could show up in the salt or the hash by chance.
+    let (_, secret) = full.split_once('.').expect("tb_<id>.<secret>");
     for value in row.iter().flatten() {
         assert!(!value.contains(secret), "the secret is not in the row");
         assert_ne!(value, full);

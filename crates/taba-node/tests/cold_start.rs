@@ -14,7 +14,7 @@ use serde_json::json;
 use common::TestNode;
 use common::cluster::{
     PortHold, TestCluster, balancer, definitions_of, eventually, eventually_async, host_of,
-    settled, wait_joined,
+    pause_sync, settled, start_isolated, wait_joined, wait_phase,
 };
 use taba_node::cluster::protocol::MessageRecord;
 use taba_node::cluster::restore::Status;
@@ -159,11 +159,7 @@ async fn setup() -> TestCluster {
 async fn every_node_comes_back_at_once_and_the_one_with_the_lowest_old_id_starts_the_cluster() {
     let mut cluster = setup().await;
     let (one, two) = (plain_record(&cluster, 1), plain_record(&cluster, 2));
-    let mut fallen = Vec::new();
-    while !cluster.nodes.is_empty() {
-        fallen.push(fall(&mut cluster).await);
-    }
-    fallen.reverse();
+    let fallen = fall_all(&mut cluster).await;
     leave_on_disk(&fallen[0], &one);
     leave_on_disk(&fallen[1], &two);
     // Nobody answers the entry address any more.
@@ -317,11 +313,7 @@ fn leave_tagged_definition_on_disk(fallen: &Fallen, name: &str, version: u64, ow
 #[tokio::test]
 async fn a_node_that_joins_offers_the_definitions_of_its_disk_and_the_highest_version_wins() {
     let mut cluster = setup().await;
-    let mut fallen = Vec::new();
-    while !cluster.nodes.is_empty() {
-        fallen.push(fall(&mut cluster).await);
-    }
-    fallen.reverse();
+    let fallen = fall_all(&mut cluster).await;
     // The node with the highest old ID has a queue the others do not know: the one that starts the cluster
     // (the lowest old ID) has an older disk, and the offer is what brings the queue to the cluster.
     leave_definition_on_disk(&fallen[2], "offered", 5);
@@ -395,6 +387,92 @@ async fn an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to
     cluster.shutdown().await;
 }
 
+/// UC: UC-RTN-058
+#[tokio::test]
+async fn a_node_that_registers_while_an_offer_is_spreading_also_receives_it() {
+    let mut cluster = TestCluster::start_with(2, ENV).await;
+    settled(&cluster).await;
+    common::cluster::create_queue(cluster.node(1), PLAIN).await;
+    let disk = definitions_of(&cluster, 1)
+        .stored_changes()
+        .await
+        .into_iter()
+        .find(|s| s.change.key == PLAIN)
+        .expect("the disk has the queue");
+    // Node 1 does not answer the `definition-apply` before the call gives up (5 s): the spread of node 2 waits that
+    // long, and node 1 does not have the change yet.
+    cluster
+        .network
+        .set_delay_host_kind(&host_of(1), "definition-apply", Duration::from_secs(60));
+    // The new node has to register inside those 5 s. Under load the register may take longer; then the attempt does
+    // not test anything (node 3 came after the spread) and runs again with another node and another queue.
+    for attempt in 0..5 {
+        let name = format!("offered-{attempt}");
+        let mut offered = taba_node::cluster::replication::Stored {
+            change: disk.change.clone(),
+            topic_id: disk.topic_id.clone(),
+        };
+        offered.change.key = name.clone();
+        offered.change.version = 9;
+        offered.change.body["name"] = json!(name);
+        offered.change.body["id"] = json!(id::new_at(9 + attempt));
+        // The new node is up but cut from the network: it is not in the table when the spread reads it.
+        let newcomer = start_isolated(&mut cluster, &[]).await;
+        cluster.network.clear_calls();
+        let offering = definitions_of(&cluster, 2);
+        let offer = tokio::spawn(async move { offering.offer(vec![offered]).await });
+        eventually("the spread of node 2 to start", || {
+            cluster
+                .network
+                .calls()
+                .iter()
+                .any(|c| c.from == host_of(2) && c.request == "definition-apply")
+        })
+        .await;
+        // It registers during the wait and stops before it pulls the definitions: the synchronization, the slow part
+        // of the join, does not count.
+        let gate = pause_sync(&cluster, newcomer, "topics");
+        wait_phase(cluster.node(newcomer), "topics").await;
+        assert!(
+            cluster.member_ids(2).contains(&cluster.node_id(newcomer)),
+            "node 2 has the new node in the table"
+        );
+        let in_time = !offer.is_finished();
+        offer.await.expect("the offer");
+        if !in_time {
+            // Its synchronization ends before the next attempt: one node synchronizes at a time, and the next register
+            // would wait for this one.
+            gate.add_permits(10);
+            wait_joined(cluster.node(newcomer)).await;
+            continue;
+        }
+        // When the wait ends the spread reads the table again and tells the new node as well.
+        assert!(
+            cluster.network.calls().iter().any(|c| c.from == host_of(2)
+                && c.to.host == host_of(newcomer)
+                && c.request == "definition-apply"),
+            "node 2 tells the new node, which came in during the spread"
+        );
+        gate.add_permits(10);
+        wait_joined(cluster.node(newcomer)).await;
+        eventually_async("the offered queue in the new node", || async {
+            cluster
+                .node(newcomer)
+                .client_get(&format!("/topics/{name}"))
+                .await
+                .status()
+                == 200
+        })
+        .await;
+        cluster
+            .network
+            .set_delay_host_kind(&host_of(1), "definition-apply", Duration::ZERO);
+        cluster.shutdown().await;
+        return;
+    }
+    panic!("in 5 attempts the new node never registered during the 5 s of the spread");
+}
+
 /// Publishes a plain message through the node and returns its `id`.
 async fn publish(node: &TestNode, body: serde_json::Value) -> String {
     let response = node
@@ -426,11 +504,21 @@ async fn consume(node: &TestNode) -> Option<serde_json::Value> {
         .cloned()
 }
 
-/// Every node of the cluster falls at once; the nodes come back in the order they were.
+/// Every node of the cluster falls at once, **with the same table**; the nodes come back in the order they were. The
+/// network between them is cut before the first fall, so the ones still up cannot vote the fallen out and rewrite the
+/// manifest of their life with a smaller table (under load, falls one after the other gave them the time: doc 36, "A
+/// probe that does not end with the node missing in 30 s"). The network is back before the return.
 async fn fall_all(cluster: &mut TestCluster) -> Vec<Fallen> {
+    let hosts: Vec<String> = (1..=cluster.nodes.len()).map(host_of).collect();
+    for host in &hosts {
+        cluster.network.isolate(host);
+    }
     let mut fallen = Vec::new();
     while !cluster.nodes.is_empty() {
         fallen.push(fall(cluster).await);
+    }
+    for host in &hosts {
+        cluster.network.restore(host);
     }
     fallen.reverse();
     fallen
@@ -725,11 +813,7 @@ async fn owner_of(node: &TestNode, name: &str) -> Option<String> {
 async fn when_several_nodes_connect_the_highest_version_of_each_definition_wins_even_over_the_disk_of_the_coordinator()
  {
     let mut cluster = setup().await;
-    let mut fallen = Vec::new();
-    while !cluster.nodes.is_empty() {
-        fallen.push(fall(&mut cluster).await);
-    }
-    fallen.reverse();
+    let fallen = fall_all(&mut cluster).await;
     // The coordinator (the lowest old ID) is the node that was left out before: its disk is the oldest. The others
     // hold the same queue at higher versions, and the last one holds another queue that the others never saw.
     leave_tagged_definition_on_disk(&fallen[0], "shared", 1, "node-1");
@@ -761,11 +845,7 @@ async fn when_several_nodes_connect_the_highest_version_of_each_definition_wins_
 async fn a_late_node_that_starts_alone_serves_what_it_has_and_the_higher_version_wins_when_another_answers()
  {
     let mut cluster = setup().await;
-    let mut fallen = Vec::new();
-    while !cluster.nodes.is_empty() {
-        fallen.push(fall(&mut cluster).await);
-    }
-    fallen.reverse();
+    let fallen = fall_all(&mut cluster).await;
     leave_tagged_definition_on_disk(&fallen[0], "late", 1, "node-1");
     leave_tagged_definition_on_disk(&fallen[1], "late", 5, "node-2");
     cluster.network.add_balancer(balancer(), Vec::new());
@@ -796,11 +876,7 @@ async fn a_late_node_that_starts_alone_serves_what_it_has_and_the_higher_version
 async fn the_node_that_was_missing_when_the_probe_ended_joins_later_by_the_normal_join_and_the_condition_goes_away()
  {
     let mut cluster = setup().await;
-    let mut fallen = Vec::new();
-    while !cluster.nodes.is_empty() {
-        fallen.push(fall(&mut cluster).await);
-    }
-    fallen.reverse();
+    let fallen = fall_all(&mut cluster).await;
     cluster.network.add_balancer(balancer(), Vec::new());
     let probe = [
         ("TABA_CLUSTER_RESTORE_PROBE_INTERVAL", "200ms"),

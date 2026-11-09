@@ -90,6 +90,16 @@ async fn restart_third(
     env: &[(&str, &str)],
     on_disk: &[OnDisk<'_>],
 ) -> (usize, std::path::PathBuf) {
+    restart_third_with(cluster, env, on_disk, &[]).await
+}
+
+/// [`restart_third`], with `excluded` also in the log of the life: `(topic, row)`.
+async fn restart_third_with(
+    cluster: &mut TestCluster,
+    env: &[(&str, &str)],
+    on_disk: &[OnDisk<'_>],
+    excluded: &[(&str, ExcludedRow)],
+) -> (usize, std::path::PathBuf) {
     cluster.clock.advance(Duration::from_secs(60));
     let port = cluster.node(3).node.cluster_addr().port();
     let old_id = cluster.node_id(3);
@@ -106,6 +116,13 @@ async fn restart_third(
         old_disk
             .put(topic, &record.to_meta(), &record.body)
             .expect("writes to disk");
+    }
+    for (topic, row) in excluded {
+        let old_disk = MessageStore::new(&storage, DbSynchronous::Off);
+        old_disk.set_topic_id_resolver(Box::new(|_| None));
+        old_disk
+            .import_excluded(topic, std::slice::from_ref(row))
+            .expect("writes the log");
     }
     let number = cluster
         .respawn_node(3, |builder| {
@@ -315,6 +332,106 @@ async fn the_new_primary_discards_what_its_own_log_or_the_log_of_any_present_nod
         panic!("expected JSON");
     };
     assert_eq!(value["dead"], json!([dead_there.id]));
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-028
+#[tokio::test]
+async fn the_log_of_a_newer_life_is_in_before_the_messages_of_an_older_one_are_sent() {
+    // The node fell twice: the older life still keeps a message that was restored, delivered and acknowledged in
+    // the newer life, whose log recorded the exclusion. The older life comes first in the order of the pass.
+    let cluster = setup(&[]).await;
+    cluster.clock.advance(Duration::from_secs(60));
+    let now = cluster.clock.now_millis();
+    let acked = record(&cluster, TOPIC, 1);
+    let lives = messages_of(cluster.node(1))
+        .storage_root()
+        .join(MessageStore::LIVES);
+    let life = |name: &str, last_seen_ms: u64, fill: &dyn Fn(&MessageStore)| {
+        let dir = lives.join(name);
+        let folder = MessageStore::new(&dir, DbSynchronous::Off);
+        folder.set_topic_id_resolver(Box::new(|_| None));
+        fill(&folder);
+        drop(folder);
+        Manifest {
+            node_id: name.to_owned(),
+            members: Vec::new(),
+            table_version: 1,
+            last_seen_ms,
+            watermark: None,
+            excluded_since_ms: None,
+        }
+        .write(&dir)
+        .expect("writes the manifest");
+    };
+    life(&id::new_at(1), now - 2_000, &|folder| {
+        folder
+            .put(TOPIC, &acked.to_meta(), &acked.body)
+            .expect("writes to disk");
+    });
+    let position = messages_of(cluster.node(1)).position_for(TOPIC, &acked.id, None);
+    life(&id::new_at(2), now - 1_000, &|folder| {
+        folder
+            .import_excluded(
+                TOPIC,
+                &[ExcludedRow {
+                    id: acked.id.clone(),
+                    position,
+                    at_ms: now - 1_500,
+                }],
+            )
+            .expect("writes the log");
+    });
+
+    let summary = recovery_of(cluster.node(1)).restore_lives().await;
+    assert_eq!(summary.lives, 2);
+    assert_eq!(summary.sent, 1);
+    assert_eq!(summary.resolved, 1, "the primary discarded it");
+    for number in 1..=3 {
+        assert!(
+            !has(cluster.node(number), TOPIC, &acked.id),
+            "node {number}: an acknowledged message came back"
+        );
+    }
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-028
+#[tokio::test]
+async fn a_node_tells_its_lives_logs_are_in_only_when_its_answer_to_the_dead_has_them() {
+    // The primary of a message of another life may ask this node before it sent anything: the barrier of the
+    // restoration counts its lives only once it says `logsReady`, and from then on its answer has what they recorded.
+    let mut cluster = setup(&[]).await;
+    let acked = record(&cluster, TOPIC, 1);
+    let row = ExcludedRow {
+        id: acked.id.clone(),
+        position: messages_of(cluster.node(1)).position_for(TOPIC, &acked.id, None),
+        at_ms: cluster.clock.now_millis() + 30_000,
+    };
+    let (number, _) = restart_third_with(&mut cluster, &[], &[], &[(TOPIC, row)]).await;
+    wait_joined(cluster.node(number)).await;
+    let recovery = recovery_of(cluster.node(number));
+    eventually_async("the node to tell its logs are in", || async {
+        let Ok(Response::Json(state)) = recovery.serve_state() else {
+            return false;
+        };
+        if state["logsReady"] != json!(true) {
+            return false;
+        }
+        let Ok(Response::Json(asked)) = recovery
+            .serve_dead(TOPIC.into(), vec![acked.id.clone()])
+            .await
+        else {
+            panic!("answers the query of the dead");
+        };
+        assert_eq!(
+            asked["dead"],
+            json!([acked.id]),
+            "ready, and the answer misses the life's log"
+        );
+        true
+    })
+    .await;
     cluster.shutdown().await;
 }
 

@@ -8392,11 +8392,14 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-028
 
 **Caso:** O `id` consta no **log de excluídos** do primário, ou no de **qualquer outro nó presente** (a consulta vai em lote, por tópico, a todos os presentes, não só aos donos do bloco)
-**Então:** a mensagem é descartada; o log dos outros responde por `POST /cluster/topics/{topic}/messages/dead`.
+**Então:** a mensagem é descartada; o log dos outros responde por `POST /cluster/topics/{topic}/messages/dead`. Cada dono lê o próprio log de novo sob a mesma trava do tópico em que grava, então uma cópia confirmada depois da conferência (a cópia da mesma mensagem de outra vida) não é gravada de novo (`Dead`). Os logs das vidas entram no log do nó antes de ele enviar a primeira mensagem de qualquer uma delas e antes de ele dizer `logsReady` aos outros: uma vida mais nova pode ter o ack de uma mensagem que uma vida mais antiga guarda.
 **Nível:** C
 **Testes:**
   - `tests/restore_lives.rs::the_new_primary_discards_what_its_own_log_or_the_log_of_any_present_node_says_is_dead`
+  - `tests/restore_lives.rs::the_log_of_a_newer_life_is_in_before_the_messages_of_an_older_one_are_sent`
+  - `tests/restore_lives.rs::a_node_tells_its_lives_logs_are_in_only_when_its_answer_to_the_dead_has_them`
   - `src/engine/messages/tests/lives.rs::the_node_tells_which_ids_its_log_of_excluded_messages_has`
+  - `src/engine/messages/tests/lives.rs::a_copy_of_a_message_acknowledged_after_the_check_of_the_dead_is_not_stored_again`
   - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
   - `src/cluster/protocol/tests.rs::the_restore_and_dead_routes_refuse_a_wrong_media_type_and_an_unknown_parameter`
 
@@ -8702,10 +8705,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-058
 
 **Caso:** Uma definição oferecida por um nó que entrou chega a **todo membro da tabela**, não só aos peers que o canal conhece naquele instante
-**Então:** além do quadro do canal, o nó envia um `definition-apply` a cada membro (uma mudança decidida por um dono faz o mesmo), então um nó que se registrou milissegundos depois e ainda sincroniza a grava com os eventos e a aplica; o lock da chave é solto antes do envio (doc 36, "Uma definição oferecida a um nó que ainda estava entrando").
+**Então:** além do quadro do canal, o nó envia um `definition-apply` a cada membro (uma mudança decidida por um dono faz o mesmo), então um nó que se registrou milissegundos depois e ainda sincroniza a grava com os eventos e a aplica; quando a espera das respostas termina a tabela é lida de novo, e um membro que entrou nesse meio-tempo também a recebe; o lock da chave é solto antes do envio (doc 36, "Uma definição oferecida a um nó que ainda estava entrando").
 **Nível:** C
 **Testes:**
   - `tests/cold_start.rs::an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to_the_peers_the_channel_knows`
+  - `tests/cold_start.rs::a_node_that_registers_while_an_offer_is_spreading_also_receives_it`
 
 ---
 ### UC-RTN-016

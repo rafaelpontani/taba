@@ -49,6 +49,9 @@ pub enum Loaded {
     Expired,
     /// The topic does not exist on this node yet.
     UnknownTopic,
+    /// It already left the topic dead (ack, prune, dead-letter: the node's log of excluded messages has it), so a copy
+    /// that comes back is not stored again. Only [`Messages::apply_recovered`] answers it.
+    Dead,
 }
 
 fn in_ranges(ranges: &[(u64, u64)], position: u64) -> bool {
@@ -360,6 +363,42 @@ impl Messages {
         }
         self.apply_publish_with(topic, meta, body, durable)?;
         Ok(Loaded::Stored)
+    }
+
+    /// Like [`apply_load_with`](Self::apply_load_with), for a message that comes back through the recovery or the
+    /// restoration of a past life (doc 07, section 10.6): the log of excluded messages is read under the same hold
+    /// of the topic as the store. The primary checks the dead before it activates a batch, but two lives keep copies
+    /// of the same message: the copy of one life can be activated, delivered and acknowledged while the batch of the
+    /// other is between that check and the store, and without this the second copy would bring it back
+    /// ([`Loaded::Dead`]).
+    pub fn apply_recovered(
+        &self,
+        topic: &str,
+        meta: MessageMeta,
+        body: Bytes,
+        durable: bool,
+    ) -> Result<Loaded, TabaError> {
+        let Ok(view) = self.topics.get(topic) else {
+            return Ok(Loaded::UnknownTopic);
+        };
+        if view.definition.queue().is_none() {
+            return Err(TabaError::new(
+                ErrorCode::TopicWrongType,
+                "A distributor topic does not store messages.",
+            ));
+        }
+        let now = self.clock.now_millis();
+        let ttl_ms = view.ttl_secs().unwrap_or(u64::MAX).saturating_mul(1000);
+        if meta.age_base_ms().saturating_add(ttl_ms) <= now {
+            return Ok(Loaded::Expired);
+        }
+        Ok(
+            match self.publish_applied(topic, meta, body, durable, true)? {
+                None => Loaded::Dead,
+                Some(true) => Loaded::Stored,
+                Some(false) => Loaded::Existing,
+            },
+        )
     }
 
     /// Applies the short row of an acknowledged FIFO message that came from another node in the synchronization

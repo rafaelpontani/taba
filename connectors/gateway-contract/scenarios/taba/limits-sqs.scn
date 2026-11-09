@@ -8,6 +8,13 @@ getQueueAttributes queue=$q.url names=QueueArn as=qa
 allowSnsToSend queue=$q.url queueArn=$qa.attr_QueueArn topic=arn:aws:sns:us-east-1:000000000000:{p}-lim
 getQueueAttributes queue=$q.url names=QueueArn => attr_QueueArn=$qa.attr_QueueArn
 
+# --- the counts are exact at once (SQS only promises approximate ones): they come from the index of the queue ----------
+createQueue name={p}-lim-count as=qc
+sendBatch queue=$qc.url bodies=c1,c2,c3 => ok=3 failed=0
+receive queue=$qc.url max=1 wait=2 visibility=60 => count=1
+getQueueAttributes queue=$qc.url names=ApproximateNumberOfMessages,ApproximateNumberOfMessagesNotVisible => attr_ApproximateNumberOfMessages=2 attr_ApproximateNumberOfMessagesNotVisible=1
+deleteQueue queue=$qc.url
+
 # --- the delayed messages are counted as in processing while PRB-093 is open -----------------------------------------
 send queue=$q.url body=delayed-count delay=60
 getQueueAttributes queue=$q.url names=ApproximateNumberOfMessagesDelayed => attr_ApproximateNumberOfMessagesDelayed=0

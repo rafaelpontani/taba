@@ -3,8 +3,8 @@ title: Known issues
 summary: "Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts."
 type: reference
 status: partial
-verified-on: 2026-11-08 @ 094f6df
-sources: [crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+verified-on: 2026-11-09 @ edcf155
+sources: [crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Known issues
@@ -17,7 +17,13 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
-| [A message delivered twice after the reunion of a partition](#a-message-delivered-twice-after-the-reunion-of-a-partition) | Open | 2026-11-07 | — |
+| [A token test that found a piece of the secret in the salt](#a-token-test-that-found-a-piece-of-the-secret-in-the-salt) | Fixed | 2026-11-09 | 2026-11-09 |
+| [An acknowledged message brought back by an older life](#an-acknowledged-message-brought-back-by-an-older-life) | Fixed | 2026-11-09 | 2026-11-09 |
+| [A cold-start vote that does not close in 30 s](#a-cold-start-vote-that-does-not-close-in-30-s) | Fixed | 2026-11-09 | 2026-11-09 |
+| [A probe that does not end with the node missing in 30 s](#a-probe-that-does-not-end-with-the-node-missing-in-30-s) | Fixed | 2026-11-09 | 2026-11-09 |
+| [A large ReceiveMessage of the older Go SDK that loses its connection under load](#a-large-receivemessage-of-the-older-go-sdk-that-loses-its-connection-under-load) | Fixed | 2026-11-08 | 2026-11-09 |
+| [A count of an emulator right after a receive](#a-count-of-an-emulator-right-after-a-receive) | Fixed | 2026-11-08 | 2026-11-09 |
+| [A message delivered twice after the reunion of a partition](#a-message-delivered-twice-after-the-reunion-of-a-partition) | Fixed | 2026-11-07 | 2026-11-09 |
 | [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first) | Fixed | 2026-11-05 | 2026-11-05 |
 | [A node that stops answering and is not excluded in 30 s](#a-node-that-stops-answering-and-is-not-excluded-in-30-s) | Open | 2026-11-04 | — |
 | [A replication test whose 14 publications missed the isolated node](#a-replication-test-whose-14-publications-missed-the-isolated-node) | Fixed | 2026-11-03 | 2026-11-03 |
@@ -28,8 +34,9 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Fixed | 2026-10-29 | 2026-11-05 |
 | [A lost ready signal that the hunt does not correct in time](#a-lost-ready-signal-that-the-hunt-does-not-correct-in-time) | Open | 2026-10-29 | — |
 | [The chaos run: a delivery past the limit and an ack the owner never applied](#the-chaos-run-a-delivery-past-the-limit-and-an-ack-the-owner-never-applied) | Fixed | 2026-10-27 | 2026-10-27 |
-| [A restarted test node that loses its port to another test](#a-restarted-test-node-that-loses-its-port-to-another-test) | Open | 2026-10-26 | — |
-| [A definition offered to a node that was still joining](#a-definition-offered-to-a-node-that-was-still-joining) | Fixed | 2026-10-26 | 2026-10-26 |
+| [A restarted test node that loses its port to another test](#a-restarted-test-node-that-loses-its-port-to-another-test) | Fixed | 2026-10-26 | 2026-11-09 |
+| [A node excluded while it synchronizes that cannot come back](#a-node-excluded-while-it-synchronizes-that-cannot-come-back) | Open | 2026-11-09 | — |
+| [A definition offered to a node that was still joining](#a-definition-offered-to-a-node-that-was-still-joining) | Fixed | 2026-10-26 | 2026-11-09 |
 | [A channel accept that locked the peers twice](#a-channel-accept-that-locked-the-peers-twice) | Fixed | 2026-10-26 | 2026-10-26 |
 | [A FIFO restart test that waits 30 s in a combined run](#a-fifo-restart-test-that-waits-30-s-in-a-combined-run) | Open | 2026-10-22 | — |
 | [A notice test that waits 30 s once in the full suite](#a-notice-test-that-waits-30-s-once-in-the-full-suite) | Fixed | 2026-10-20 | 2026-11-08 |
@@ -37,15 +44,120 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
 
+## A token test that found a piece of the secret in the salt
+
+**Status:** Fixed · **Found on:** 2026-11-09 · **Fixed on:** 2026-11-09
+
+- **Test:** `tests/stored_definition.rs::each_token_is_a_row_with_the_salted_hash_and_never_the_secret`.
+- **Symptom:** `the secret is not in the row` (`stored_definition.rs:153`), in the full `cargo test` of 2026-11-09; 1 in 30 runs of the test alone.
+- **Cause (in the test):** the token is `tb_<id>.<secret>`, and the test took the secret as what follows the last `_` (`full.rsplit('_')`). The secret is base64url and may hold a `_`; then the "secret" was a piece of a few characters, which showed up by chance inside the salt or the hash (also base64url) of the row.
+- **Fix:** the secret is what follows the `.` (`split_once('.')`), 43 characters.
+- **Verification:** 40 runs of the test alone, no failure; the full `cargo test` passes.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-09 | Seen in the full suite while updating `rusqlite` (unrelated to it: the cause above is in the test); fixed in the test. |
+
+## An acknowledged message brought back by an older life
+
+**Status:** Fixed · **Found on:** 2026-11-09 · **Fixed on:** 2026-11-09
+
+- **Test:** `tests/cold_start.rs::with_every_node_back_no_message_that_was_confirmed_is_delivered_again_whatever_the_falls` (UC-RTN-053).
+- **Symptom:** `round 1: <id> came back` at `cold_start.rs:696`: a message that was restored and confirmed in round 0 was delivered again after the falls of round 1. Seen once in 1800 process runs of `KEEP_GOING=1 ROUNDS=180 PAR=10 docker/hang-hunt.sh cold_start`; not seen in CI.
+- **Cause (confirmed, in the server):** the order of the restoration. A node that falls twice keeps two lives: the older one still holds the message (a copy whose removal did not reach it before the fall), and the newer one recorded its ack in its log of excluded messages. The restoration took the lives oldest first and **incorporated the log of each life just before sending its messages**, so the message of the older life went to the primary before the log of the newer life, which says it is dead, was in the node's log: the check of the dead (own log, the other nodes, S3) did not find it, and the message was activated. The same gap existed between nodes: the barrier of the restoration counted the lives a node announced, not whether their logs were already in its log, so a primary could ask a node that had not incorporated them yet. In the log: the restoration of round 1 with `lives=3` sent the `id` that round 0 had restored, delivered and confirmed.
+- **Fix:** the node incorporates the rows of the logs of **every** life when its restoration starts, and only then tells the others `logsReady` in `GET /cluster/restore`; the barrier counts the lives of a node only after that (a node of an earlier version does not tell and counts as ready). Inside the pass, the logs of all the restorable lives (with the start of the recording) come in before the first message of any of them is sent ([07-cluster.md](07-cluster.md), sections 10.3 and 10.7).
+- **Tests of the fix:** `tests/restore_lives.rs::the_log_of_a_newer_life_is_in_before_the_messages_of_an_older_one_are_sent` (fails without the fix: `node 1: an acknowledged message came back`) and `tests/restore_lives.rs::a_node_tells_its_lives_logs_are_in_only_when_its_answer_to_the_dead_has_them`.
+- **Verification:** `KEEP_GOING=1 ROUNDS=180 PAR=10 docker/hang-hunt.sh cold_start` with every fix of 2026-11-09: 1800 process runs and **no** `came back` (the only 2 failures were the race of "A definition offered to a node that was still joining", fixed after it). `tests/restore_lives.rs` (12 tests) passes.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-09 | Found by the hunt that verified `PortHold` (round 17 of 180); the log showed the `id` restored again by a life of round 0. Fixed in the order of the restoration, with the two tests above. |
+| 2026-11-09 | Verified: 1800 process runs of the same hunt with the fix, no `came back`. |
+
+## A cold-start vote that does not close in 30 s
+
+**Status:** Fixed · **Found on:** 2026-11-09 · **Fixed on:** 2026-11-09
+
+- **Test:** `tests/cold_start.rs::with_every_node_back_no_message_that_was_confirmed_is_delivered_again_whatever_the_falls` (UC-RTN-053), in `come_back_all`.
+- **Symptom:** `waited 30 s for: the vote closed on every node` (`common/cluster.rs:89`). Seen twice in 1800 process runs of `KEEP_GOING=1 ROUNDS=180 PAR=10 docker/hang-hunt.sh cold_start` (rounds 3 and 16); not seen in CI.
+- **Cause (in the test):** the same as the section below. The nodes fell one after the other, and under load the ones still up had time to vote the first fallen out and rewrite the manifest of their life with a table of two. On the return the disks disagreed on the table: one node started alone with its old group of one, the others formed another group, and only the probe of the old IPs (every 10 s) brought them together through the regroup (doc 07, section 10.11), later than the 30 s of the wait. Both failing logs have the line `this side is the smaller and regroups` and one more node that `starts alone` with `alive=1` than the logs of the other failures.
+- **Fix:** `fall_all` of `tests/cold_start.rs` cuts the network between the nodes (`isolate`) before the first fall and gives it back (`restore`) after the last one: with no quorum nobody is voted out, and every disk keeps the table of three. Every test of the file that drops the whole cluster uses it, and `regroup.rs::two_groups` does the same.
+- **Verification:** `KEEP_GOING=1 ROUNDS=180 PAR=10 docker/hang-hunt.sh cold_start` with `fall_all`: 1800 process runs, **no** `the vote closed on every node` and no `the probe ended with a node missing` (before: 2 + 2 in 1800); `KEEP_GOING=1 ROUNDS=60 PAR=10 docker/hang-hunt.sh regroup`: 600 runs, no failure.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-09 | Seen twice in the hunt that verified `PortHold`; recorded with the cause open. |
+| 2026-11-09 | Cause found in the logs (a manifest with a table of two) and fixed in the test (`fall_all`); verified in 1800 runs of `cold_start` and 600 of `regroup` with no failure. |
+
+## A probe that does not end with the node missing in 30 s
+
+**Status:** Fixed · **Found on:** 2026-11-09 · **Fixed on:** 2026-11-09
+
+- **Test:** `tests/cold_start.rs::the_node_that_was_missing_when_the_probe_ended_joins_later_by_the_normal_join_and_the_condition_goes_away` (UC-RTN-057).
+- **Symptom:** `waited 30 s for: the probe ended with a node missing` (`common/cluster.rs:89`). Seen twice in 1800 process runs of `KEEP_GOING=1 ROUNDS=180 PAR=10 docker/hang-hunt.sh cold_start` (rounds 28 and 161); not seen in CI.
+- **Cause (in the test):** in both failing logs the probe **did** end on both nodes, with `expected=2`: the table of the previous life had two members, not three, so two active members are not "missing" anyone and `members_missing` stays `false`. The nodes fell one after the other (`while … fall`), and under load the two still up voted the first fallen out and wrote the manifest with the table of two before they fell themselves.
+- **Fix:** the falls with the network cut, in `fall_all` (section above).
+- **Verification:** `KEEP_GOING=1 ROUNDS=180 PAR=10 docker/hang-hunt.sh cold_start` with `fall_all`: 1800 process runs, **no** `the vote closed on every node` and no `the probe ended with a node missing` (before: 2 + 2 in 1800); `KEEP_GOING=1 ROUNDS=60 PAR=10 docker/hang-hunt.sh regroup`: 600 runs, no failure.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-09 | Seen twice in the hunt that verified `PortHold`; recorded with the cause open. |
+| 2026-11-09 | Cause found in the logs (a manifest with a table of two) and fixed in the test (`fall_all`); verified in 1800 runs of `cold_start` and 600 of `regroup` with no failure. |
+
+## A large ReceiveMessage of the older Go SDK that loses its connection under load
+
+**Status:** Fixed · **Found on:** 2026-11-08 · **Fixed on:** 2026-11-09
+
+- **Test:** the gateway contract tests (`connectors/gateway-contract/run.sh`) on a Taba node, driver `go-old` (aws-sdk-go-v2 with `service/sqs` v1.26.0 and smithy-go v1.16.0): the `receive` of a large message (200 KB).
+- **Symptom:** `operation error SQS: ReceiveMessage, https response error StatusCode: 200 … deserialization failed, failed to decode response body, read tcp …: use of closed network connection`, and the next line fails because it has no receipt handle. Locally, under CPU load, about 1 run in 8; never on the emulators.
+- **Cause (confirmed, in the client):** net/http writes the request body straight to the socket, the node answers at once and `Do` returns with the headers. smithy-go then closes the request body (`transport/http/client.go`). After writing the body, net/http reads it once more to check that nothing is left (`transferWriter.writeBody`, `doBodyCopy(io.Discard, body)`); that read goes through the `WriteTo` of smithy-go's `safeWriteToReadCloser`, which answers `io.EOF` after the close instead of `(0, nil)`. When the machine is loaded and that read comes after the close, `persistConn.writeLoop` takes the `EOF` as a write error and closes the connection in the middle of the response. The same code is in smithy-go v1.28.8, but the current SDK did not fail in our runs. The node answers correctly: `Content-Length` right, no `Connection: close`, no FIN or RST from its side.
+- **Fix:** test only. The Go driver gives net/http the request body without its `WriteTo` (`plainBodyTransport` in `drivers/go/main.go`): a plain `Read` after the close is `(0, io.EOF)`, which `io.Copy` takes as the end of the body.
+- **How it was found:** a `tcpdump` in the node's network namespace (`-i eth0`, started after the `docker restart` of `gw_target_taba_up`; `-i any` captured nothing) showed the RST coming from the client in the middle of a well-framed response. A `net.Conn` wrapper in the driver showed `persistConn.writeLoop` closing the connection, and `httptrace.WroteRequest` gave the error: `EOF`. Turning keep-alive off did not help (2 failures in 19 runs); hiding `WriteTo` did.
+- **Verification:** with the fix, 40 of 40 runs of the 200 KB scenario passed under the same load (12 containers using the CPU); before it, between 1 in 20 and 7 in 20 failed. The current and the older SDK pass every scenario.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-08 | Failed in the CI of the release chain of v0.3.10 (gateway contract tests on a Taba node); passed when the job ran again. |
+| 2026-11-09 | Reproduced locally with a 200 KB message and 10 to 12 containers using the CPU (between 1 in 20 and 7 in 20 runs); cause found with a capture and the client's traces, fixed in the driver. |
+
+## A count of an emulator right after a receive
+
+**Status:** Fixed · **Found on:** 2026-11-08 · **Fixed on:** 2026-11-09
+
+- **Test:** the gateway contract tests on the emulators (`run.sh --target emulator`, the job "Scenarios on the emulators"), driver `rust-current`, `aws/sqs-standard.scn` line 115.
+- **Symptom:** `getQueueAttributes :: attr_ApproximateNumberOfMessages=2 but was '0'` after a `sendBatch` of three messages and a `receive` of one, on ElasticMQ. The same line passed on the Taba node in the same run.
+- **Cause:** the line asked for an exact count right after a receive, but SQS calls these counts approximate (they can take a while to settle), and the `sendBatch` before it did not check that the three entries were accepted. Which of the two the emulator did is not known (one occurrence, not reproduced). It is not the node: Taba answers the counts from the index of the queue at that instant (`topic_snapshot`).
+- **Fix:** test only. `aws/sqs-standard.scn` checks `sendBatch … => ok=3 failed=0` and only that the two counts are there (`>=0`); the exact counts went to `taba/limits-sqs.scn`, which only runs on Taba.
+- **Verification:** the whole contract passed on the Taba node (the 12 SDK variants, 286 of 286 lines each, the native consumer and the cross tests) and on the emulators (173 of 173 SQS lines and 50 of 50 SNS lines for each variant).
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-08 | Failed once in the CI of the pull request of the Pulumi provider, on the emulators; passed when the job ran again. |
+| 2026-11-09 | Not reproduced locally. The log of the failed job shows that the target was ElasticMQ, not the node; the line was split as above. |
+
 ## A message delivered twice after the reunion of a partition
 
-**Status:** Open · **Found:** 2026-11-07 · **Fixed:** —
+**Status:** Fixed · **Found on:** 2026-11-07 · **Fixed on:** 2026-11-09
 
 - **Test:** `tests/partition.rs::the_half_that_loses_the_reunion_keeps_what_it_accepted_while_apart` (UC-FAL-026, the measurement of R1 in [37-guarantees.md](37-guarantees.md)).
 - **Symptom:** in the arm64 server job of the `release.yml` run of the #63 merge (run 42409549368), the test ended with `delivered twice: [(18, 2)]` at `partition.rs:147`: no message lost, but the one with `seq` 18 (published on node 3, in the half with 3 and 4) was delivered twice. The same commit passed on amd64, in the pull request CI and in `v0.3.8-rc.1`, which has the same server code.
-- **Cause:** not identified. Hypothesis to check: the test's `drain` receives with `visibilityTimeout=30` and moves the clock 1 s per round; an ack that fails while the life of the losing half is restored (the message's owner changes, or the restored copy is another one) lets the message come back 30 s of clock later. If so, the duplicate is the at-least-once delivery [37-guarantees.md](37-guarantees.md) already allows, and what is wrong is the test asserting "delivered once"; if the restored copy is a second message with the same body, it is a defect of the restoration (D181).
-- **Next step:** read in the log kept by the hunt (`target/hang-hunt/run_12_2.log`; run `docker/hang-hunt.sh partition` again for another one) whether the ack of the repeated message answered `204` and on which node each delivery happened.
-- **Do not:** change the test's assertion to "at least once" before the cause is known.
+- **Cause (confirmed, in the server):** a check of the dead apart from the store. Both nodes of the losing half keep a copy of each message they accepted (the replication factor), so both restore their life and send the same message, with the same `id`, to the new primary. The primary checks the dead of each batch (`accept_restore`: its own log, the log of the other nodes, S3) and only then activates it. Both batches passed the check while the message was still alive; the copy of the first was activated, delivered and acknowledged (the `id` went to the log of excluded messages); then the batch of the second reached the store, which only asked whether the node had the message (`holds`), and stored it again. In the log of a failing run: two `lost message recovered` lines for the same `id` 19 ms apart, and the two deliveries with `deliveryCount=1` on two different nodes, each ack answered `204`. It was not the *at-least-once* of a failed ack, which would have come back with `deliveryCount=2`.
+- **Fix:** the store of a recovered or restored message reads the log of excluded messages again **under the same hold of the topic** (`Messages::apply_recovered`, used by `Recovery::apply_local`; a new answer, `Loaded::Dead`, which counts as resolved). An ack takes the message out and records its exclusion under that same hold, so once the message is not there the log already says whether it died.
+- **Test of the fix:** `src/engine/messages/tests/lives.rs::a_copy_of_a_message_acknowledged_after_the_check_of_the_dead_is_not_stored_again` (fails without the fix: `left: Stored, right: Dead`).
+- **How it was found:** `docker/hang-hunt.sh partition` (8 processes, 40 rounds) reproduced it in 4 of 320 processes; a temporary `HUNT` line in the test's `drain` (node, `seq`, `id`, `deliveryCount`, status of the ack) showed the same `id` delivered by two nodes and both acks accepted.
+- **Verification:** with the fix, the same hunt ran 120 rounds of 8 processes (960 runs) without a problem; before it, 4 of 320 failed.
 
 **History**
 
@@ -53,6 +165,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-11-07 | One failure on arm64 in the `release.yml` run of the #63 merge, which only changed connectors and documentation; the failed jobs were run again. |
 | 2026-11-07 | `docker/hang-hunt.sh partition` (8 processes at once) reproduced it in round 12: `delivered twice: [(17, 2)]`. The log is kept in `target/hang-hunt/run_12_2.log`, not read yet. |
+| 2026-11-09 | The hunt (40 rounds of 8 processes) failed in 4 processes with the same signature; the cause was found in the log with a temporary line in the test and fixed in the store of the restoration. |
 
 ## A batch test that counted the calls before the background commit
 
@@ -245,12 +358,13 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 ## A restarted test node that loses its port to another test
 
-**Status:** Open · **Found on:** 2026-10-26 · **Fixed on:** —
+**Status:** Fixed · **Found on:** 2026-10-26 · **Fixed on:** 2026-11-09
 
 - **Where:** `tests/common/cluster.rs` (`respawn_node`) and the tests that bring a node back at the address of the one that fell (`tests/cold_start.rs`: `fall`, `come_back`).
 - **Symptom:** `the process restarts: Bind { name: "do cluster", addr: 127.0.0.1:<port>, source: … AddrInUse … }` after the 30 s of `respawn_node`. Seen 3 times in about 1800 process runs of `docker/hang-hunt.sh cold_start …` (10 processes at once), in `when_several_nodes_connect_the_highest_version…` and in `a_node_that_joins_offers_the_definitions_of_its_disk…`; not seen in CI so far.
 - **Cause (checked in the log of the failing run):** `fall()` shuts the node down and frees its cluster port; the test starts the node again on the same port later. In between, the system hands the freed (ephemeral) port to another listener: in the log the port was the cluster port of the fallen node and, two seconds later, the **client** port of a node of **another test of the same process**. `respawn_node` retries for 30 s, but that node keeps the port until its own test ends, so the retry cannot win. The tests of a binary run in parallel threads, so the same can happen in CI.
-- **Fix (applied 2026-10-28, verification pending):** `PortHold` in `tests/common/cluster.rs`: a placeholder listener bound right after the shutdown (in `fall` of `cold_start.rs` and `regroup.rs`) and dropped just before the new bind (`come_back`). It is still to be checked with `docker/hang-hunt.sh cold_start regroup`; the status changes to `Fixed` after that.
+- **Fix:** `PortHold` in `tests/common/cluster.rs`: a placeholder listener bound right after the shutdown (in `fall` of `cold_start.rs` and `regroup.rs`) and dropped just before the new bind (`come_back`).
+- **Verification:** `KEEP_GOING=1 ROUNDS=180 PAR=10 docker/hang-hunt.sh cold_start` (1800 process runs) and `KEEP_GOING=1 ROUNDS=150 PAR=10 docker/hang-hunt.sh regroup` (1500): **no** `AddrInUse`, against 3 in about 1800 before. The hunt takes one test file at a time (the next arguments filter test names). The 7 other failures of the `cold_start` hunt are other issues, in their own sections.
 - **Do not:** raise the 30 s of `respawn_node`; the port does not come back while the other test lives.
 
 **History**
@@ -260,10 +374,26 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-26 | Seen once in the hunt that validated the fix of the lost offer (round 29, 10 processes at once). The log shows the port reused by another node of the same process. Not fixed: unrelated to that change. |
 | 2026-10-26 | Two more in the 1500-run validation (rounds 19 and 141), one of them in `a_node_that_joins_offers…`: the same `AddrInUse`. |
 | 2026-10-28 | **First time in CI**: the `Release` run of the push to `main` (merge of PR #34, amd64) failed in `with_every_node_back_no_message_that_was_confirmed_is_delivered_again_whatever_the_falls` (`cold_start.rs`, `AddrInUse` on the cluster port). `PortHold` added; `cold_start` (13) and `regroup` (3) pass locally. |
+| 2026-11-09 | Verified: 1800 runs of `cold_start` and 1500 of `regroup` under load without `AddrInUse`. `Fixed`. |
+
+## A node excluded while it synchronizes that cannot come back
+
+**Status:** Open · **Found on:** 2026-11-09 · **Fixed on:** —
+
+- **Test:** `tests/cold_start.rs::an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to_the_peers_the_channel_knows` (UC-RTN-058), in `TestCluster::start_with(3, …)`, before the test does anything.
+- **Symptom:** `waited 30 s for: the node to join the cluster` (`common/cluster.rs:89`). Seen once in 300 process runs of `KEEP_GOING=1 ROUNDS=30 PAR=10 docker/hang-hunt.sh cold_start`; not seen in CI.
+- **Cause (found in the log):** the third node registered (`new node registered` at 09.78) and was synchronizing; under load its channel with the others dropped and came back three times (`reestablished` at 14.96, 15.07, 16.00), and at 16.57 the other two opened the vote with `reason="channel-down"` and excluded it (`yes=2 healthy=2`). The node saw it (`the sources excluded this node while it synchronized: redoing the join`), but its ID was now frozen (D106: an excluded node does not come back for `left_secs=300`), and every new join was refused with `ingresso rejeitado (freezing)` (332 times) until the test gave up. The tests' keepalive (`200ms`, `FAST`) makes the drop more likely, but the path exists in production: a node excluded in the middle of its synchronization is out of the cluster for 5 minutes ([PRB-111](31-pending-items.md#intermittent-tests-new-problems-and-limits)).
+- **Next step:** decide PRB-111 (the vote of a node that is still synchronizing, or the freezing of a node that never became active) and then a test that drops the channel of a synchronizing node.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-09 | Seen once in the hunt that verified the second fix of the section below; cause read in the log and recorded with PRB-111. |
 
 ## A definition offered to a node that was still joining
 
-**Status:** Fixed · **Found on:** 2026-10-26 · **Fixed on:** 2026-10-26
+**Status:** Fixed · **Found on:** 2026-10-26 · **Fixed on:** 2026-11-09
 
 - **Where:** `src/cluster/replication/definitions.rs` (`Definitions::offer`), tested in `tests/cold_start.rs`.
 - **Symptom:** in CI, `cold_start` › `when_several_nodes_connect_the_highest_version_of_each_definition_wins_even_over_the_disk_of_the_coordinator` failed with `waited 30 s for: the highest version in every node` (on the PR run of 2026-10-26), and `a_node_that_joins_offers_the_definitions_of_its_disk_and_the_highest_version_wins` failed with `waited 30 s for: the offered queue in the cluster` (arm64, the push to `release`, the same day). Both only under load. Locally: 2 failures in about 290 runs of the two tests, with 10 processes at once.
@@ -271,7 +401,10 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 - **How it was found:** `docker/hang-hunt.sh cold_start …` reproduced it in the container; the log had no line about the offer, so temporary lines (`HUNT`, since removed) were added at the `offer`, `learn`, `relay` and `broadcast` and the failing run was captured again. Comparing, node by node, what was offered, to whom it was sent and what each node learned showed the `broadcast` with one peer, seven milliseconds before the second node appeared.
 - **Fix:** after applying what wins, `offer` releases the key's lock and sends a `definition-apply` to every member of the table (`spread`, all the definitions at once), besides the `relay`. The lock is released first: with it held, two nodes offering the same definition would wait for each other until `write.commit.timeout`.
 - **Test:** `tests/cold_start.rs::an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to_the_peers_the_channel_knows` (UC-RTN-058) offers a definition from node 2 and requires a `definition-apply` to nodes 1 and 3; it fails without the fix.
-- **Open point:** the arm64 failure of `a_node_that_joins_offers…` was not reproduced (that test checks only node 1, which is always a peer). It may be the same race in another order, or not. If it comes back, reopen this section with the log from `docker/hang-hunt.sh`.
+- **Second cause (2026-11-09):** `spread` read the table **once**, before sending. A node whose register committed a few milliseconds after that reading was not in the list, and its synchronization pulled the definitions from a member that was still applying the change (the `definition-apply` of the spread had not finished there): the node ended up active without the definition, and the frame of `relay` did not reach it either. In the captured run of `when_several_nodes_connect…` the third node spread `shared` (version 6) and `only-3` to node 1 alone at 46.077–46.089; node 2 was registered at 46.112 and loaded `shared` at version 1 from the listing of node 1, which only finished applying at 46.22; at 52.24 node 2 offered its version 4, the others refused it, and node 2 kept it, without `only-3`. The run of `a_node_that_joins_offers…` (the arm64 failure of 2026-10-26, not reproduced then) was the same: the spread of `offered` went to one member, and the third node registered 60 ms later.
+- **Second fix:** when the wait of `spread` ends, the table is read again and the members that came in meanwhile also get the `definition-apply`. At that point every member of the first reading answered (it already applied), and a node that is not in the table yet has not finished its register, so it pulls the definitions only later, from members that already have the change. The owner's `coordinate` uses the same `spread` and has the same correction.
+- **Test of the second fix:** `tests/cold_start.rs::a_node_that_registers_while_an_offer_is_spreading_also_receives_it` (UC-RTN-058): the `definition-apply` to node 1 is held back (the call gives up after 5 s), a new node that was cut from the network registers while node 2 waits and stops before it pulls the definitions (`pause_sync` in `topics`), and node 2 must send the change to it too; it fails without the fix (`node 2 tells the new node, which came in during the spread`). Under load the register alone may take more than those 5 s; then the attempt tests nothing, the test waits for that node to finish its join (one node synchronizes at a time) and tries again with another node, up to 5 times.
+- **Verification of the second fix:** `KEEP_GOING=1 ROUNDS=120 PAR=10 docker/hang-hunt.sh cold_start`: 1200 process runs with **no** failure of `when_several_nodes_connect…` or of `a_node_that_joins_offers…` (before: 2 in 1800). The final version of the new test, in `KEEP_GOING=1 ROUNDS=30 PAR=10 docker/hang-hunt.sh cold_start`: 300 runs, no failure of it.
 
 **History**
 
@@ -282,6 +415,9 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-26 | `docker/hang-hunt.sh cold_start` (10 processes at once): failure in round 13 and in round 16 of another run, both in `when_several_nodes_connect…`. With the temporary log, the cause above. |
 | 2026-10-26 | Fix applied and test added (fails without the fix). The same hunt with the fix, 1500 process runs: see the next row. |
 | 2026-10-26 | Verification: `KEEP_GOING=1 docker/hang-hunt.sh cold_start …`, 150 rounds of 10 processes at once (1500 runs of the offer tests): **no** `waited 30 s` for a definition, against 2 in about 290 runs before the fix. The only 2 problems were `AddrInUse` when restarting a node (see "A restarted test node that loses its port to another test"), unrelated. |
+| 2026-11-09 | **Reopened**: `waited 30 s for: the highest version in every node` in `when_several_nodes_connect…`, twice in 1800 process runs of `KEEP_GOING=1 ROUNDS=180 PAR=10 docker/hang-hunt.sh cold_start` (rounds 45 and 54). The log at the default level does not say which node misses which definition; the next step is the hunt of this test alone with temporary lines at `offer`, `learn` and `spread`. |
+| 2026-11-09 | The same hunt with temporary `HUNT` lines at `offer`, `apply_with` and `spread` (since removed): 2 failures in 1800 runs, one of each test of the area (rounds 15 and 148), both the second cause above. Fixed in `spread` with the test above. |
+| 2026-11-09 | Verified: 1200 runs with no failure of the two tests of the area. The first version of the new test depended on the whole join fitting in the 5 s of the call and failed in the container under load; rewritten (the pause in `topics` and the new attempt) and run 300 times with no failure. The only failure of those 300 was another one: [a node excluded while it synchronizes that cannot come back](#a-node-excluded-while-it-synchronizes-that-cannot-come-back). |
 
 ## A channel accept that locked the peers twice
 
@@ -402,6 +538,8 @@ What the issues above taught, so the next one is found faster (the checklist for
 - **A `waited 30 s` for a state that never arrives is a lost delivery, not a slow one.** Ask who was supposed to send it, to whom, and who was in the list of recipients at that instant. A `broadcast` (or a frame of the channel) reaches only the peers that exist **now**: a node that registers a few milliseconds later, and is still synchronizing, never gets it unless some other path (a `definition-apply` with `spread`, the heartbeat, the synchronization itself) covers it. A new way of delivering state to the cluster needs that second path, or a reason why it is not needed.
 - **When the log has no line about the suspect path, add it, run again and take it out.** The failing run of the offer had no line about the offer. Temporary lines at each step (what was offered, to whom it was sent, what each node learned), marked with a word you can search (`HUNT`), and the same hunt, gave the order of the events in milliseconds; the lines were removed with `git checkout` before the fix. Keep the captured log (`target/`).
 - **A test that fabricates the state of a node competes with the real node.** The heartbeat of a peer is its complete state and overwrites what the test injected; inject again until the effect is seen, or wait for the real state. A time margin of a few hundred milliseconds does not hold on a loaded runner: the hunt with all the tests of the binary at once finds it (a single test alone did not fail in 320 runs).
+- **Look at which target failed before reading the server.** The count of the gateway was read in the node's code for a while; the failed job was the one of the emulators.
+- **A client error is proved on the wire.** A capture in the server's network namespace says who closes and whether the response is well framed; then a wrapper of the client's connection and `httptrace` say why. A capture must start after the last restart of the container, or it sees an old namespace.
 - **A fix is not done without a test that fails without it** (here, one that fails by timeout and not by hanging) and without repeating the run that used to hang.
 - **Look at what happened before theorizing about what could.** The pending item blamed an expired register for two years of reasoning; the dump of the failing message and a log line at each register showed that nothing had expired and that a check and a reservation were two steps. A report of a failure should say where the thing is now, on each node (`diagnosis` in `tests/chaos.rs`).
 - **A retry that keeps failing is a state to inspect, not a timing to wait out.** The first note here proposed that `drain_topic` try again; the real cause would have stayed hidden. Keeping the cluster up after the failure and comparing the same message on every node (`memoryMessages`, the `excluded` table) found it in one run.

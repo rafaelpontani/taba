@@ -17,6 +17,7 @@
 //! (sections 4.7 and 4.8).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -68,6 +69,9 @@ pub struct Recovery {
     journals: Mutex<HashMap<String, CachedJournal>>,
     /// One decision of the vote at a time (the coordinator's call and the node's own poll may meet).
     decision: tokio::sync::Mutex<()>,
+    /// The logs of excluded messages of every life this node keeps are in the node's (doc 07, section 10.7): until
+    /// then the others do not count its lives as announced.
+    logs_ready: AtomicBool,
 }
 
 fn disk(error: &std::io::Error) -> TabaError {
@@ -97,6 +101,7 @@ impl Recovery {
             max_items: max_items.max(2),
             journals: Mutex::new(HashMap::new()),
             decision: tokio::sync::Mutex::new(()),
+            logs_ready: AtomicBool::new(false),
         })
     }
 
@@ -184,7 +189,8 @@ impl Recovery {
         meta.receipt_token = None;
         let body = record.body.clone();
         tokio::task::spawn_blocking(move || {
-            let loaded = messages.apply_load_with(&topic, meta.clone(), body, durable)?;
+            // A message acknowledged since the primary checked the dead is not brought back (`Loaded::Dead`).
+            let loaded = messages.apply_recovered(&topic, meta.clone(), body, durable)?;
             // Two copies of the same message: the one this node already has stays, with the greater counter.
             if loaded == Loaded::Existing {
                 messages.raise_delivery_count(&topic, &meta.id, meta.delivery_count)?;
