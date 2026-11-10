@@ -7498,7 +7498,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-FAL-029
 
-**Caso:** Quando um nó cai, todos os saudáveis abrem a votação, mas só o de **menor `nodeId`** entre os que votaram coordena o desregistro (fase 1 e commit); os outros esperam a vez (`k × write.commit.timeout`) e, achando o nó já fora da tabela, não registram nada (D98).  
+**Caso:** Quando um nó cai, os saudáveis abrem a votação (cada um quando vê o canal cair; um que vê depois da exclusão acha o nó fora da tabela e não a abre), mas só o de **menor `nodeId`** entre os que votaram coordena o desregistro (fase 1 e commit); os outros esperam a vez (`k × write.commit.timeout`) e, achando o nó já fora da tabela, não registram nada (D98). O teste usa uma vez de 5 s, maior que a diferença entre os instantes em que os nós veem a queda sob carga (KI-013).  
 **Nível:** C  
 **Testes:**
   - `tests/failures.rs::only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion`

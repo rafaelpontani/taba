@@ -17,6 +17,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Código | Problema | Status | Achado em | Solução em |
 |---|---|---|---|---|
+| KI-029 | [Um aviso de falha que conta reconexões do canal sob carga](#ki-029-um-aviso-de-falha-que-conta-reconexões-do-canal-sob-carga) | Aberto | 2026-11-10 | — |
 | KI-028 | [Um novo prazo que não chega a todas as cópias em 30 s no arm64](#ki-028-um-novo-prazo-que-não-chega-a-todas-as-cópias-em-30-s-no-arm64) | Aberto | 2026-11-09 | — |
 | KI-027 | [Um teste de token que achou um pedaço do segredo no sal](#ki-027-um-teste-de-token-que-achou-um-pedaço-do-segredo-no-sal) | Corrigido | 2026-11-09 | 2026-11-09 |
 | KI-026 | [Uma mensagem confirmada trazida de volta por uma vida mais antiga](#ki-026-uma-mensagem-confirmada-trazida-de-volta-por-uma-vida-mais-antiga) | Corrigido | 2026-11-09 | 2026-11-09 |
@@ -31,7 +32,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | KI-016 | [Um teste de replicação cujas 14 publicações não caíram no nó isolado](#ki-016-um-teste-de-replicação-cujas-14-publicações-não-caíram-no-nó-isolado) | Corrigido | 2026-11-03 | 2026-11-03 |
 | KI-015 | [Um teste de sincronização cuja segunda store achou o banco travado no arm64](#ki-015-um-teste-de-sincronização-cuja-segunda-store-achou-o-banco-travado-no-arm64) | Corrigido | 2026-11-03 | 2026-11-03 |
 | KI-014 | [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#ki-014-um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Corrigido | 2026-11-03 | 2026-11-04 |
-| KI-013 | [Uma votação de exclusão que falha uma vez na suíte completa](#ki-013-uma-votação-de-exclusão-que-falha-uma-vez-na-suíte-completa) | Aberto | 2026-10-29 | — |
+| KI-013 | [Uma votação de exclusão que falha uma vez na suíte completa](#ki-013-uma-votação-de-exclusão-que-falha-uma-vez-na-suíte-completa) | Corrigido | 2026-10-29 | 2026-11-10 |
 | KI-010 | [Um register que verificou a mensagem antes de tomá-la](#ki-010-um-register-que-verificou-a-mensagem-antes-de-tomá-la) | Corrigido | 2026-10-27 | 2026-10-29 |
 | KI-012 | [Uma rajada do canal que não chega ao outro nó na caça](#ki-012-uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça) | Corrigido | 2026-10-29 | 2026-11-05 |
 | KI-011 | [Um sinal de pronto perdido que a caça não corrige a tempo](#ki-011-um-sinal-de-pronto-perdido-que-a-caça-não-corrige-a-tempo) | Aberto | 2026-10-29 | — |
@@ -45,6 +46,22 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | KI-003 | [Reingresso depois de uma partição simétrica](#ki-003-reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | KI-002 | [Canal saudável que não volta](#ki-002-canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | KI-001 | [Inversão de ordem de travas ao escolher réplicas](#ki-001-inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## KI-029: Um aviso de falha que conta reconexões do canal sob carga
+
+**Status:** Aberto · **Achado em:** 2026-11-10 · **Solução em:** —
+
+- **Teste:** `tests/failures.rs::a_node_that_announces_its_failure_is_excluded_while_its_channel_is_still_up` (UC-FAL-005, UC-FAL-023).
+- **Sintoma:** `failures.rs:274`, `left: 2.0, right: 0.0`: a soma de `taba_cluster_channel_reconnects_total` nos dois nós saudáveis, que o teste espera ser zero (a votação foi aberta pelo aviso do nó, não pela conexão). Na caça que validou o KI-013 (`ROUNDS=30 KEEP_GOING=1 docker/hang-hunt.sh failures`, 8 processos do binário inteiro com os logs detalhados ligados) falhou em 49 das 120 primeiras execuções; não foi visto nas execuções normais.
+- **Causa:** não identificada. A leitura a conferir: sob essa carga o keepalive do canal (200 ms em `FAST`) expira e o canal reconecta uma vez em cada nó saudável, e o contador não fica em zero embora a exclusão esteja certa; se for isso, o defeito está na asserção e não no servidor.
+- **Próximo passo:** ler num log guardado (`target/hang-hunt/run_*.log`) por que os canais reconectaram (o keepalive, ou a própria exclusão fechando-os antes de o contador ser lido).
+- **Não fazer:** aumentar os 30 s do `eventually`.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-10 | Achado na caça que validou o KI-013: 49 falhas em 120 execuções sob essa carga. |
 
 ## KI-028: Um novo prazo que não chega a todas as cópias em 30 s no arm64
 
@@ -285,7 +302,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 ## KI-013: Uma votação de exclusão que falha uma vez na suíte completa
 
-**Status:** Aberto · **Achado em:** 2026-10-29 · **Corrigido em:** —
+**Status:** Corrigido · **Achado em:** 2026-10-29 · **Corrigido em:** 2026-11-10
 
 - **Teste:** `tests/failures.rs::only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion` (UC-FAL da exclusão), a asserção sobre os coordenadores das chamadas `unregister` (linha 1087).
 - **Sintoma:** falhou uma vez num `cargo test` completo num contêiner Linux (22 testes do arquivo em paralelo com a carga dos outros binários); sozinho passou 3 de 3, e uma segunda execução completa passou.
@@ -294,7 +311,8 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 - **A outra asserção (2026-11-10):** no CI o teste também falhou em `all the healthy ones voted` (`network.count("vote") >= 4`), o caso oposto: o de menor ID excluiu o candidato tão rápido que os outros o encontraram já fora da tabela e não abriram a votação deles (o `open` retorna quando o candidato não é membro), então houve menos de quatro chamadas `vote`. As duas asserções dependem do tempo entre os nós; o teste precisa conferir o que o servidor garante (uma exclusão, nenhuma falha) e não quantos nós chegaram a votar ou a coordenar.
 - **Como confirmar:** a caça abaixo, e no log os instantes em que cada nó abriu a votação e fechou o quórum, e quem foi o coordenador a mais. Se os ranks diferirem entre os nós (um eleitor que não respondeu a um deles), a causa pode estar no servidor.
 - **Correção, se confirmada (no teste):** um `TABA_WRITE_COMMIT_TIMEOUT` maior para este teste (5 s, por exemplo), para o escalonamento absorver a variação sob carga; ou a asserção trocada por "o primeiro `unregister` veio do de menor ID e a exclusão não falhou".
-- **Próximo passo:** `docker/hang-hunt.sh failures only_the_lowest_node_id` e ler qual nó foi o coordenador a mais.
+- **Correção (2026-11-10, no teste):** o teste roda com `TABA_WRITE_COMMIT_TIMEOUT=5s`, de modo que a vez do segundo nó (5 s) é maior que a diferença entre os instantes em que os nós veem a queda sob carga; e a contagem de todos os `vote` foi trocada por "o coordenador pediu o voto a cada um dos outros três saudáveis", que vale sempre que ele fechou o quórum. O servidor não mudou: o que ele garante (uma exclusão, nenhuma falha) já era conferido.
+- **Verificação:** `ROUNDS=30 KEEP_GOING=1 docker/hang-hunt.sh failures` (8 processos do binário inteiro ao mesmo tempo, logs detalhados ligados): nas 15 primeiras rodadas (120 execuções) este teste não falhou nenhuma vez. As outras falhas dessa caça são o [KI-029](#ki-029-um-aviso-de-falha-que-conta-reconexões-do-canal-sob-carga) e o [KI-017](#ki-017-um-nó-que-para-de-responder-e-não-é-excluído-em-30-s).
 
 **Histórico**
 
@@ -303,6 +321,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-10-29 | Uma falha na suíte completa, 3 passagens sozinho, 1 passagem completa depois. |
 | 2026-11-09 | Hipótese registrada a partir da leitura do código (o escalonamento de 400 ms dos testes curto demais sob carga); ainda não confirmada por uma caça. |
 | 2026-11-10 | Falhou no job do servidor em amd64 do pull request "Release v0.3.12" (#82) na outra asserção, `all the healthy ones voted`; o job rodou de novo. |
+| 2026-11-10 | Corrigido no teste (vez de 5 s, o voto conferido no coordenador); 120 execuções na caça sem falha deste teste. |
 
 ## KI-010: Um register que verificou a mensagem antes de tomá-la
 

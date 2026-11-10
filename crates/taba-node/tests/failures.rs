@@ -1057,7 +1057,9 @@ async fn once_the_exclusion_is_decided_the_nodes_drop_the_channel_and_the_return
 /// UC: UC-FAL-029
 #[tokio::test]
 async fn only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion() {
-    let cluster = TestCluster::start(5).await;
+    // A turn of 5 s (and not the 400 ms of `FAST`): each node sees the channel of node 5 fall at a different moment,
+    // and under load that difference passed the 400 ms, so a second node coordinated before the lowest did (KI-013).
+    let cluster = TestCluster::start_with(5, &[("TABA_WRITE_COMMIT_TIMEOUT", "5s")]).await;
     settled(&cluster).await;
     let lowest = (1..=4)
         .min_by_key(|n| cluster.node_id(*n))
@@ -1070,8 +1072,8 @@ async fn only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion() {
     })
     .await;
 
-    // All opened the vote, but only the one with the lowest ID registered the unregistration on the others: the rest
-    // waited their turn and found the node already out of the table.
+    // Only the one with the lowest ID registered the unregistration on the others: the rest waited their turn and
+    // found the node already out of the table (or did not even open their vote, when the exclusion came first).
     let coordinators: std::collections::BTreeSet<String> = cluster
         .network
         .calls()
@@ -1084,9 +1086,17 @@ async fn only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion() {
         std::collections::BTreeSet::from([host_of(lowest)]),
         "the exclusion's coordinator"
     );
+    // The coordinator closed a quorum: it asked each of the other three healthy ones for its vote. How many of the
+    // others opened a vote of their own depends on when each saw the channel fall, so it is not counted.
+    let asked = cluster
+        .network
+        .calls()
+        .iter()
+        .filter(|call| call.request == "vote" && call.from == host_of(lowest))
+        .count();
     assert!(
-        cluster.network.count("vote") >= 4,
-        "all the healthy ones voted"
+        asked >= 3,
+        "the coordinator asked the healthy ones to vote: {asked}"
     );
     cluster.shutdown().await;
 }

@@ -17,6 +17,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Code | Issue | Status | Found on | Fixed on |
 |---|---|---|---|---|
+| KI-029 | [A failure notice that counts reconnections of the channel under load](#ki-029-a-failure-notice-that-counts-reconnections-of-the-channel-under-load) | Open | 2026-11-10 | — |
 | KI-028 | [A new deadline that does not reach every copy in 30 s on arm64](#ki-028-a-new-deadline-that-does-not-reach-every-copy-in-30-s-on-arm64) | Open | 2026-11-09 | — |
 | KI-027 | [A token test that found a piece of the secret in the salt](#ki-027-a-token-test-that-found-a-piece-of-the-secret-in-the-salt) | Fixed | 2026-11-09 | 2026-11-09 |
 | KI-026 | [An acknowledged message brought back by an older life](#ki-026-an-acknowledged-message-brought-back-by-an-older-life) | Fixed | 2026-11-09 | 2026-11-09 |
@@ -31,7 +32,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | KI-016 | [A replication test whose 14 publications missed the isolated node](#ki-016-a-replication-test-whose-14-publications-missed-the-isolated-node) | Fixed | 2026-11-03 | 2026-11-03 |
 | KI-015 | [A sync test whose second store found the database locked on arm64](#ki-015-a-sync-test-whose-second-store-found-the-database-locked-on-arm64) | Fixed | 2026-11-03 | 2026-11-03 |
 | KI-014 | [A consume with ack that fails once in docker/validate.sh after a drain](#ki-014-a-consume-with-ack-that-fails-once-in-dockervalidatesh-after-a-drain) | Fixed | 2026-11-03 | 2026-11-04 |
-| KI-013 | [An exclusion vote that fails once in the full suite](#ki-013-an-exclusion-vote-that-fails-once-in-the-full-suite) | Open | 2026-10-29 | — |
+| KI-013 | [An exclusion vote that fails once in the full suite](#ki-013-an-exclusion-vote-that-fails-once-in-the-full-suite) | Fixed | 2026-10-29 | 2026-11-10 |
 | KI-010 | [A register that checked the message before taking it](#ki-010-a-register-that-checked-the-message-before-taking-it) | Fixed | 2026-10-27 | 2026-10-29 |
 | KI-012 | [A channel burst that does not reach the other node in the hunt](#ki-012-a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Fixed | 2026-10-29 | 2026-11-05 |
 | KI-011 | [A lost ready signal that the hunt does not correct in time](#ki-011-a-lost-ready-signal-that-the-hunt-does-not-correct-in-time) | Open | 2026-10-29 | — |
@@ -45,6 +46,22 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | KI-003 | [Rejoining after a symmetric partition](#ki-003-rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | KI-002 | [A healthy channel that does not come back](#ki-002-a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | KI-001 | [Lock-order inversion when choosing replicas](#ki-001-lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## KI-029: A failure notice that counts reconnections of the channel under load
+
+**Status:** Open · **Found on:** 2026-11-10 · **Fixed on:** —
+
+- **Test:** `tests/failures.rs::a_node_that_announces_its_failure_is_excluded_while_its_channel_is_still_up` (UC-FAL-005, UC-FAL-023).
+- **Symptom:** `failures.rs:274`, `left: 2.0, right: 0.0`: the sum of `taba_cluster_channel_reconnects_total` on the two healthy nodes, which the test expects to be zero (the vote was opened by the notice of the node, not by the connection). In the hunt that validated KI-013 (`ROUNDS=30 KEEP_GOING=1 docker/hang-hunt.sh failures`, 8 processes of the whole binary with the detailed logs on) it failed in 49 of the first 120 runs; it was not seen in the normal runs.
+- **Cause:** not identified. The reading to check: under that load the keepalive of the channel (200 ms in `FAST`) expires and the channel reconnects once on each healthy node, so the counter is not zero although the exclusion was right; if so, the defect is in the assertion and not in the server.
+- **Next step:** read in a kept log (`target/hang-hunt/run_*.log`) why the channels reconnected (the keepalive, or the exclusion itself closing them before the counter was read).
+- **Do not:** raise the 30 s of `eventually`.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-10 | Found in the hunt that validated KI-013: 49 failures in 120 runs under that load. |
 
 ## KI-028: A new deadline that does not reach every copy in 30 s on arm64
 
@@ -285,7 +302,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 ## KI-013: An exclusion vote that fails once in the full suite
 
-**Status:** Open · **Found on:** 2026-10-29 · **Fixed on:** —
+**Status:** Fixed · **Found on:** 2026-10-29 · **Fixed on:** 2026-11-10
 
 - **Test:** `tests/failures.rs::only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion` (UC-FAL on the exclusion), the assertion on the coordinators of the `unregister` calls (line 1087).
 - **Symptom:** it failed once in a full `cargo test` in a Linux container (22 tests of the file in parallel with the other binaries' load); alone it passed 3 of 3, and a second full run passed.
@@ -294,7 +311,8 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 - **The other assertion (2026-11-10):** in CI the test also failed at `all the healthy ones voted` (`network.count("vote") >= 4`), the opposite case: the lowest excluded the candidate so fast that the others found it already out of the table and did not open their vote (`open` returns when the candidate is not a member), so there were fewer than four `vote` calls. Both assertions depend on the timing between the nodes; the test needs to check what the server guarantees (one exclusion, no failure) and not how many nodes got to vote or coordinate.
 - **How to confirm:** the hunt below, and in the log the instants when each node opened the vote and closed the quorum, and who was the extra coordinator. If the ranks differ between the nodes (a voter that did not answer one of them), the cause may be in the server instead.
 - **Fix, if confirmed (in the test):** a larger `TABA_WRITE_COMMIT_TIMEOUT` for this test (5 s, for example), so the stagger absorbs the variation under load; or the assertion changed to "the first `unregister` came from the lowest and the exclusion did not fail".
-- **Next step:** `docker/hang-hunt.sh failures only_the_lowest_node_id` and read which node was the extra coordinator.
+- **Fix (2026-11-10, in the test):** the test runs with `TABA_WRITE_COMMIT_TIMEOUT=5s`, so the turn of the second node (5 s) is larger than the difference between the moments the nodes see the fall under load; and the count of every `vote` was replaced by "the coordinator asked each of the other three healthy ones for its vote", which holds whenever it closed the quorum. The server did not change: what it guarantees (one exclusion, no failure) was already checked.
+- **Verification:** `ROUNDS=30 KEEP_GOING=1 docker/hang-hunt.sh failures` (8 processes of the whole binary at once, detailed logs on): in the first 15 rounds (120 runs) this test did not fail once. The other failures of that hunt are [KI-029](#ki-029-a-failure-notice-that-counts-reconnections-of-the-channel-under-load) and [KI-017](#ki-017-a-node-that-stops-answering-and-is-not-excluded-in-30-s).
 
 **History**
 
@@ -303,6 +321,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-29 | One failure in the full suite, 3 passes alone, 1 full pass after. |
 | 2026-11-09 | Hypothesis recorded from the reading of the code (the stagger of 400 ms of the tests too short under load); not confirmed by a hunt yet. |
 | 2026-11-10 | Failed in the amd64 server job of the pull request "Release v0.3.12" (#82) at the other assertion, `all the healthy ones voted`; the job ran again. |
+| 2026-11-10 | Fixed in the test (turn of 5 s, the vote checked on the coordinator); 120 runs under the hunt with no failure of this test. |
 
 ## KI-010: A register that checked the message before taking it
 

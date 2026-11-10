@@ -7498,7 +7498,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-FAL-029
 
-**Case:** When a node goes down, all the healthy ones open the vote, but only the one with the **lowest `nodeId`** among those that voted coordinates the deregistration (phase 1 and commit); the others wait their turn (`k × write.commit.timeout`) and, finding the node already out of the table, register nothing (D98).  
+**Case:** When a node goes down, the healthy ones open the vote (each when it sees the channel fall; one that sees it after the exclusion finds the node out of the table and does not open it), but only the one with the **lowest `nodeId`** among those that voted coordinates the deregistration (phase 1 and commit); the others wait their turn (`k × write.commit.timeout`) and, finding the node already out of the table, register nothing (D98). The test uses a turn of 5 s, larger than the difference between the moments the nodes see the fall under load (KI-013).  
 **Level:** C  
 **Tests:**
   - `tests/failures.rs::only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion`
