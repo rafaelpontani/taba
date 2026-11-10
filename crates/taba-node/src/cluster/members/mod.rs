@@ -610,7 +610,14 @@ impl Membership {
                 table.members.push(member);
             }
             Change::Remove { node_id } | Change::Exclude { node_id } => {
-                if excluded {
+                // The freezing keeps a node that served from coming back in a loop (D106). A node excluded while it
+                // was still synchronizing never served: its exclusion only cleans the table, and it joins again
+                // at once (PRB-111). Whoever saw it active freezes it, and its `frozen` frame reaches the others.
+                let synchronizing = table
+                    .members
+                    .iter()
+                    .any(|m| m.node_id == node_id && m.state == MemberState::Syncing);
+                if excluded && !synchronizing {
                     frozen.insert(node_id.clone(), now);
                 }
                 if let Some(left) = table.members.iter().find(|m| m.node_id == node_id) {

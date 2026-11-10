@@ -23,6 +23,8 @@ use crate::storage::messages::MessageStore;
 
 /// How often the nodes ask each other about the restoration while it lasts.
 const POLL: Duration = Duration::from_millis(500);
+/// The waits between the attempts to delete the folder of a restored life (about 3 s in all, KI-005).
+const LIFE_REMOVAL_WAITS_MS: [u64; 5] = [100, 200, 400, 800, 1600];
 
 /// What one node answered to `GET /cluster/restore`.
 struct PeerState {
@@ -311,7 +313,7 @@ impl Recovery {
 
     /// Deletes the folders of the lives once the pass resolved everything it sent and the cluster is restored (doc
     /// 37, section 4.7). An incomplete pass leaves them for the next start.
-    pub fn drop_lives(&self, summary: &RestoreSummary) {
+    pub async fn drop_lives(&self, summary: &RestoreSummary) {
         if !summary.complete() || self.service.restoration().is_restoring() {
             if summary.lives > 0 {
                 tracing::warn!(
@@ -323,8 +325,27 @@ impl Recovery {
         }
         let root = self.messages.storage_root().join(MessageStore::LIVES);
         for life in self.lives() {
-            if let Err(e) = std::fs::remove_dir_all(&life.dir) {
-                tracing::warn!(life = %life.id, error = %e, "could not delete the folder of a restored life");
+            // On Windows a file that another handle still holds for a moment (the SQLite of the life being closed, an
+            // antivirus or the indexer reading a new file) makes the removal fail now and pass a little later: the
+            // folder left behind would be restored again at the next start (KI-005). So it tries a few more times.
+            let mut tries = 1;
+            let mut result = std::fs::remove_dir_all(&life.dir);
+            for wait_ms in LIFE_REMOVAL_WAITS_MS {
+                if result.is_ok() || !life.dir.exists() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(wait_ms)).await;
+                tries += 1;
+                result = std::fs::remove_dir_all(&life.dir);
+            }
+            match result {
+                Err(e) if life.dir.exists() => {
+                    tracing::warn!(life = %life.id, tries, error = %e, "could not delete the folder of a restored life");
+                }
+                _ if tries > 1 => {
+                    tracing::info!(life = %life.id, tries, "folder of a restored life deleted after a retry");
+                }
+                _ => {}
             }
         }
         let _ = std::fs::remove_dir(&root);

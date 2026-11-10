@@ -54,7 +54,9 @@
 - [39 Gateway](39-gateway.md): the gateway for the AWS SDKs (SQS queues and SNS topics on ports of the node), the access keys file, how a call becomes a client API call, what is supported and the differences from SQS and SNS
 - [40 Terraform and OpenTofu provider](40-terraform.md): the provider `rafaelpontani/taba` (queues, distributors, access tokens, four data sources), its configuration, plan, drift and import, `force_destroy`, the optional `create_or_update`, the token secret in the state and its rotation, retries while a node is down, tests and publication through a mirror repository
 - [41 Pulumi provider](41-pulumi.md): the provider `taba` for Pulumi (the Terraform provider bridged; SDKs for TypeScript, Python, .NET and Go), the plugin and package installation, configuration, names and the `secret` of a token, no automatic names, `forceDestroy`, `createOrUpdate`, replacement and rotation, `protect` and `retainOnDelete`, how the SDKs are generated, tests and publication through a mirror repository
-- [36 Known issues](36-known-issues.md): cluster tests turned off with #[ignore] because they fail intermittently in CI, cause and planned fix
+- [36 Known issues](36-known-issues.md): index of the known issues: the open ones, where the open (36a) and the fixed (36f) are, and how a section is written
+- [36a Known issues: open](36a-known-issues.md): intermittent tests and known issues still open (some turned off with #[ignore]), cause found so far and next step
+- [36f Known issues: fixed](36f-known-issues.md): known issues already fixed, with cause, fix and verification, kept as history and for when one comes back
 - [26 Use cases](26-use-cases.md): the UC-AREA-NNN code and the coverage rule
 - [26a Implemented cases](26a-implemented-use-cases.md): the catalogue with a test (generated)
 - [26b Planned cases](26b-planned-use-cases.md): the catalogue without a test (generated)

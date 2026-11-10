@@ -268,6 +268,46 @@ async fn a_replicated_delivery_never_takes_the_copy_back_to_an_earlier_delivery(
     assert_eq!(info.meta.invisible_until_ms, until);
 }
 
+/// UC: UC-INV-007, UC-INV-033
+#[tokio::test]
+async fn a_replicated_delivery_older_than_a_change_of_deadline_does_not_bring_the_deadline_back() {
+    // KI-028: on a copy, the change of deadline (`PUT .../visibility`) of a delivery can get there before the delivery
+    // itself (D199). The delivery that arrives after it is older: it brings its counter, not its deadline.
+    let c = clustered();
+    queue_in(&c, "orders").await;
+    let id = c.publish("orders", "1", false);
+    let delivered = c.h.clock.now_millis() + 60_000;
+    let changed = c.h.clock.now_millis() + 600_000;
+    c.h.messages
+        .apply_change("orders", &id, changed, "tok")
+        .unwrap();
+    let late =
+        c.h.messages
+            .apply_deliveries("orders", &[(id.clone(), delivered, 1, "tok".to_owned())]);
+    assert!(late.iter().all(Result::is_ok), "{late:?}");
+    let info = c.h.messages.message_info("orders", &id).unwrap().unwrap();
+    assert_eq!(info.meta.invisible_until_ms, changed, "the change stays");
+    assert_eq!(info.meta.delivery_count, 1, "the counter of the delivery");
+
+    // The same delivery repeated after the change (a resend) does not undo it either.
+    let again =
+        c.h.messages
+            .apply_deliveries("orders", &[(id.clone(), delivered, 1, "tok".to_owned())]);
+    assert!(again.iter().all(Result::is_ok));
+    let info = c.h.messages.message_info("orders", &id).unwrap().unwrap();
+    assert_eq!(info.meta.invisible_until_ms, changed);
+
+    // A newer delivery (another token, a greater counter) is applied as before.
+    let newer = c.h.messages.apply_deliveries(
+        "orders",
+        &[(id.clone(), delivered + 1, 2, "tok2".to_owned())],
+    );
+    assert!(newer.iter().all(Result::is_ok));
+    let info = c.h.messages.message_info("orders", &id).unwrap().unwrap();
+    assert_eq!(info.meta.invisible_until_ms, delivered + 1);
+    assert_eq!(info.meta.delivery_count, 2);
+}
+
 /// UC: UC-INV-008
 #[tokio::test]
 async fn the_ack_removes_the_copy_and_only_the_owner_counts_it() {

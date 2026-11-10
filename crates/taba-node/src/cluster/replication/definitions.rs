@@ -362,7 +362,7 @@ impl Definitions {
     ///
     /// When the wait ends the table is read again, and the members that came in meanwhile receive the change too: a
     /// node whose register committed after the first reading pulls the definitions from a member that may still be
-    /// applying this change, and the frame of `relay` does not reach it (doc 36, "A definition offered to a node that
+    /// applying this change, and the frame of `relay` does not reach it (doc 36f, "A definition offered to a node that
     /// was still joining"). A node that is not in the table at the second reading has not finished its register yet,
     /// so it pulls only later, from members that already applied.
     async fn spread(&self, decided: &DefinitionApply, done: &[String]) {

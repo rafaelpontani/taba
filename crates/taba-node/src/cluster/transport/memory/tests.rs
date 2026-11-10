@@ -198,6 +198,32 @@ async fn the_delay_of_a_kind_slows_only_that_kind_of_call() {
 }
 
 #[tokio::test]
+async fn a_held_kind_of_call_is_recorded_and_waits_until_it_is_released() {
+    let (network, handlers) = network_with(&["10.0.0.1", "10.0.0.2"]);
+    let one = network.transport("10.0.0.1");
+    network.hold_kind("commit");
+
+    // Another kind goes through; the held one is recorded and does not reach the handler.
+    one.call(&addr("10.0.0.2"), Request::ListNodes)
+        .await
+        .unwrap();
+    let held = tokio::spawn({
+        let one = one.clone();
+        async move { one.call(&addr("10.0.0.2"), op()).await }
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(!held.is_finished());
+    assert_eq!(network.count("commit"), 1);
+    assert_eq!(handlers[1].callers.lock().unwrap().len(), 1);
+
+    // Released, the waiting call reaches the handler, and so do the next ones.
+    network.release_kind("commit");
+    held.await.unwrap().unwrap();
+    one.call(&addr("10.0.0.2"), op()).await.unwrap();
+    assert_eq!(handlers[1].callers.lock().unwrap().len(), 3);
+}
+
+#[tokio::test]
 async fn a_balancer_spreads_the_calls_over_the_live_nodes() {
     let (network, handlers) = network_with(&["10.0.0.1", "10.0.0.2", "10.0.0.3"]);
     let balancer = PeerAddr::new("lb", 8081);

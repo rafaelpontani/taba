@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hunts a test that hangs (or fails) only sometimes, which a normal run never shows (doc 25, "Investigating a test that
-# hangs or fails only sometimes"; the case that taught it is in doc 36, "A channel accept that locked the peers twice").
+# hangs or fails only sometimes"; the case that taught it is in doc 36f, "A channel accept that locked the peers twice").
 #
 # In a Linux container (the Windows binary has no gdb) it builds one integration test binary, starts it in several
 # processes at once, round after round, with the detailed node logs on (`TABA_TEST_LOG`), and watches each round:

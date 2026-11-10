@@ -3,7 +3,7 @@ title: Testing
 summary: How Taba is tested — the levels (unit, one node, simulated cluster, connectors, end to end), the test tools (TestNode, TestCluster, in-memory network, manual clock, fake OTLP collector) and how to write and run a test.
 type: guide
 status: stable
-verified-on: 2026-11-07 @ 4fbb808
+verified-on: 2026-11-10 @ d6e1d66
 sources: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, connectors/contract, docker/validate.sh, docker/seed-demo.sh, docker/hang-hunt.sh]
 ---
 
@@ -53,7 +53,7 @@ In numbers: ~330 tests in these files plus the unit tests of the modules; the cl
 |---|---|
 | **`TestNode`** (`mod.rs`) | Starts **one real node** on free ports, disk in a temporary folder. `TestNode::single()` (a node in the one-node profile, already active and with its restoration done) and `::production()`; `builder()` (the one-node profile by default) with `.env(name, value)`, `.in_network(&network, host)`, `.clock(clock)`, `.real(ip, entry)`, `.single_node()`, `.production()`. Methods: `client_url()`, `operations_url()`, `cluster_url()`, `client_get()`, `metrics()`, `stats()`, `storage_dir()`, `shutdown()`. Helpers: `series()` (reads a `/metrics` series), `error_code()` (checks status and returns the `code`) |
 | **`TestCluster`** (`cluster.rs`) | **Several nodes in the same process** (node `n` = `10.0.0.n`), linked by the **`MemoryNetwork`** and by **a shared manual `Clock`**; the load balancer (`balancer:8081`) distributes the calls. `start(n)`, `start_with(n, env)`, `add_node()`, `spawn_node()`, `respawn_node()`, `node(n)`, `table(n)`, `member_ids(n)`. Helpers: `eventually(…)` (waits for a condition), `settled()` (stable cluster), `create_queue()`, `name_owned_by()` (finds a topic name whose owner is node n), `pause_sync()`/`wait_phase()` (stops in the middle of a synchronization phase), `replication_of()`, `channels_of()`, `signals_of()` |
-| **`MemoryNetwork`** (`src/cluster/transport/memory`) | The test `Transport`: **partition** between two nodes (or in one direction only) or isolation of one, **lost replies** (the call runs, the caller never hears), **loss** per link drawn from a seed, **healing** of everything at once, **loss** of the next calls to a node (or of a kind), **delay** on all calls, **mute** node (accepts and does not answer), node that **goes down** (disappears from the network) and **load balancer** |
+| **`MemoryNetwork`** (`src/cluster/transport/memory`) | The test `Transport`: **partition** between two nodes (or in one direction only) or isolation of one, **lost replies** (the call runs, the caller never hears), **loss** per link drawn from a seed, **healing** of everything at once, **loss** of the next calls to a node (or of a kind), **delay** on all calls (or of a kind), a kind of call **held** until the test releases it (`hold_kind`/`release_kind`: to keep a phase open until something else happened, instead of guessing how long it takes), **mute** node (accepts and does not answer), node that **goes down** (disappears from the network) and **load balancer** |
 | **`ManualClock`** (`src/core/clock`) | The test clock: the test advances it (invisibility, `ttl`, freezing, voting, `idleTimeout`) |
 | **`RealCluster`** (`real.rs`) | Nodes over **real TCP on `127.0.0.x`**, with the HTTP `Transport` and **mutual TLS**; certificate generation and rotation (`cert_dir`, `new_pair`, `add_named_pair`), connection with or without a certificate (`connect`, `anonymous_client`) |
 | **Fake OTLP collector** (`otlp.rs`) | `Collector::http()` and `::grpc(tls)`, with `metrics()`, `spans()`, `log_records()`. The OTLP tests **run one at a time**, because the `tracing` subscriber belongs to the process |
@@ -133,7 +133,7 @@ cargo test --release -p taba-node --lib engine::messages::tests::cost -- --nocap
 4. **Read the stack.** A frame of the crate's own function under `Mutex::lock` (or `RwLock::read`/`write`) with no other thread holding that lock is a lock taken twice by the same thread; two threads, each inside a lock the other holds, is an inversion. With the `current_thread` runtime of `#[tokio::test]` there is a single thread to look at.
 5. **Make the test fail instead of hang.** When the call under test can block for good, run it on its own `std::thread` (entering the runtime with `Handle::enter` if it spawns tasks) and wait with `mpsc::Receiver::recv_timeout`; see `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node`.
 
-The case that taught this is in [36-known-issues.md](36-known-issues.md#a-channel-accept-that-locked-the-peers-twice).
+The case that taught this is in [36f-known-issues.md](36f-known-issues.md#ki-006-a-channel-accept-that-locked-the-peers-twice).
 
 ## The connector contract tests: `connectors/contract/run.sh`
 

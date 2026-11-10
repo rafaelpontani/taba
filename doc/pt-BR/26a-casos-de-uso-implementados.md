@@ -3,7 +3,7 @@ título: Casos de uso implementados
 resumo: O catálogo dos casos de uso do Taba que têm ao menos um teste que os cita, por área, com o caso, o nível e os testes que o provam.
 tipo: referência
 status: estável
-verificado-em: 2026-11-07 @ 4fbb808
+verificado-em: 2026-11-10 @ d6e1d66
 fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp, connectors/terraform]
 ---
 
@@ -44,7 +44,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 24 | 5 |
 | `ING` | Entrada de nó (bootstrap) | 33 | 4 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 32 | 1 |
-| `FRZ` | Período de freezing | 13 | 1 |
+| `FRZ` | Período de freezing | 14 | 1 |
 | `CNC` | Concorrência entre mudanças de membros | 12 | 3 |
 | `SIN` | Sincronização distribuída de blocos | 31 | 1 |
 | `STR` | Streams NDJSON entre nós | 8 | 7 |
@@ -6280,7 +6280,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-CAN-029
 
 **Caso:** Um canal aberto por um nó que os peers **ainda não conhecem** é recusado **sem bloquear o nó**  
-**Então:** o `accept` procura o peer, pede ao `sync_members` que ajuste os canais à tabela e procura de novo; quem continua desconhecido é descartado. Ele nunca trava os peers uma segunda vez enquanto os segura (esse deadlock parava o nó para sempre: doc 36, "Um accept de canal que travou os peers duas vezes").  
+**Então:** o `accept` procura o peer, pede ao `sync_members` que ajuste os canais à tabela e procura de novo; quem continua desconhecido é descartado. Ele nunca trava os peers uma segunda vez enquanto os segura (esse deadlock parava o nó para sempre: doc 36f, "Um accept de canal que travou os peers duas vezes").  
 **Nível:** C  
 **Testes:**
   - `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node`
@@ -6349,6 +6349,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `tests/replication.rs::the_visibility_can_be_changed_and_an_expired_one_is_redelivered_without_propagation`
 
+  - `src/engine/messages/tests/cluster.rs::a_replicated_delivery_older_than_a_change_of_deadline_does_not_bring_the_deadline_back`
 ---
 
 ### UC-INV-008
@@ -6573,6 +6574,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `src/engine/messages/tests/cluster.rs::on_a_plain_queue_a_copy_that_is_not_the_owner_only_checks_that_the_message_exists`
   - `src/engine/messages/tests/cluster.rs::a_replicated_delivery_never_takes_the_copy_back_to_an_earlier_delivery`
 
+  - `src/engine/messages/tests/cluster.rs::a_replicated_delivery_older_than_a_change_of_deadline_does_not_bring_the_deadline_back`
 ---
 
 
@@ -7230,6 +7232,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `tests/failures.rs::a_node_that_stops_answering_with_the_connection_open_is_detected_and_excluded`
+  - `tests/failures.rs::a_connection_the_mute_node_opens_does_not_make_it_reachable_to_the_vote`
 
 ---
 
@@ -7396,6 +7399,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `tests/failures.rs::a_node_that_stays_down_is_excluded_by_two_of_three_and_every_table_changes`
+  - `tests/failures.rs::a_commit_that_arrives_after_the_membership_frame_is_not_counted_again_as_a_join`
 
 ---
 
@@ -7498,7 +7502,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-FAL-029
 
-**Caso:** Quando um nó cai, todos os saudáveis abrem a votação, mas só o de **menor `nodeId`** entre os que votaram coordena o desregistro (fase 1 e commit); os outros esperam a vez (`k × write.commit.timeout`) e, achando o nó já fora da tabela, não registram nada (D98).  
+**Caso:** Quando um nó cai, os saudáveis abrem a votação (cada um quando vê o canal cair; um que vê depois da exclusão acha o nó fora da tabela e não a abre), mas só o de **menor `nodeId`** entre os que votaram coordena o desregistro (fase 1 e commit); os outros esperam a vez (`k × write.commit.timeout`) e, achando o nó já fora da tabela, não registram nada (D98). O teste usa uma vez de 5 s, maior que a diferença entre os instantes em que os nós veem a queda sob carga (KI-013).  
 **Nível:** C  
 **Testes:**
   - `tests/failures.rs::only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion`
@@ -7662,6 +7666,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `src/cluster/members/tests.rs::the_frozen_list_has_only_the_nodes_still_in_freezing`
   - `tests/freezing.rs::the_channel_snapshot_carries_the_nodes_still_in_freezing`
+
+---
+
+### UC-FRZ-015
+
+**Caso:** Um nó excluído enquanto ainda sincronizava (`syncing` na tabela) não fica em freezing: entra de novo na hora, com o mesmo ID (PRB-111).  
+**Nível:** U, C  
+**Testes:**
+  - `src/cluster/members/tests.rs::a_node_excluded_while_it_synchronizes_is_not_frozen_and_an_active_one_is`
+  - `tests/failures.rs::a_node_excluded_while_it_synchronizes_is_not_frozen_and_joins_again`
 
 ---
 
@@ -8624,6 +8638,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `tests/restore_lives.rs::a_life_outside_the_window_is_not_restored_and_its_folder_goes_with_the_end_of_the_pass`
 
+  - `tests/restore_lives.rs::the_folder_of_a_restored_life_is_deleted_even_if_a_file_in_it_is_held_for_a_moment`
 ---
 
 ### UC-RTN-050
@@ -8705,7 +8720,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-058
 
 **Caso:** Uma definição oferecida por um nó que entrou chega a **todo membro da tabela**, não só aos peers que o canal conhece naquele instante
-**Então:** além do quadro do canal, o nó envia um `definition-apply` a cada membro (uma mudança decidida por um dono faz o mesmo), então um nó que se registrou milissegundos depois e ainda sincroniza a grava com os eventos e a aplica; quando a espera das respostas termina a tabela é lida de novo, e um membro que entrou nesse meio-tempo também a recebe; o lock da chave é solto antes do envio (doc 36, "Uma definição oferecida a um nó que ainda estava entrando").
+**Então:** além do quadro do canal, o nó envia um `definition-apply` a cada membro (uma mudança decidida por um dono faz o mesmo), então um nó que se registrou milissegundos depois e ainda sincroniza a grava com os eventos e a aplica; quando a espera das respostas termina a tabela é lida de novo, e um membro que entrou nesse meio-tempo também a recebe; o lock da chave é solto antes do envio (doc 36f, "Uma definição oferecida a um nó que ainda estava entrando").
 **Nível:** C
 **Testes:**
   - `tests/cold_start.rs::an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to_the_peers_the_channel_knows`
