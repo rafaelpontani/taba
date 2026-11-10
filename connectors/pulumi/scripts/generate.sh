@@ -30,7 +30,10 @@ pulumi_go -e PULUMI_VERSION="$PULUMI_VERSION" -- '
   done
   # The Go SDK is its own module (tag sdk/vX.Y.Z of the mirror), with the Pulumi SDK pinned to the CLI version.
   cd sdk
+  # The go line comes from the provider module, not from the image: golang:1.26 moves with every patch release, and
+  # go mod init would write its own version (the check of the SDKs then failed on every new Go patch).
   go mod init github.com/rafaelpontani/pulumi-taba/sdk >/dev/null 2>&1
+  go mod edit -go="$(sed -n "s/^go //p" ../provider/go.mod | tr -d "\r")"
   go get "github.com/pulumi/pulumi/sdk/v3@v$PULUMI_VERSION" >/dev/null 2>&1
   GOFLAGS="-mod=mod -buildvcs=false" go mod tidy >/dev/null 2>&1
   cd ..; rm -rf sdk/dotnet/bin sdk/dotnet/obj'
