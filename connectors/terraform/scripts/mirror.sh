@@ -34,7 +34,10 @@ else
   (cd "$root/connectors/terraform" && git ls-files -z | xargs -0 cp --parents -t "$work/mirror")
   mkdir go
   (cd "$root/connectors/go" && git ls-files -z | xargs -0 cp --parents -t "$work/mirror/go")
-  cp "$root/LICENSE" .
+  # The connectors' license (Apache-2.0, D164), not the server's: the provider and connectors/go are connectors, and
+  # the OpenTofu Registry only shows the documentation of a provider whose license is on its approved list.
+  cp "$root/connectors/LICENSE" LICENSE
+  head -n 3 LICENSE | grep -q 'Apache License' || { echo "the mirror LICENSE is not Apache-2.0" >&2; exit 1; }
   sed -i 's#=> \.\./go$#=> ./go#' go.mod
   grep -q '=> ./go$' go.mod || { echo "go.mod has no replace of ../go to rewrite" >&2; exit 1; }
   git add -A
