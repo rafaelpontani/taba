@@ -17,6 +17,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [Um novo prazo que não chega a todas as cópias em 30 s no arm64](#um-novo-prazo-que-não-chega-a-todas-as-cópias-em-30-s-no-arm64) | Aberto | 2026-11-09 | — |
 | [Um teste de token que achou um pedaço do segredo no sal](#um-teste-de-token-que-achou-um-pedaço-do-segredo-no-sal) | Corrigido | 2026-11-09 | 2026-11-09 |
 | [Uma mensagem confirmada trazida de volta por uma vida mais antiga](#uma-mensagem-confirmada-trazida-de-volta-por-uma-vida-mais-antiga) | Corrigido | 2026-11-09 | 2026-11-09 |
 | [Uma votação da partida a frio que não fecha em 30 s](#uma-votação-da-partida-a-frio-que-não-fecha-em-30-s) | Corrigido | 2026-11-09 | 2026-11-09 |
@@ -43,6 +44,22 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## Um novo prazo que não chega a todas as cópias em 30 s no arm64
+
+**Status:** Aberto · **Achado em:** 2026-11-09 · **Solução em:** —
+
+- **Teste:** `tests/replication.rs::the_visibility_can_be_changed_and_an_expired_one_is_redelivered_without_propagation` (UC-INV-007, UC-INV-016).
+- **Sintoma:** `waited 30 s for: the new deadline on all the copies` (`common/cluster.rs:89`), no job do servidor em arm64 do `release.yml` final da `v0.3.11` (execução 42725624609, commit `197d008`). O mesmo commit tinha passado nas duas arquiteturas no pull request e no candidato `v0.3.11-rc.3`; rodar de novo o job que falhou passou.
+- **Causa:** não identificada. O log do job não foi estudado.
+- **Próximo passo:** `docker/hang-hunt.sh replication the_visibility_can_be_changed` até guardar uma execução que falha, e ler qual cópia não recebeu o novo prazo e por quê (a mudança da visibilidade é aplicada pelo primário e chega às cópias pelo canal).
+- **Não fazer:** aumentar os 30 s do `eventually`.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-09 | Uma falha no arm64 na release final da `v0.3.11`; o job rodou de novo e passou. |
 
 ## Um teste de token que achou um pedaço do segredo no sal
 

@@ -17,6 +17,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [A new deadline that does not reach every copy in 30 s on arm64](#a-new-deadline-that-does-not-reach-every-copy-in-30-s-on-arm64) | Open | 2026-11-09 | — |
 | [A token test that found a piece of the secret in the salt](#a-token-test-that-found-a-piece-of-the-secret-in-the-salt) | Fixed | 2026-11-09 | 2026-11-09 |
 | [An acknowledged message brought back by an older life](#an-acknowledged-message-brought-back-by-an-older-life) | Fixed | 2026-11-09 | 2026-11-09 |
 | [A cold-start vote that does not close in 30 s](#a-cold-start-vote-that-does-not-close-in-30-s) | Fixed | 2026-11-09 | 2026-11-09 |
@@ -43,6 +44,22 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## A new deadline that does not reach every copy in 30 s on arm64
+
+**Status:** Open · **Found on:** 2026-11-09 · **Fixed on:** —
+
+- **Test:** `tests/replication.rs::the_visibility_can_be_changed_and_an_expired_one_is_redelivered_without_propagation` (UC-INV-007, UC-INV-016).
+- **Symptom:** `waited 30 s for: the new deadline on all the copies` (`common/cluster.rs:89`), in the arm64 server job of the final `release.yml` of `v0.3.11` (run 42725624609, commit `197d008`). The same commit had passed on both architectures in the pull request and in the candidate `v0.3.11-rc.3`; running the failed job again passed.
+- **Cause:** not identified. The log of the job was not studied.
+- **Next step:** `docker/hang-hunt.sh replication the_visibility_can_be_changed` until it keeps a failing run, and read which copy did not get the new deadline and why (the change of the visibility is applied by the primary and reaches the copies through the channel).
+- **Do not:** raise the 30 s of `eventually`.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-09 | One failure on arm64 in the final release of `v0.3.11`; the job ran again and passed. |
 
 ## A token test that found a piece of the secret in the salt
 
