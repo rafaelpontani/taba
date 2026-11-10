@@ -289,6 +289,9 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 - **Teste:** `tests/failures.rs::only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion` (UC-FAL da exclusão), a asserção sobre os coordenadores das chamadas `unregister` (linha 1087).
 - **Sintoma:** falhou uma vez num `cargo test` completo num contêiner Linux (22 testes do arquivo em paralelo com a carga dos outros binários); sozinho passou 3 de 3, e uma segunda execução completa passou.
 - **Causa:** não identificada. Não toca o register de uma mensagem (achado ao validar [um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la)). A leitura a conferir é um segundo nó saudável que também registra a saída antes de ver a primeira terminada.
+- **Hipótese (2026-11-09, não confirmada):** o teste exige algo que o servidor não garante sob carga, então o defeito estaria no teste. No `exclude()` (`cluster/vote/mod.rs`) cada nó que fecha o quórum ordena os eleitores que responderam a ele e espera `rank × write.commit.timeout` antes de coordenar; nos testes esse prazo é de 400 ms (`FAST` em `common/cluster.rs`). No `unregister_node_traced` um nó só envia `unregister` aos outros se a fase 1 do de menor ID ainda não chegou a ele (senão o registro local falha com `cluster.conflict` antes de qualquer chamada). Então um segundo coordenador aparece quando o de menor ID começa a exclusão mais de 400 ms depois do segundo: sob carga cada nó vê o canal do candidato cair num instante diferente, e a votação espera a resposta de todos os eleitores, de modo que um eleitor lento atrasa o quórum de um nó e não o de outro. O segundo nó então recebe `cluster.conflict`, espera, encontra o nó fora da tabela e termina com `excluded`: a exclusão está certa, mas o teste vê dois remetentes de `unregister` e falha.
+- **Como confirmar:** a caça abaixo, e no log os instantes em que cada nó abriu a votação e fechou o quórum, e quem foi o coordenador a mais. Se os ranks diferirem entre os nós (um eleitor que não respondeu a um deles), a causa pode estar no servidor.
+- **Correção, se confirmada (no teste):** um `TABA_WRITE_COMMIT_TIMEOUT` maior para este teste (5 s, por exemplo), para o escalonamento absorver a variação sob carga; ou a asserção trocada por "o primeiro `unregister` veio do de menor ID e a exclusão não falhou".
 - **Próximo passo:** `docker/hang-hunt.sh failures only_the_lowest_node_id` e ler qual nó foi o coordenador a mais.
 
 **Histórico**
@@ -296,6 +299,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | Data | Evento |
 |---|---|
 | 2026-10-29 | Uma falha na suíte completa, 3 passagens sozinho, 1 passagem completa depois. |
+| 2026-11-09 | Hipótese registrada a partir da leitura do código (o escalonamento de 400 ms dos testes curto demais sob carga); ainda não confirmada por uma caça. |
 
 ## Um register que verificou a mensagem antes de tomá-la
 
