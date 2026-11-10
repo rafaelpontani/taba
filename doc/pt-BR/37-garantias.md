@@ -86,7 +86,7 @@ A segunda forma é a que o `.github/workflows/chaos.yml` roda toda noite (fora d
 
 ## O que a rodada achou
 
-Três bugs do servidor, corrigidos na mesma mudança da rodada ([D180](30-decisoes.md), [36-problemas-conhecidos.md](36-problemas-conhecidos.md#a-rodada-de-caos-uma-entrega-além-do-limite-e-um-ack-que-o-dono-nunca-aplicou)):
+Três bugs do servidor, corrigidos na mesma mudança da rodada ([D180](30-decisoes.md), [36-problemas-conhecidos.md](36-problemas-conhecidos.md#ki-009-a-rodada-de-caos-uma-entrega-além-do-limite-e-um-ack-que-o-dono-nunca-aplicou)):
 
 - uma mensagem entregue **uma vez além do `maxDeliveries`** (I5) quando o commit da entrega anterior chegava ao dono depois de a invisibilidade acabar;
 - uma mensagem que ficava **só no dono**, travando o grupo FIFO para sempre (I1), quando um ack que as réplicas tinham aplicado era recusado pelo dono depois de o coordenador registrá-lo de novo.

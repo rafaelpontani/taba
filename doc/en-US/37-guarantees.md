@@ -86,7 +86,7 @@ The second form is what `.github/workflows/chaos.yml` runs every night (outside 
 
 ## What the run found
 
-Three bugs of the server, all fixed in the same change as the run ([D180](30-decisions.md), [36-known-issues.md](36-known-issues.md#the-chaos-run-a-delivery-past-the-limit-and-an-ack-the-owner-never-applied)):
+Three bugs of the server, all fixed in the same change as the run ([D180](30-decisions.md), [36-known-issues.md](36-known-issues.md#ki-009-the-chaos-run-a-delivery-past-the-limit-and-an-ack-the-owner-never-applied)):
 
 - a message delivered **one time past `maxDeliveries`** (I5) when the commit of its previous delivery reached the owner after the invisibility had ended;
 - a message left **only on its owner**, blocking its FIFO group for good (I1), when an ack that the replicas had applied was refused by the owner after the coordinator registered it again.

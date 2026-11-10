@@ -11,41 +11,42 @@ sources: [crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/clu
 
 > Read first: [25-testing.md](25-testing.md).
 
-Each intermittent test or known issue has its own section, **which is never deleted**: when the issue is solved it becomes `Fixed`; if it comes back, it becomes `Reopened` and the history continues in the same section. Tests marked `#[ignore]` pass on the development machine but failed intermittently on the GitHub Actions runners, which are slow and shared. To run one by hand: `cargo test -p taba-node --test <file> <name> -- --ignored`.
+Each intermittent test or known issue has its own section and a code `KI-NNN` (known issue) at the start of its title, given in the order the issues were found; the code is never reused and is the way to cite the issue in commits, pending items and decisions. The section **is never deleted**: when the issue is solved it becomes `Fixed`; if it comes back, it becomes `Reopened` and the history continues in the same section. Tests marked `#[ignore]` pass on the development machine but failed intermittently on the GitHub Actions runners, which are slow and shared. To run one by hand: `cargo test -p taba-node --test <file> <name> -- --ignored`.
 
 Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermittent tests are in [AGENTS.md](../../AGENTS.md).
 
-| Issue | Status | Found on | Fixed on |
-|---|---|---|---|
-| [A new deadline that does not reach every copy in 30 s on arm64](#a-new-deadline-that-does-not-reach-every-copy-in-30-s-on-arm64) | Open | 2026-11-09 | — |
-| [A token test that found a piece of the secret in the salt](#a-token-test-that-found-a-piece-of-the-secret-in-the-salt) | Fixed | 2026-11-09 | 2026-11-09 |
-| [An acknowledged message brought back by an older life](#an-acknowledged-message-brought-back-by-an-older-life) | Fixed | 2026-11-09 | 2026-11-09 |
-| [A cold-start vote that does not close in 30 s](#a-cold-start-vote-that-does-not-close-in-30-s) | Fixed | 2026-11-09 | 2026-11-09 |
-| [A probe that does not end with the node missing in 30 s](#a-probe-that-does-not-end-with-the-node-missing-in-30-s) | Fixed | 2026-11-09 | 2026-11-09 |
-| [A large ReceiveMessage of the older Go SDK that loses its connection under load](#a-large-receivemessage-of-the-older-go-sdk-that-loses-its-connection-under-load) | Fixed | 2026-11-08 | 2026-11-09 |
-| [A count of an emulator right after a receive](#a-count-of-an-emulator-right-after-a-receive) | Fixed | 2026-11-08 | 2026-11-09 |
-| [A message delivered twice after the reunion of a partition](#a-message-delivered-twice-after-the-reunion-of-a-partition) | Fixed | 2026-11-07 | 2026-11-09 |
-| [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first) | Fixed | 2026-11-05 | 2026-11-05 |
-| [A node that stops answering and is not excluded in 30 s](#a-node-that-stops-answering-and-is-not-excluded-in-30-s) | Open | 2026-11-04 | — |
-| [A replication test whose 14 publications missed the isolated node](#a-replication-test-whose-14-publications-missed-the-isolated-node) | Fixed | 2026-11-03 | 2026-11-03 |
-| [A sync test whose second store found the database locked on arm64](#a-sync-test-whose-second-store-found-the-database-locked-on-arm64) | Fixed | 2026-11-03 | 2026-11-03 |
-| [A consume with ack that fails once in docker/validate.sh after a drain](#a-consume-with-ack-that-fails-once-in-dockervalidatesh-after-a-drain) | Fixed | 2026-11-03 | 2026-11-04 |
-| [An exclusion vote that fails once in the full suite](#an-exclusion-vote-that-fails-once-in-the-full-suite) | Open | 2026-10-29 | — |
-| [A register that checked the message before taking it](#a-register-that-checked-the-message-before-taking-it) | Fixed | 2026-10-27 | 2026-10-29 |
-| [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Fixed | 2026-10-29 | 2026-11-05 |
-| [A lost ready signal that the hunt does not correct in time](#a-lost-ready-signal-that-the-hunt-does-not-correct-in-time) | Open | 2026-10-29 | — |
-| [The chaos run: a delivery past the limit and an ack the owner never applied](#the-chaos-run-a-delivery-past-the-limit-and-an-ack-the-owner-never-applied) | Fixed | 2026-10-27 | 2026-10-27 |
-| [A restarted test node that loses its port to another test](#a-restarted-test-node-that-loses-its-port-to-another-test) | Fixed | 2026-10-26 | 2026-11-09 |
-| [A node excluded while it synchronizes that cannot come back](#a-node-excluded-while-it-synchronizes-that-cannot-come-back) | Open | 2026-11-09 | — |
-| [A definition offered to a node that was still joining](#a-definition-offered-to-a-node-that-was-still-joining) | Fixed | 2026-10-26 | 2026-11-09 |
-| [A channel accept that locked the peers twice](#a-channel-accept-that-locked-the-peers-twice) | Fixed | 2026-10-26 | 2026-10-26 |
-| [A FIFO restart test that waits 30 s in a combined run](#a-fifo-restart-test-that-waits-30-s-in-a-combined-run) | Open | 2026-10-22 | — |
-| [A notice test that waits 30 s once in the full suite](#a-notice-test-that-waits-30-s-once-in-the-full-suite) | Fixed | 2026-10-20 | 2026-11-08 |
-| [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
-| [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
-| [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+| Code | Issue | Status | Found on | Fixed on |
+|---|---|---|---|---|
+| KI-028 | [A new deadline that does not reach every copy in 30 s on arm64](#ki-028-a-new-deadline-that-does-not-reach-every-copy-in-30-s-on-arm64) | Open | 2026-11-09 | — |
+| KI-027 | [A token test that found a piece of the secret in the salt](#ki-027-a-token-test-that-found-a-piece-of-the-secret-in-the-salt) | Fixed | 2026-11-09 | 2026-11-09 |
+| KI-026 | [An acknowledged message brought back by an older life](#ki-026-an-acknowledged-message-brought-back-by-an-older-life) | Fixed | 2026-11-09 | 2026-11-09 |
+| KI-025 | [A cold-start vote that does not close in 30 s](#ki-025-a-cold-start-vote-that-does-not-close-in-30-s) | Fixed | 2026-11-09 | 2026-11-09 |
+| KI-024 | [A probe that does not end with the node missing in 30 s](#ki-024-a-probe-that-does-not-end-with-the-node-missing-in-30-s) | Fixed | 2026-11-09 | 2026-11-09 |
+| KI-022 | [A large ReceiveMessage of the older Go SDK that loses its connection under load](#ki-022-a-large-receivemessage-of-the-older-go-sdk-that-loses-its-connection-under-load) | Fixed | 2026-11-08 | 2026-11-09 |
+| KI-021 | [A count of an emulator right after a receive](#ki-021-a-count-of-an-emulator-right-after-a-receive) | Fixed | 2026-11-08 | 2026-11-09 |
+| KI-020 | [A message delivered twice after the reunion of a partition](#ki-020-a-message-delivered-twice-after-the-reunion-of-a-partition) | Fixed | 2026-11-07 | 2026-11-09 |
+| KI-019 | [A batch test that counted the calls before the background commit](#ki-019-a-batch-test-that-counted-the-calls-before-the-background-commit) | Fixed | 2026-11-07 | 2026-11-07 |
+| KI-018 | [A second channel that is not closed first](#ki-018-a-second-channel-that-is-not-closed-first) | Fixed | 2026-11-05 | 2026-11-05 |
+| KI-017 | [A node that stops answering and is not excluded in 30 s](#ki-017-a-node-that-stops-answering-and-is-not-excluded-in-30-s) | Open | 2026-11-04 | — |
+| KI-016 | [A replication test whose 14 publications missed the isolated node](#ki-016-a-replication-test-whose-14-publications-missed-the-isolated-node) | Fixed | 2026-11-03 | 2026-11-03 |
+| KI-015 | [A sync test whose second store found the database locked on arm64](#ki-015-a-sync-test-whose-second-store-found-the-database-locked-on-arm64) | Fixed | 2026-11-03 | 2026-11-03 |
+| KI-014 | [A consume with ack that fails once in docker/validate.sh after a drain](#ki-014-a-consume-with-ack-that-fails-once-in-dockervalidatesh-after-a-drain) | Fixed | 2026-11-03 | 2026-11-04 |
+| KI-013 | [An exclusion vote that fails once in the full suite](#ki-013-an-exclusion-vote-that-fails-once-in-the-full-suite) | Open | 2026-10-29 | — |
+| KI-010 | [A register that checked the message before taking it](#ki-010-a-register-that-checked-the-message-before-taking-it) | Fixed | 2026-10-27 | 2026-10-29 |
+| KI-012 | [A channel burst that does not reach the other node in the hunt](#ki-012-a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Fixed | 2026-10-29 | 2026-11-05 |
+| KI-011 | [A lost ready signal that the hunt does not correct in time](#ki-011-a-lost-ready-signal-that-the-hunt-does-not-correct-in-time) | Open | 2026-10-29 | — |
+| KI-009 | [The chaos run: a delivery past the limit and an ack the owner never applied](#ki-009-the-chaos-run-a-delivery-past-the-limit-and-an-ack-the-owner-never-applied) | Fixed | 2026-10-27 | 2026-10-27 |
+| KI-008 | [A restarted test node that loses its port to another test](#ki-008-a-restarted-test-node-that-loses-its-port-to-another-test) | Fixed | 2026-10-26 | 2026-11-09 |
+| KI-023 | [A node excluded while it synchronizes that cannot come back](#ki-023-a-node-excluded-while-it-synchronizes-that-cannot-come-back) | Open | 2026-11-09 | — |
+| KI-007 | [A definition offered to a node that was still joining](#ki-007-a-definition-offered-to-a-node-that-was-still-joining) | Fixed | 2026-10-26 | 2026-11-09 |
+| KI-006 | [A channel accept that locked the peers twice](#ki-006-a-channel-accept-that-locked-the-peers-twice) | Fixed | 2026-10-26 | 2026-10-26 |
+| KI-005 | [A FIFO restart test that waits 30 s in a combined run](#ki-005-a-fifo-restart-test-that-waits-30-s-in-a-combined-run) | Open | 2026-10-22 | — |
+| KI-004 | [A notice test that waits 30 s once in the full suite](#ki-004-a-notice-test-that-waits-30-s-once-in-the-full-suite) | Fixed | 2026-10-20 | 2026-11-08 |
+| KI-003 | [Rejoining after a symmetric partition](#ki-003-rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
+| KI-002 | [A healthy channel that does not come back](#ki-002-a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
+| KI-001 | [Lock-order inversion when choosing replicas](#ki-001-lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
 
-## A new deadline that does not reach every copy in 30 s on arm64
+## KI-028: A new deadline that does not reach every copy in 30 s on arm64
 
 **Status:** Open · **Found on:** 2026-11-09 · **Fixed on:** —
 
@@ -61,7 +62,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-11-09 | One failure on arm64 in the final release of `v0.3.11`; the job ran again and passed. |
 
-## A token test that found a piece of the secret in the salt
+## KI-027: A token test that found a piece of the secret in the salt
 
 **Status:** Fixed · **Found on:** 2026-11-09 · **Fixed on:** 2026-11-09
 
@@ -77,7 +78,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-11-09 | Seen in the full suite while updating `rusqlite` (unrelated to it: the cause above is in the test); fixed in the test. |
 
-## An acknowledged message brought back by an older life
+## KI-026: An acknowledged message brought back by an older life
 
 **Status:** Fixed · **Found on:** 2026-11-09 · **Fixed on:** 2026-11-09
 
@@ -95,7 +96,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-11-09 | Found by the hunt that verified `PortHold` (round 17 of 180); the log showed the `id` restored again by a life of round 0. Fixed in the order of the restoration, with the two tests above. |
 | 2026-11-09 | Verified: 1800 process runs of the same hunt with the fix, no `came back`. |
 
-## A cold-start vote that does not close in 30 s
+## KI-025: A cold-start vote that does not close in 30 s
 
 **Status:** Fixed · **Found on:** 2026-11-09 · **Fixed on:** 2026-11-09
 
@@ -112,7 +113,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-11-09 | Seen twice in the hunt that verified `PortHold`; recorded with the cause open. |
 | 2026-11-09 | Cause found in the logs (a manifest with a table of two) and fixed in the test (`fall_all`); verified in 1800 runs of `cold_start` and 600 of `regroup` with no failure. |
 
-## A probe that does not end with the node missing in 30 s
+## KI-024: A probe that does not end with the node missing in 30 s
 
 **Status:** Fixed · **Found on:** 2026-11-09 · **Fixed on:** 2026-11-09
 
@@ -129,7 +130,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-11-09 | Seen twice in the hunt that verified `PortHold`; recorded with the cause open. |
 | 2026-11-09 | Cause found in the logs (a manifest with a table of two) and fixed in the test (`fall_all`); verified in 1800 runs of `cold_start` and 600 of `regroup` with no failure. |
 
-## A large ReceiveMessage of the older Go SDK that loses its connection under load
+## KI-022: A large ReceiveMessage of the older Go SDK that loses its connection under load
 
 **Status:** Fixed · **Found on:** 2026-11-08 · **Fixed on:** 2026-11-09
 
@@ -147,7 +148,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-11-08 | Failed in the CI of the release chain of v0.3.10 (gateway contract tests on a Taba node); passed when the job ran again. |
 | 2026-11-09 | Reproduced locally with a 200 KB message and 10 to 12 containers using the CPU (between 1 in 20 and 7 in 20 runs); cause found with a capture and the client's traces, fixed in the driver. |
 
-## A count of an emulator right after a receive
+## KI-021: A count of an emulator right after a receive
 
 **Status:** Fixed · **Found on:** 2026-11-08 · **Fixed on:** 2026-11-09
 
@@ -164,7 +165,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-11-08 | Failed once in the CI of the pull request of the Pulumi provider, on the emulators; passed when the job ran again. |
 | 2026-11-09 | Not reproduced locally. The log of the failed job shows that the target was ElasticMQ, not the node; the line was split as above. |
 
-## A message delivered twice after the reunion of a partition
+## KI-020: A message delivered twice after the reunion of a partition
 
 **Status:** Fixed · **Found on:** 2026-11-07 · **Fixed on:** 2026-11-09
 
@@ -184,7 +185,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-11-07 | `docker/hang-hunt.sh partition` (8 processes at once) reproduced it in round 12: `delivered twice: [(17, 2)]`. The log is kept in `target/hang-hunt/run_12_2.log`, not read yet. |
 | 2026-11-09 | The hunt (40 rounds of 8 processes) failed in 4 processes with the same signature; the cause was found in the log with a temporary line in the test and fixed in the store of the restoration. |
 
-## A batch test that counted the calls before the background commit
+## KI-019: A batch test that counted the calls before the background commit
 
 **Status:** Fixed · **Found on:** 2026-11-07 · **Fixed on:** 2026-11-07
 
@@ -199,7 +200,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-11-07 | One failure on arm64 in #62. Tests fixed; 0 failures in 40 runs of the whole file (10 rounds of 4 processes) on Windows. |
 
-## A second channel that is not closed first
+## KI-018: A second channel that is not closed first
 
 **Status:** Fixed · **Found on:** 2026-11-05 · **Fixed on:** 2026-11-05
 
@@ -215,7 +216,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-11-05 | One failure on arm64 in #52. Not reproduced in the hunt: 0 failures in 480 runs of the test alone (60 rounds of 8 processes) and 0 in 320 runs of the whole file (40 rounds of 8 processes). |
 | 2026-11-05 | Reproduced once in another 320 runs of the whole file, with the log kept. Test fixed; the same hunt then: 0 failures in 320 runs. |
 
-## A node that stops answering and is not excluded in 30 s
+## KI-017: A node that stops answering and is not excluded in 30 s
 
 **Status:** Open · **Found on:** 2026-11-04 · **Fixed on:** —
 
@@ -231,7 +232,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-11-04 | One failure on amd64 in #50; running the job again passed. |
 
-## A replication test whose 14 publications missed the isolated node
+## KI-016: A replication test whose 14 publications missed the isolated node
 
 **Status:** Fixed · **Found on:** 2026-11-03 · **Fixed on:** 2026-11-03
 
@@ -247,7 +248,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-11-03 | Failed once on amd64 in #43 (`ok 14 failed 0`); the test publishes until it sees both outcomes. |
 
-## A sync test whose second store found the database locked on arm64
+## KI-015: A sync test whose second store found the database locked on arm64
 
 **Status:** Fixed · **Found on:** 2026-11-03 · **Fixed on:** 2026-11-03
 
@@ -263,7 +264,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-11-03 | Failed once on arm64 in the release of `main`; the test retries while the database is locked. |
 
-## A consume with ack that fails once in docker/validate.sh after a drain
+## KI-014: A consume with ack that fails once in docker/validate.sh after a drain
 
 **Status:** Fixed · **Found on:** 2026-11-03 · **Fixed on:** 2026-11-04
 
@@ -282,14 +283,15 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-11-04 | Four failures in a row with `cluster.quorum-unavailable` in the same step, including on the commit before the gateway; `v0.3.5` was promoted with the failure recorded in its pull request. |
 | 2026-11-04 | Cause found and fixed: `recover_missing` ignored the log of excluded messages. New test; `docker/validate.sh` passed 3 of 3. |
 
-## An exclusion vote that fails once in the full suite
+## KI-013: An exclusion vote that fails once in the full suite
 
 **Status:** Open · **Found on:** 2026-10-29 · **Fixed on:** —
 
 - **Test:** `tests/failures.rs::only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion` (UC-FAL on the exclusion), the assertion on the coordinators of the `unregister` calls (line 1087).
 - **Symptom:** it failed once in a full `cargo test` in a Linux container (22 tests of the file in parallel with the other binaries' load); alone it passed 3 of 3, and a second full run passed.
-- **Cause:** not identified. It does not touch the register of a message (found while validating [a register that checked the message before taking it](#a-register-that-checked-the-message-before-taking-it)). The reading to check is a second healthy node that also registers the unregistration before it sees the first one finished.
+- **Cause:** not identified. It does not touch the register of a message (found while validating [a register that checked the message before taking it](#ki-010-a-register-that-checked-the-message-before-taking-it)). The reading to check is a second healthy node that also registers the unregistration before it sees the first one finished.
 - **Hypothesis (2026-11-09, not confirmed):** the test asks for something the server does not guarantee under load, so the defect would be in the test. In `exclude()` (`cluster/vote/mod.rs`) each node that closes the quorum sorts the voters that answered it and waits `rank × write.commit.timeout` before it coordinates; in the tests that timeout is 400 ms (`FAST` in `common/cluster.rs`). In `unregister_node_traced` a node only sends `unregister` to the others if phase 1 of the lowest has not reached it yet (otherwise its own register fails with `cluster.conflict` before any call). So a second coordinator shows up when the lowest starts its exclusion more than 400 ms after the second one: under load each node sees the channel of the candidate fall at a different moment, and the vote waits for the answer of every voter, so a slow voter delays the quorum of one node and not of another. The second node then gets `cluster.conflict`, waits, finds the node out of the table and ends with `excluded`: the exclusion is right, but the test sees two senders of `unregister` and fails.
+- **The other assertion (2026-11-10):** in CI the test also failed at `all the healthy ones voted` (`network.count("vote") >= 4`), the opposite case: the lowest excluded the candidate so fast that the others found it already out of the table and did not open their vote (`open` returns when the candidate is not a member), so there were fewer than four `vote` calls. Both assertions depend on the timing between the nodes; the test needs to check what the server guarantees (one exclusion, no failure) and not how many nodes got to vote or coordinate.
 - **How to confirm:** the hunt below, and in the log the instants when each node opened the vote and closed the quorum, and who was the extra coordinator. If the ranks differ between the nodes (a voter that did not answer one of them), the cause may be in the server instead.
 - **Fix, if confirmed (in the test):** a larger `TABA_WRITE_COMMIT_TIMEOUT` for this test (5 s, for example), so the stagger absorbs the variation under load; or the assertion changed to "the first `unregister` came from the lowest and the exclusion did not fail".
 - **Next step:** `docker/hang-hunt.sh failures only_the_lowest_node_id` and read which node was the extra coordinator.
@@ -300,8 +302,9 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-10-29 | One failure in the full suite, 3 passes alone, 1 full pass after. |
 | 2026-11-09 | Hypothesis recorded from the reading of the code (the stagger of 400 ms of the tests too short under load); not confirmed by a hunt yet. |
+| 2026-11-10 | Failed in the amd64 server job of the pull request "Release v0.3.12" (#82) at the other assertion, `all the healthy ones voted`; the job ran again. |
 
-## A register that checked the message before taking it
+## KI-010: A register that checked the message before taking it
 
 **Status:** Fixed · **Found on:** 2026-10-27 · **Fixed on:** 2026-10-29
 
@@ -321,14 +324,14 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-29 | Seen without clock jumps in the hunt (3/96, 5/96, 3/96 on the code before the batches and with them): the batches did not change the rate. |
 | 2026-10-29 | The dump and the lines at each register showed that no register expired: the check ran before the reservation. Fixed by reserving first. 0 failures in 160 processes. |
 
-## A channel burst that does not reach the other node in the hunt
+## KI-012: A channel burst that does not reach the other node in the hunt
 
 **Status:** Fixed · **Found on:** 2026-10-29 · **Fixed on:** 2026-11-05
 
 - **Where:** `tests/channel.rs::each_peer_has_an_out_queue_and_an_in_queue_that_drain` (and, once each, `every_node_has_one_channel_to_each_other_node_and_measures_it` and `two_connections_at_once_end_with_a_single_channel_per_pair`).
 - **Symptom:** in `docker/hang-hunt.sh channel` (8 processes at once) it ends with `waited 30 s for: the burst to reach node 2`, in about 1 process in 14.
 - **Cause:** the test, not the channel. The burst signals `ready` for invented topics (`t0` to `t299`). The next heartbeat (200 ms in the tests) lists the topics that are really ready, and `Signals::apply_keepalive` rightly removes the others from the table of node 2, so `t299` is there only until that heartbeat. On a loaded runner the check, every 10 ms, can miss that window, and then it waits 30 s for a state that will not come back. It was not a consequence of the batches: the same hunt failed at the same rate on the code before them.
-- **Fix:** the test starts with `QUIET` (heartbeat of 30 s). In `every_node_has_one_channel_to_each_other_node_and_measures_it`, a separate cause: `queue_out` was read once and could catch a signal on its way (`left: 1`); it now waits for the queue to empty. The other test once named here is [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first).
+- **Fix:** the test starts with `QUIET` (heartbeat of 30 s). In `every_node_has_one_channel_to_each_other_node_and_measures_it`, a separate cause: `queue_out` was read once and could catch a signal on its way (`left: 1`); it now waits for the queue to empty. The other test once named here is [A second channel that is not closed first](#ki-018-a-second-channel-that-is-not-closed-first).
 - **Verification:** see the history. The server code did not change.
 
 **History**
@@ -337,9 +340,9 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-10-29 | Found in the hunt that validated the `take` and the FIFO forward in the batch; the same rate on the earlier commit. |
 | 2026-11-05 | The hunt of the whole file (40 rounds of 8 processes, on `4892068`) had a problem in 15 rounds: 18 failures of `each_peer_has_an_out_queue_and_an_in_queue_that_drain` and 1 of `every_node_has_one_channel_to_each_other_node_and_measures_it`. |
-| 2026-11-05 | `each_peer_has_an_out_queue_and_an_in_queue_that_drain` failed on arm64 in #52, the first time in CI. With `QUIET`, the same hunt had 0 failures of it in 320 runs (it had 18) and 2 of `every_node_has_one_channel_to_each_other_node_and_measures_it`, fixed next. With both fixes, see [A second channel that is not closed first](#a-second-channel-that-is-not-closed-first). |
+| 2026-11-05 | `each_peer_has_an_out_queue_and_an_in_queue_that_drain` failed on arm64 in #52, the first time in CI. With `QUIET`, the same hunt had 0 failures of it in 320 runs (it had 18) and 2 of `every_node_has_one_channel_to_each_other_node_and_measures_it`, fixed next. With both fixes, see [A second channel that is not closed first](#ki-018-a-second-channel-that-is-not-closed-first). |
 
-## A lost ready signal that the hunt does not correct in time
+## KI-011: A lost ready signal that the hunt does not correct in time
 
 **Status:** Open · **Found on:** 2026-10-29 · **Fixed on:** —
 
@@ -355,7 +358,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-10-29 | Found in the hunt that validated the `take` and the FIFO forward in the batch. The same hunt on the two earlier commits gave the same rate, so it was already there. |
 
-## The chaos run: a delivery past the limit and an ack the owner never applied
+## KI-009: The chaos run: a delivery past the limit and an ack the owner never applied
 
 **Status:** Fixed · **Found on:** 2026-10-27 · **Fixed on:** 2026-10-27
 
@@ -363,7 +366,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 - **Symptom 1 (I5):** with `maxDeliveries: 2` a message was delivered with `deliveryCount: 3`, in most runs of seed 3. Cause: a delivery commit that reached the owner after its own invisibility had ended put the message in the ready list without the release that checks the limit. Fix: `take_candidates` does not deliver a message that used up its deliveries: it hides it for an instant and the next release sends it to the dead-letter (the first form of the fix, an immediate move, broke `a_shorter_ttl_expires_what_is_already_stored_even_in_flight`, which expects the `ttl` to win, and was changed). Test: `a_commit_that_arrives_after_its_invisibility_does_not_deliver_past_the_limit` (fails without the fix).
 - **Symptom 2 (I1):** in about 1 run in 100 a confirmed message was never delivered: it was left only on its owner (the replicas had applied its ack), its delivery needs the replicas, and so its FIFO group stayed blocked for good. Cause: the commit of the ack to the owner arrived after the owner's register had expired; the coordinator registered it again and gave up on the first refusal, either because the receipt had expired or because another operation held the message (`cluster.conflict`). Fix: the register sent again after the decision checks no receipt (`Request::decided`) and, on a conflict, keeps trying until the other operation ends. Tests: `the_register_repeated_after_the_decision_checks_no_receipt` and `an_ack_the_replicas_applied_reaches_the_owner_even_if_another_operation_took_the_message` (fails without the fix).
 - **How it was found:** the first suspect was the checker itself: the trail of a message (`History::trail`) showed that the `maxDeliveries: 2` of one queue had been applied to the others (a false positive, fixed in the checker). Then the failure report was extended with where the message is on each node, and it showed the owner holding a message the replicas no longer had. The baseline without the delivery fix also failed (1 run in 120), so the second cause was independent.
-- **Not fixed:** an ack and a move to the dead-letter both decided when a register expires ([PRB-085](31-pending-items.md), not seen); the failures once attributed to it were [a register that checked the message before taking it](#a-register-that-checked-the-message-before-taking-it).
+- **Not fixed:** an ack and a move to the dead-letter both decided when a register expires ([PRB-085](31-pending-items.md), not seen); the failures once attributed to it were [a register that checked the message before taking it](#ki-010-a-register-that-checked-the-message-before-taking-it).
 - **Do not:** raise the 30 s of `eventually` or let the run stop at the first delivery: the group blocked for good is exactly what the wait is there to show.
 
 **History**
@@ -377,7 +380,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-27 | With both fixes and 35 s clock jumps: no I1 in 400 runs, 3 failures of another shape (I3 and I5, [PRB-077](31-pending-items.md)). With 8 s jumps (below `write.pending.ttl`): **0 failures in 400 runs of the four seeds (1600 runs)**; before the fixes, about 1 in 100 failed. |
 | 2026-10-27 | The check at `take` made `a_shorter_ttl_expires_what_is_already_stored_even_in_flight` fail (the `ttl` must win over the dead-letter); the final form hides the message and leaves the move to the release. Final code: the whole suite passes (47 binaries) and **0 failures in 250 runs of the four seeds (1000 runs)**. |
 
-## A restarted test node that loses its port to another test
+## KI-008: A restarted test node that loses its port to another test
 
 **Status:** Fixed · **Found on:** 2026-10-26 · **Fixed on:** 2026-11-09
 
@@ -397,7 +400,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-28 | **First time in CI**: the `Release` run of the push to `main` (merge of PR #34, amd64) failed in `with_every_node_back_no_message_that_was_confirmed_is_delivered_again_whatever_the_falls` (`cold_start.rs`, `AddrInUse` on the cluster port). `PortHold` added; `cold_start` (13) and `regroup` (3) pass locally. |
 | 2026-11-09 | Verified: 1800 runs of `cold_start` and 1500 of `regroup` under load without `AddrInUse`. `Fixed`. |
 
-## A node excluded while it synchronizes that cannot come back
+## KI-023: A node excluded while it synchronizes that cannot come back
 
 **Status:** Open · **Found on:** 2026-11-09 · **Fixed on:** —
 
@@ -412,7 +415,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-11-09 | Seen once in the hunt that verified the second fix of the section below; cause read in the log and recorded with PRB-111. |
 
-## A definition offered to a node that was still joining
+## KI-007: A definition offered to a node that was still joining
 
 **Status:** Fixed · **Found on:** 2026-10-26 · **Fixed on:** 2026-11-09
 
@@ -438,9 +441,9 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-26 | Verification: `KEEP_GOING=1 docker/hang-hunt.sh cold_start …`, 150 rounds of 10 processes at once (1500 runs of the offer tests): **no** `waited 30 s` for a definition, against 2 in about 290 runs before the fix. The only 2 problems were `AddrInUse` when restarting a node (see "A restarted test node that loses its port to another test"), unrelated. |
 | 2026-11-09 | **Reopened**: `waited 30 s for: the highest version in every node` in `when_several_nodes_connect…`, twice in 1800 process runs of `KEEP_GOING=1 ROUNDS=180 PAR=10 docker/hang-hunt.sh cold_start` (rounds 45 and 54). The log at the default level does not say which node misses which definition; the next step is the hunt of this test alone with temporary lines at `offer`, `learn` and `spread`. |
 | 2026-11-09 | The same hunt with temporary `HUNT` lines at `offer`, `apply_with` and `spread` (since removed): 2 failures in 1800 runs, one of each test of the area (rounds 15 and 148), both the second cause above. Fixed in `spread` with the test above. |
-| 2026-11-09 | Verified: 1200 runs with no failure of the two tests of the area. The first version of the new test depended on the whole join fitting in the 5 s of the call and failed in the container under load; rewritten (the pause in `topics` and the new attempt) and run 300 times with no failure. The only failure of those 300 was another one: [a node excluded while it synchronizes that cannot come back](#a-node-excluded-while-it-synchronizes-that-cannot-come-back). |
+| 2026-11-09 | Verified: 1200 runs with no failure of the two tests of the area. The first version of the new test depended on the whole join fitting in the 5 s of the call and failed in the container under load; rewritten (the pause in `topics` and the new attempt) and run 300 times with no failure. The only failure of those 300 was another one: [a node excluded while it synchronizes that cannot come back](#ki-023-a-node-excluded-while-it-synchronizes-that-cannot-come-back). |
 
-## A channel accept that locked the peers twice
+## KI-006: A channel accept that locked the peers twice
 
 **Status:** Fixed · **Found on:** 2026-10-26 · **Fixed on:** 2026-10-26
 
@@ -460,7 +463,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-26 | Fix applied, test added (fails without the fix). `cargo clippy --all-targets -- -D warnings` clean with the new lint. The two tests, repeated in the same container with 8 processes at once: see the next row. |
 | 2026-10-26 | Verification: 100 rounds of 8 processes at once (800 runs of the two tests) in the container that hung before, none hung; before the fix it hung once in every 16 to 56 runs. The `channel` binary passed (16 tests). |
 
-## A FIFO restart test that waits 30 s in a combined run
+## KI-005: A FIFO restart test that waits 30 s in a combined run
 
 **Status:** Open · **Found on:** 2026-10-22 · **Fixed on:** —
 
@@ -478,7 +481,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-22 | Three full runs (`cargo test -p taba-node --no-fail-fast`) failed with the same `waited 30 s` and one, without the new test in `messages.rs`, passed. It failed in `messages.rs` › `stopping_saves_memory_to_disk_and_the_next_start_resumes_it` (twice) and in `fifo.rs` › `a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate`; the `messages` binary alone passed 3 times in a row and the test alone, 3. The cause is still not identified (it is not a single test). |
 | 2026-10-23 | `messages.rs` › `stopping_saves_memory_to_disk_and_the_next_start_resumes_it` failed with the same `waited 30 s for: the folders of the previous lives to be restored` in 2 of 6 full runs (`cargo test -p taba-node --no-fail-fast`, the `messages` binary taking 34 s instead of 2 s), while a Docker cluster with the test data was running on the same machine; the `messages` binary alone passed 5 times in a row. It appeared while the OpenAPI and port changes were being tested, but the symptom, the test and the wait are those of the 2026-10-22 entries, and nothing of the restoration of the disk was touched. The cause is still not identified. |
 
-## A notice test that waits 30 s once in the full suite
+## KI-004: A notice test that waits 30 s once in the full suite
 
 **Status:** Fixed · **Found on:** 2026-10-20 · **Fixed on:** 2026-11-08
 
@@ -497,7 +500,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-22 | Failed again in a full local run (`waited 30 s for: the old notice counted as empty`); passed 6 of 6 alone right after. The change under test does not touch the notices. Cause still not identified. |
 | 2026-11-08 | Failed in the CI of the pull request of the Pulumi provider (`Server (build and tests, amd64)`). Reproduced with the hunt (20 of 30 rounds), cause found in the log and fixed in the tests; 480 runs without a problem. |
 
-## Rejoining after a symmetric partition
+## KI-003: Rejoining after a symmetric partition
 
 **Status:** Fixed · **Found on:** 2026-10-19 · **Fixed on:** 2026-10-20
 
@@ -516,7 +519,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-20 | Reproduced locally with 40 to 60 simultaneous runs of the binary (1 failure in each of two batches). A temporary dump of each node's state and tables at the timeout showed the node stuck in `syncing` with an old table; the cause above. |
 | 2026-10-20 | Fix applied and `#[ignore]` removed. Verification: 180 simultaneous runs (3 batches of 60) of the test, all passed; the new test fails without the fix; the whole `taba-node` suite passed (one unrelated one-off failure, recorded above). |
 
-## A healthy channel that does not come back
+## KI-002: A healthy channel that does not come back
 
 **Status:** Fixed · **Found on:** 2026-10-18 · **Fixed on:** 2026-10-19
 
@@ -532,7 +535,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | 2026-10-18 | Failures seen in CI; both tests marked `#[ignore]`. Cause reproduced locally with a simulated 100 ms drop between nodes 1 and 2. |
 | 2026-10-19 | Fix applied to `NO_VOTE` and `#[ignore]` removed from both tests. Verification: the six test files that use `NO_VOTE` passed 6 times in a row with six processes in parallel (36 runs). The rare hang in `cluster.shutdown()` (≈ 1 in 25), seen in an earlier attempt, did not appear. |
 
-## Lock-order inversion when choosing replicas
+## KI-001: Lock-order inversion when choosing replicas
 
 **Status:** Fixed · **Found on:** 2026-10-18 · **Fixed on:** 2026-10-18
 

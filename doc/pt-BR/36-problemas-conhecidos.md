@@ -11,41 +11,42 @@ fontes: [crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/clus
 
 > Leia antes: [25-testes.md](25-testes.md).
 
-Cada teste intermitente ou problema conhecido tem uma seção própria, **que nunca é apagada**: quando o problema é resolvido ela passa a `Corrigido`; se voltar a aparecer, passa a `Reaberto` e o histórico continua na mesma seção. Os testes marcados com `#[ignore]` passam na máquina de desenvolvimento, mas falharam de forma intermitente nos runners do GitHub Actions, que são lentos e compartilhados. Para rodar um à mão: `cargo test -p taba-node --test <arquivo> <nome> -- --ignored`.
+Cada teste intermitente ou problema conhecido tem uma seção própria e um código `KI-NNN` (do inglês *known issue*) no início do título, dado na ordem em que os problemas foram achados; o código nunca é reutilizado e é a forma de citar o problema em commits, pendências e decisões. A seção **nunca é apagada**: quando o problema é resolvido ela passa a `Corrigido`; se voltar a aparecer, passa a `Reaberto` e o histórico continua na mesma seção. Os testes marcados com `#[ignore]` passam na máquina de desenvolvimento, mas falharam de forma intermitente nos runners do GitHub Actions, que são lentos e compartilhados. Para rodar um à mão: `cargo test -p taba-node --test <arquivo> <nome> -- --ignored`.
 
 Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar testes intermitentes estão no [AGENTS.md](../../AGENTS.md).
 
-| Problema | Status | Achado em | Solução em |
-|---|---|---|---|
-| [Um novo prazo que não chega a todas as cópias em 30 s no arm64](#um-novo-prazo-que-não-chega-a-todas-as-cópias-em-30-s-no-arm64) | Aberto | 2026-11-09 | — |
-| [Um teste de token que achou um pedaço do segredo no sal](#um-teste-de-token-que-achou-um-pedaço-do-segredo-no-sal) | Corrigido | 2026-11-09 | 2026-11-09 |
-| [Uma mensagem confirmada trazida de volta por uma vida mais antiga](#uma-mensagem-confirmada-trazida-de-volta-por-uma-vida-mais-antiga) | Corrigido | 2026-11-09 | 2026-11-09 |
-| [Uma votação da partida a frio que não fecha em 30 s](#uma-votação-da-partida-a-frio-que-não-fecha-em-30-s) | Corrigido | 2026-11-09 | 2026-11-09 |
-| [Uma sondagem que não termina com o nó faltando em 30 s](#uma-sondagem-que-não-termina-com-o-nó-faltando-em-30-s) | Corrigido | 2026-11-09 | 2026-11-09 |
-| [Um ReceiveMessage grande do SDK Go antigo que perde a conexão sob carga](#um-receivemessage-grande-do-sdk-go-antigo-que-perde-a-conexão-sob-carga) | Corrigido | 2026-11-08 | 2026-11-09 |
-| [Uma contagem de um emulador logo depois de um receive](#uma-contagem-de-um-emulador-logo-depois-de-um-receive) | Corrigido | 2026-11-08 | 2026-11-09 |
-| [Uma mensagem entregue duas vezes depois da reunião de uma partição](#uma-mensagem-entregue-duas-vezes-depois-da-reunião-de-uma-partição) | Corrigido | 2026-11-07 | 2026-11-09 |
-| [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro) | Corrigido | 2026-11-05 | 2026-11-05 |
-| [Um nó que para de responder e não é excluído em 30 s](#um-nó-que-para-de-responder-e-não-é-excluído-em-30-s) | Aberto | 2026-11-04 | — |
-| [Um teste de replicação cujas 14 publicações não caíram no nó isolado](#um-teste-de-replicação-cujas-14-publicações-não-caíram-no-nó-isolado) | Corrigido | 2026-11-03 | 2026-11-03 |
-| [Um teste de sincronização cuja segunda store achou o banco travado no arm64](#um-teste-de-sincronização-cuja-segunda-store-achou-o-banco-travado-no-arm64) | Corrigido | 2026-11-03 | 2026-11-03 |
-| [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Corrigido | 2026-11-03 | 2026-11-04 |
-| [Uma votação de exclusão que falha uma vez na suíte completa](#uma-votação-de-exclusão-que-falha-uma-vez-na-suíte-completa) | Aberto | 2026-10-29 | — |
-| [Um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la) | Corrigido | 2026-10-27 | 2026-10-29 |
-| [Uma rajada do canal que não chega ao outro nó na caça](#uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça) | Corrigido | 2026-10-29 | 2026-11-05 |
-| [Um sinal de pronto perdido que a caça não corrige a tempo](#um-sinal-de-pronto-perdido-que-a-caça-não-corrige-a-tempo) | Aberto | 2026-10-29 | — |
-| [A rodada de caos: uma entrega além do limite e um ack que o dono nunca aplicou](#a-rodada-de-caos-uma-entrega-além-do-limite-e-um-ack-que-o-dono-nunca-aplicou) | Corrigido | 2026-10-27 | 2026-10-27 |
-| [Um nó de teste reiniciado que perde a porta para outro teste](#um-nó-de-teste-reiniciado-que-perde-a-porta-para-outro-teste) | Corrigido | 2026-10-26 | 2026-11-09 |
-| [Um nó excluído enquanto sincroniza que não consegue voltar](#um-nó-excluído-enquanto-sincroniza-que-não-consegue-voltar) | Aberto | 2026-11-09 | — |
-| [Uma definição oferecida a um nó que ainda estava entrando](#uma-definição-oferecida-a-um-nó-que-ainda-estava-entrando) | Corrigido | 2026-10-26 | 2026-11-09 |
-| [Um accept de canal que travou os peers duas vezes](#um-accept-de-canal-que-travou-os-peers-duas-vezes) | Corrigido | 2026-10-26 | 2026-10-26 |
-| [Teste de reinício da FIFO que espera 30 s numa execução combinada](#teste-de-reinício-da-fifo-que-espera-30-s-numa-execução-combinada) | Aberto | 2026-10-22 | — |
-| [Teste de aviso que espera 30 s uma vez na suíte completa](#teste-de-aviso-que-espera-30-s-uma-vez-na-suíte-completa) | Resolvido | 2026-10-20 | 2026-11-08 |
-| [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
-| [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
-| [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+| Código | Problema | Status | Achado em | Solução em |
+|---|---|---|---|---|
+| KI-028 | [Um novo prazo que não chega a todas as cópias em 30 s no arm64](#ki-028-um-novo-prazo-que-não-chega-a-todas-as-cópias-em-30-s-no-arm64) | Aberto | 2026-11-09 | — |
+| KI-027 | [Um teste de token que achou um pedaço do segredo no sal](#ki-027-um-teste-de-token-que-achou-um-pedaço-do-segredo-no-sal) | Corrigido | 2026-11-09 | 2026-11-09 |
+| KI-026 | [Uma mensagem confirmada trazida de volta por uma vida mais antiga](#ki-026-uma-mensagem-confirmada-trazida-de-volta-por-uma-vida-mais-antiga) | Corrigido | 2026-11-09 | 2026-11-09 |
+| KI-025 | [Uma votação da partida a frio que não fecha em 30 s](#ki-025-uma-votação-da-partida-a-frio-que-não-fecha-em-30-s) | Corrigido | 2026-11-09 | 2026-11-09 |
+| KI-024 | [Uma sondagem que não termina com o nó faltando em 30 s](#ki-024-uma-sondagem-que-não-termina-com-o-nó-faltando-em-30-s) | Corrigido | 2026-11-09 | 2026-11-09 |
+| KI-022 | [Um ReceiveMessage grande do SDK Go antigo que perde a conexão sob carga](#ki-022-um-receivemessage-grande-do-sdk-go-antigo-que-perde-a-conexão-sob-carga) | Corrigido | 2026-11-08 | 2026-11-09 |
+| KI-021 | [Uma contagem de um emulador logo depois de um receive](#ki-021-uma-contagem-de-um-emulador-logo-depois-de-um-receive) | Corrigido | 2026-11-08 | 2026-11-09 |
+| KI-020 | [Uma mensagem entregue duas vezes depois da reunião de uma partição](#ki-020-uma-mensagem-entregue-duas-vezes-depois-da-reunião-de-uma-partição) | Corrigido | 2026-11-07 | 2026-11-09 |
+| KI-019 | [Um teste de lote que contou as chamadas antes do commit em segundo plano](#ki-019-um-teste-de-lote-que-contou-as-chamadas-antes-do-commit-em-segundo-plano) | Corrigido | 2026-11-07 | 2026-11-07 |
+| KI-018 | [Um segundo canal que não é fechado primeiro](#ki-018-um-segundo-canal-que-não-é-fechado-primeiro) | Corrigido | 2026-11-05 | 2026-11-05 |
+| KI-017 | [Um nó que para de responder e não é excluído em 30 s](#ki-017-um-nó-que-para-de-responder-e-não-é-excluído-em-30-s) | Aberto | 2026-11-04 | — |
+| KI-016 | [Um teste de replicação cujas 14 publicações não caíram no nó isolado](#ki-016-um-teste-de-replicação-cujas-14-publicações-não-caíram-no-nó-isolado) | Corrigido | 2026-11-03 | 2026-11-03 |
+| KI-015 | [Um teste de sincronização cuja segunda store achou o banco travado no arm64](#ki-015-um-teste-de-sincronização-cuja-segunda-store-achou-o-banco-travado-no-arm64) | Corrigido | 2026-11-03 | 2026-11-03 |
+| KI-014 | [Um consume com ack que falha uma vez no docker/validate.sh depois de um drain](#ki-014-um-consume-com-ack-que-falha-uma-vez-no-dockervalidatesh-depois-de-um-drain) | Corrigido | 2026-11-03 | 2026-11-04 |
+| KI-013 | [Uma votação de exclusão que falha uma vez na suíte completa](#ki-013-uma-votação-de-exclusão-que-falha-uma-vez-na-suíte-completa) | Aberto | 2026-10-29 | — |
+| KI-010 | [Um register que verificou a mensagem antes de tomá-la](#ki-010-um-register-que-verificou-a-mensagem-antes-de-tomá-la) | Corrigido | 2026-10-27 | 2026-10-29 |
+| KI-012 | [Uma rajada do canal que não chega ao outro nó na caça](#ki-012-uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça) | Corrigido | 2026-10-29 | 2026-11-05 |
+| KI-011 | [Um sinal de pronto perdido que a caça não corrige a tempo](#ki-011-um-sinal-de-pronto-perdido-que-a-caça-não-corrige-a-tempo) | Aberto | 2026-10-29 | — |
+| KI-009 | [A rodada de caos: uma entrega além do limite e um ack que o dono nunca aplicou](#ki-009-a-rodada-de-caos-uma-entrega-além-do-limite-e-um-ack-que-o-dono-nunca-aplicou) | Corrigido | 2026-10-27 | 2026-10-27 |
+| KI-008 | [Um nó de teste reiniciado que perde a porta para outro teste](#ki-008-um-nó-de-teste-reiniciado-que-perde-a-porta-para-outro-teste) | Corrigido | 2026-10-26 | 2026-11-09 |
+| KI-023 | [Um nó excluído enquanto sincroniza que não consegue voltar](#ki-023-um-nó-excluído-enquanto-sincroniza-que-não-consegue-voltar) | Aberto | 2026-11-09 | — |
+| KI-007 | [Uma definição oferecida a um nó que ainda estava entrando](#ki-007-uma-definição-oferecida-a-um-nó-que-ainda-estava-entrando) | Corrigido | 2026-10-26 | 2026-11-09 |
+| KI-006 | [Um accept de canal que travou os peers duas vezes](#ki-006-um-accept-de-canal-que-travou-os-peers-duas-vezes) | Corrigido | 2026-10-26 | 2026-10-26 |
+| KI-005 | [Teste de reinício da FIFO que espera 30 s numa execução combinada](#ki-005-teste-de-reinício-da-fifo-que-espera-30-s-numa-execução-combinada) | Aberto | 2026-10-22 | — |
+| KI-004 | [Teste de aviso que espera 30 s uma vez na suíte completa](#ki-004-teste-de-aviso-que-espera-30-s-uma-vez-na-suíte-completa) | Resolvido | 2026-10-20 | 2026-11-08 |
+| KI-003 | [Reingresso depois de uma partição simétrica](#ki-003-reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
+| KI-002 | [Canal saudável que não volta](#ki-002-canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
+| KI-001 | [Inversão de ordem de travas ao escolher réplicas](#ki-001-inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
 
-## Um novo prazo que não chega a todas as cópias em 30 s no arm64
+## KI-028: Um novo prazo que não chega a todas as cópias em 30 s no arm64
 
 **Status:** Aberto · **Achado em:** 2026-11-09 · **Solução em:** —
 
@@ -61,7 +62,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-11-09 | Uma falha no arm64 na release final da `v0.3.11`; o job rodou de novo e passou. |
 
-## Um teste de token que achou um pedaço do segredo no sal
+## KI-027: Um teste de token que achou um pedaço do segredo no sal
 
 **Status:** Corrigido · **Achado em:** 2026-11-09 · **Solução em:** 2026-11-09
 
@@ -77,7 +78,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-11-09 | Visto na suíte completa ao atualizar o `rusqlite` (sem relação com ele: a causa acima está no teste); corrigido no teste. |
 
-## Uma mensagem confirmada trazida de volta por uma vida mais antiga
+## KI-026: Uma mensagem confirmada trazida de volta por uma vida mais antiga
 
 **Status:** Corrigido · **Achado em:** 2026-11-09 · **Solução em:** 2026-11-09
 
@@ -95,7 +96,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-11-09 | Achada pela caça que conferiu o `PortHold` (rodada 17 de 180); o log mostrou o `id` restaurado de novo por uma vida da rodada 0. Corrigida na ordem da restauração, com os dois testes acima. |
 | 2026-11-09 | Verificada: 1800 execuções de processo da mesma caça com a correção, nenhum `came back`. |
 
-## Uma votação da partida a frio que não fecha em 30 s
+## KI-025: Uma votação da partida a frio que não fecha em 30 s
 
 **Status:** Corrigido · **Achado em:** 2026-11-09 · **Solução em:** 2026-11-09
 
@@ -112,7 +113,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-11-09 | Visto duas vezes na caça que conferiu o `PortHold`; registrado com a causa em aberto. |
 | 2026-11-09 | Causa achada nos logs (um manifesto com tabela de dois) e corrigida no teste (`fall_all`); verificado em 1800 execuções do `cold_start` e 600 do `regroup` sem nenhuma falha. |
 
-## Uma sondagem que não termina com o nó faltando em 30 s
+## KI-024: Uma sondagem que não termina com o nó faltando em 30 s
 
 **Status:** Corrigido · **Achado em:** 2026-11-09 · **Solução em:** 2026-11-09
 
@@ -129,7 +130,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-11-09 | Visto duas vezes na caça que conferiu o `PortHold`; registrado com a causa em aberto. |
 | 2026-11-09 | Causa achada nos logs (um manifesto com tabela de dois) e corrigida no teste (`fall_all`); verificado em 1800 execuções do `cold_start` e 600 do `regroup` sem nenhuma falha. |
 
-## Um ReceiveMessage grande do SDK Go antigo que perde a conexão sob carga
+## KI-022: Um ReceiveMessage grande do SDK Go antigo que perde a conexão sob carga
 
 **Status:** Corrigido · **Achado em:** 2026-11-08 · **Corrigido em:** 2026-11-09
 
@@ -147,7 +148,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-11-08 | Falhou no CI da cadeia de release da v0.3.10 (testes de contrato do gateway num nó Taba); passou quando o job rodou de novo. |
 | 2026-11-09 | Reproduzido localmente com uma mensagem de 200 KB e 10 a 12 containers usando a CPU (entre 1 em 20 e 7 em 20 execuções); causa achada com uma captura e os rastros do cliente, corrigida no driver. |
 
-## Uma contagem de um emulador logo depois de um receive
+## KI-021: Uma contagem de um emulador logo depois de um receive
 
 **Status:** Corrigido · **Achado em:** 2026-11-08 · **Corrigido em:** 2026-11-09
 
@@ -164,7 +165,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-11-08 | Falhou uma vez no CI do pull request do provider Pulumi, nos emuladores; passou quando o job rodou de novo. |
 | 2026-11-09 | Não reproduzido localmente. O log do job que falhou mostra que o alvo era o ElasticMQ, não o nó; a linha foi dividida como acima. |
 
-## Uma mensagem entregue duas vezes depois da reunião de uma partição
+## KI-020: Uma mensagem entregue duas vezes depois da reunião de uma partição
 
 **Status:** Corrigido · **Achado em:** 2026-11-07 · **Corrigido em:** 2026-11-09
 
@@ -184,7 +185,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-11-07 | O `docker/hang-hunt.sh partition` (8 processos ao mesmo tempo) reproduziu na rodada 12: `delivered twice: [(17, 2)]`. O log ficou em `target/hang-hunt/run_12_2.log`, ainda não lido. |
 | 2026-11-09 | A caça (40 rodadas de 8 processos) falhou em 4 processos com a mesma assinatura; a causa foi achada no log com uma linha temporária no teste e corrigida na gravação da restauração. |
 
-## Um teste de lote que contou as chamadas antes do commit em segundo plano
+## KI-019: Um teste de lote que contou as chamadas antes do commit em segundo plano
 
 **Status:** Corrigido · **Achado em:** 2026-11-07 · **Corrigido em:** 2026-11-07
 
@@ -199,7 +200,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-11-07 | Uma falha em arm64 no #62. Testes corrigidos; 0 falhas em 40 execuções do arquivo inteiro (10 rodadas de 4 processos) no Windows. |
 
-## Um segundo canal que não é fechado primeiro
+## KI-018: Um segundo canal que não é fechado primeiro
 
 **Status:** Corrigido · **Achado em:** 2026-11-05 · **Corrigido em:** 2026-11-05
 
@@ -215,7 +216,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-11-05 | Uma falha em arm64 no #52. Não reproduzida na caça: 0 falhas em 480 execuções do teste sozinho (60 rodadas de 8 processos) e 0 em 320 execuções do arquivo inteiro (40 rodadas de 8 processos). |
 | 2026-11-05 | Reproduzida uma vez em outras 320 execuções do arquivo inteiro, com o log guardado. Teste corrigido; a mesma caça depois: 0 falhas em 320 execuções. |
 
-## Um nó que para de responder e não é excluído em 30 s
+## KI-017: Um nó que para de responder e não é excluído em 30 s
 
 **Status:** Aberto · **Achado em:** 2026-11-04 · **Corrigido em:** —
 
@@ -231,7 +232,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-11-04 | Uma falha em amd64 no #50; rodar o job de novo passou. |
 
-## Um teste de replicação cujas 14 publicações não caíram no nó isolado
+## KI-016: Um teste de replicação cujas 14 publicações não caíram no nó isolado
 
 **Status:** Corrigido · **Achado em:** 2026-11-03 · **Corrigido em:** 2026-11-03
 
@@ -247,7 +248,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-11-03 | Falhou uma vez no amd64 no #43 (`ok 14 failed 0`); o teste publica até ver os dois resultados. |
 
-## Um teste de sincronização cuja segunda store achou o banco travado no arm64
+## KI-015: Um teste de sincronização cuja segunda store achou o banco travado no arm64
 
 **Status:** Corrigido · **Achado em:** 2026-11-03 · **Corrigido em:** 2026-11-03
 
@@ -263,7 +264,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-11-03 | Falhou uma vez no arm64 no release de `main`; o teste tenta de novo enquanto o banco está travado. |
 
-## Um consume com ack que falha uma vez no docker/validate.sh depois de um drain
+## KI-014: Um consume com ack que falha uma vez no docker/validate.sh depois de um drain
 
 **Status:** Corrigido · **Achado em:** 2026-11-03 · **Corrigido em:** 2026-11-04
 
@@ -282,14 +283,15 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-11-04 | Quatro falhas seguidas com `cluster.quorum-unavailable` na mesma etapa, inclusive no commit anterior ao gateway; a `v0.3.5` foi promovida com a falha registrada no pull request dela. |
 | 2026-11-04 | Causa achada e corrigida: o `recover_missing` ignorava o log de excluídas. Teste novo; o `docker/validate.sh` passou 3 de 3. |
 
-## Uma votação de exclusão que falha uma vez na suíte completa
+## KI-013: Uma votação de exclusão que falha uma vez na suíte completa
 
 **Status:** Aberto · **Achado em:** 2026-10-29 · **Corrigido em:** —
 
 - **Teste:** `tests/failures.rs::only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion` (UC-FAL da exclusão), a asserção sobre os coordenadores das chamadas `unregister` (linha 1087).
 - **Sintoma:** falhou uma vez num `cargo test` completo num contêiner Linux (22 testes do arquivo em paralelo com a carga dos outros binários); sozinho passou 3 de 3, e uma segunda execução completa passou.
-- **Causa:** não identificada. Não toca o register de uma mensagem (achado ao validar [um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la)). A leitura a conferir é um segundo nó saudável que também registra a saída antes de ver a primeira terminada.
+- **Causa:** não identificada. Não toca o register de uma mensagem (achado ao validar [um register que verificou a mensagem antes de tomá-la](#ki-010-um-register-que-verificou-a-mensagem-antes-de-tomá-la)). A leitura a conferir é um segundo nó saudável que também registra a saída antes de ver a primeira terminada.
 - **Hipótese (2026-11-09, não confirmada):** o teste exige algo que o servidor não garante sob carga, então o defeito estaria no teste. No `exclude()` (`cluster/vote/mod.rs`) cada nó que fecha o quórum ordena os eleitores que responderam a ele e espera `rank × write.commit.timeout` antes de coordenar; nos testes esse prazo é de 400 ms (`FAST` em `common/cluster.rs`). No `unregister_node_traced` um nó só envia `unregister` aos outros se a fase 1 do de menor ID ainda não chegou a ele (senão o registro local falha com `cluster.conflict` antes de qualquer chamada). Então um segundo coordenador aparece quando o de menor ID começa a exclusão mais de 400 ms depois do segundo: sob carga cada nó vê o canal do candidato cair num instante diferente, e a votação espera a resposta de todos os eleitores, de modo que um eleitor lento atrasa o quórum de um nó e não o de outro. O segundo nó então recebe `cluster.conflict`, espera, encontra o nó fora da tabela e termina com `excluded`: a exclusão está certa, mas o teste vê dois remetentes de `unregister` e falha.
+- **A outra asserção (2026-11-10):** no CI o teste também falhou em `all the healthy ones voted` (`network.count("vote") >= 4`), o caso oposto: o de menor ID excluiu o candidato tão rápido que os outros o encontraram já fora da tabela e não abriram a votação deles (o `open` retorna quando o candidato não é membro), então houve menos de quatro chamadas `vote`. As duas asserções dependem do tempo entre os nós; o teste precisa conferir o que o servidor garante (uma exclusão, nenhuma falha) e não quantos nós chegaram a votar ou a coordenar.
 - **Como confirmar:** a caça abaixo, e no log os instantes em que cada nó abriu a votação e fechou o quórum, e quem foi o coordenador a mais. Se os ranks diferirem entre os nós (um eleitor que não respondeu a um deles), a causa pode estar no servidor.
 - **Correção, se confirmada (no teste):** um `TABA_WRITE_COMMIT_TIMEOUT` maior para este teste (5 s, por exemplo), para o escalonamento absorver a variação sob carga; ou a asserção trocada por "o primeiro `unregister` veio do de menor ID e a exclusão não falhou".
 - **Próximo passo:** `docker/hang-hunt.sh failures only_the_lowest_node_id` e ler qual nó foi o coordenador a mais.
@@ -300,8 +302,9 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-10-29 | Uma falha na suíte completa, 3 passagens sozinho, 1 passagem completa depois. |
 | 2026-11-09 | Hipótese registrada a partir da leitura do código (o escalonamento de 400 ms dos testes curto demais sob carga); ainda não confirmada por uma caça. |
+| 2026-11-10 | Falhou no job do servidor em amd64 do pull request "Release v0.3.12" (#82) na outra asserção, `all the healthy ones voted`; o job rodou de novo. |
 
-## Um register que verificou a mensagem antes de tomá-la
+## KI-010: Um register que verificou a mensagem antes de tomá-la
 
 **Status:** Corrigido · **Achado em:** 2026-10-27 · **Corrigido em:** 2026-10-29
 
@@ -321,14 +324,14 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-10-29 | Visto sem saltos de relógio na caça (3/96, 5/96, 3/96 no código antes dos lotes e com eles): os lotes não mudaram a taxa. |
 | 2026-10-29 | O dump e as linhas em cada register mostraram que nenhum register expirou: a verificação rodava antes da reserva. Corrigido reservando primeiro. 0 falhas em 160 processos. |
 
-## Uma rajada do canal que não chega ao outro nó na caça
+## KI-012: Uma rajada do canal que não chega ao outro nó na caça
 
 **Status:** Corrigido · **Achado em:** 2026-10-29 · **Solução em:** 2026-11-05
 
 - **Onde:** `tests/channel.rs::each_peer_has_an_out_queue_and_an_in_queue_that_drain` (e, uma vez cada, `every_node_has_one_channel_to_each_other_node_and_measures_it` e `two_connections_at_once_end_with_a_single_channel_per_pair`).
 - **Sintoma:** em `docker/hang-hunt.sh channel` (8 processos ao mesmo tempo) termina com `waited 30 s for: the burst to reach node 2`, em cerca de 1 processo em 14.
 - **Causa:** o teste, não o canal. A rajada sinaliza `ready` de tópicos inventados (`t0` a `t299`). O heartbeat seguinte (200 ms nos testes) lista os tópicos prontos de verdade, e o `Signals::apply_keepalive` tira corretamente os outros da tabela do nó 2, então o `t299` só fica lá até esse heartbeat. Num runner carregado, a checagem, a cada 10 ms, pode perder essa janela, e aí espera 30 s por um estado que não volta. Não era consequência dos lotes: a mesma caça falhava na mesma taxa no código anterior a eles.
-- **Correção:** o teste parte com `QUIET` (heartbeat de 30 s). Em `every_node_has_one_channel_to_each_other_node_and_measures_it`, uma causa à parte: o `queue_out` era lido uma vez e podia pegar um sinal a caminho (`left: 1`); agora espera a fila esvaziar. O outro teste citado aqui é o de [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro).
+- **Correção:** o teste parte com `QUIET` (heartbeat de 30 s). Em `every_node_has_one_channel_to_each_other_node_and_measures_it`, uma causa à parte: o `queue_out` era lido uma vez e podia pegar um sinal a caminho (`left: 1`); agora espera a fila esvaziar. O outro teste citado aqui é o de [Um segundo canal que não é fechado primeiro](#ki-018-um-segundo-canal-que-não-é-fechado-primeiro).
 - **Verificação:** ver o histórico. O código do servidor não mudou.
 
 **Histórico**
@@ -337,9 +340,9 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-10-29 | Encontrado na caça que validou o `take` e o repasse da FIFO no lote; a mesma taxa no commit anterior. |
 | 2026-11-05 | A caça do arquivo inteiro (40 rodadas de 8 processos, em `4892068`) teve problema em 15 rodadas: 18 falhas de `each_peer_has_an_out_queue_and_an_in_queue_that_drain` e 1 de `every_node_has_one_channel_to_each_other_node_and_measures_it`. |
-| 2026-11-05 | `each_peer_has_an_out_queue_and_an_in_queue_that_drain` falhou em arm64 no #52, a primeira vez no CI. Com `QUIET`, a mesma caça teve 0 falhas dele em 320 execuções (eram 18) e 2 de `every_node_has_one_channel_to_each_other_node_and_measures_it`, corrigido em seguida. Com as duas correções, ver [Um segundo canal que não é fechado primeiro](#um-segundo-canal-que-não-é-fechado-primeiro). |
+| 2026-11-05 | `each_peer_has_an_out_queue_and_an_in_queue_that_drain` falhou em arm64 no #52, a primeira vez no CI. Com `QUIET`, a mesma caça teve 0 falhas dele em 320 execuções (eram 18) e 2 de `every_node_has_one_channel_to_each_other_node_and_measures_it`, corrigido em seguida. Com as duas correções, ver [Um segundo canal que não é fechado primeiro](#ki-018-um-segundo-canal-que-não-é-fechado-primeiro). |
 
-## Um sinal de pronto perdido que a caça não corrige a tempo
+## KI-011: Um sinal de pronto perdido que a caça não corrige a tempo
 
 **Status:** Aberto · **Achado em:** 2026-10-29 · **Solução em:** —
 
@@ -355,7 +358,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-10-29 | Encontrado na caça que validou o `take` e o repasse da FIFO no lote. A mesma caça nos dois commits anteriores deu a mesma taxa, então já estava lá. |
 
-## A rodada de caos: uma entrega além do limite e um ack que o dono nunca aplicou
+## KI-009: A rodada de caos: uma entrega além do limite e um ack que o dono nunca aplicou
 
 **Status:** Corrigido · **Achado em:** 2026-10-27 · **Corrigido em:** 2026-10-27
 
@@ -363,7 +366,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 - **Sintoma 1 (I5):** com `maxDeliveries: 2` uma mensagem foi entregue com `deliveryCount: 3`, na maioria das rodadas da semente 3. Causa: um commit de entrega que chegou ao dono depois de a própria invisibilidade acabar pôs a mensagem na lista de prontas sem a liberação que confere o limite. Correção: o `take_candidates` não entrega a mensagem que gastou as entregas: esconde-a por um instante e a próxima liberação a manda para a dead-letter (a primeira forma da correção, uma ida imediata, quebrou o `a_shorter_ttl_expires_what_is_already_stored_even_in_flight`, que espera que o `ttl` vença, e foi trocada). Teste: `a_commit_that_arrives_after_its_invisibility_does_not_deliver_past_the_limit` (falha sem a correção).
 - **Sintoma 2 (I1):** em cerca de 1 rodada em 100 uma mensagem confirmada nunca foi entregue: ficava só no dono (as réplicas tinham aplicado o ack dela), a entrega dela precisa das réplicas, e então o grupo FIFO ficava travado para sempre. Causa: o commit do ack ao dono chegou depois de o register do dono expirar; o coordenador o registrou de novo e desistiu na primeira recusa, ou porque o recibo tinha expirado ou porque outra operação segurava a mensagem (`cluster.conflict`). Correção: o register enviado de novo depois da decisão não confere recibo (`Request::decided`) e, num conflito, continua tentando até a outra operação acabar. Testes: `the_register_repeated_after_the_decision_checks_no_receipt` e `an_ack_the_replicas_applied_reaches_the_owner_even_if_another_operation_took_the_message` (falha sem a correção).
 - **Como foi achado:** a primeira suspeita foi o próprio verificador: a trilha de uma mensagem (`History::trail`) mostrou que o `maxDeliveries: 2` de uma fila tinha sido aplicado às outras (um falso positivo, corrigido no verificador). Depois o relatório de falha ganhou onde a mensagem está em cada nó, e mostrou o dono com uma mensagem que as réplicas já não tinham. A linha de base sem a correção da entrega também falhou (1 rodada em 120), então a segunda causa era independente.
-- **Não corrigido:** um ack e uma ida para a dead-letter, os dois decididos, quando um register expira ([PRB-085](31-pendencias.md), não visto); as falhas que lhe foram atribuídas eram [um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la).
+- **Não corrigido:** um ack e uma ida para a dead-letter, os dois decididos, quando um register expira ([PRB-085](31-pendencias.md), não visto); as falhas que lhe foram atribuídas eram [um register que verificou a mensagem antes de tomá-la](#ki-010-um-register-que-verificou-a-mensagem-antes-de-tomá-la).
 - **Não fazer:** subir os 30 s do `eventually` ou deixar a rodada parar na primeira entrega: o grupo travado para sempre é exatamente o que a espera existe para mostrar.
 
 **Histórico**
@@ -377,7 +380,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-10-27 | Com as duas correções e saltos de relógio de 35 s: nenhum I1 em 400 rodadas, 3 falhas de outro formato (I3 e I5, [PRB-077](31-pendencias.md)). Com saltos de 8 s (abaixo do `write.pending.ttl`): **0 falhas em 400 rodadas das quatro sementes (1600 execuções)**; antes das correções, cerca de 1 em 100 falhava. |
 | 2026-10-27 | A checagem no `take` fez o `a_shorter_ttl_expires_what_is_already_stored_even_in_flight` falhar (o `ttl` precisa vencer a dead-letter); a forma final esconde a mensagem e deixa a ida para a liberação. Código final: a suíte inteira passa (47 binários) e **0 falhas em 250 rodadas das quatro sementes (1000 execuções)**. |
 
-## Um nó de teste reiniciado que perde a porta para outro teste
+## KI-008: Um nó de teste reiniciado que perde a porta para outro teste
 
 **Status:** Corrigido · **Achado em:** 2026-10-26 · **Solução em:** 2026-11-09
 
@@ -397,7 +400,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-10-28 | **Primeira vez no CI**: a execução do `Release` no push para `main` (merge do PR #34, amd64) falhou em `with_every_node_back_no_message_that_was_confirmed_is_delivered_again_whatever_the_falls` (`cold_start.rs`, `AddrInUse` na porta do cluster). `PortHold` incluído; `cold_start` (13) e `regroup` (3) passam localmente. |
 | 2026-11-09 | Conferido: 1800 execuções do `cold_start` e 1500 do `regroup` sob carga sem `AddrInUse`. `Corrigido`. |
 
-## Um nó excluído enquanto sincroniza que não consegue voltar
+## KI-023: Um nó excluído enquanto sincroniza que não consegue voltar
 
 **Status:** Aberto · **Achado em:** 2026-11-09 · **Solução em:** —
 
@@ -412,7 +415,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-11-09 | Visto uma vez na caça que conferiu a segunda solução da seção abaixo; causa lida no log e registrada com o PRB-111. |
 
-## Uma definição oferecida a um nó que ainda estava entrando
+## KI-007: Uma definição oferecida a um nó que ainda estava entrando
 
 **Status:** Corrigido · **Achado em:** 2026-10-26 · **Solução em:** 2026-11-09
 
@@ -438,9 +441,9 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-10-26 | Verificação: `KEEP_GOING=1 docker/hang-hunt.sh cold_start …`, 150 rodadas de 10 processos ao mesmo tempo (1500 execuções dos testes da oferta): **nenhum** `waited 30 s` por uma definição, contra 2 em cerca de 290 execuções antes da correção. Os únicos 2 problemas foram `AddrInUse` ao reiniciar um nó (veja "Um nó de teste reiniciado que perde a porta para outro teste"), sem relação. |
 | 2026-11-09 | **Reaberto**: `waited 30 s for: the highest version in every node` em `when_several_nodes_connect…`, duas vezes em 1800 execuções de processo de `KEEP_GOING=1 ROUNDS=180 PAR=10 docker/hang-hunt.sh cold_start` (rodadas 45 e 54). O log no nível padrão não diz qual nó não tem qual definição; o próximo passo é a caça só deste teste com linhas temporárias em `offer`, `learn` e `spread`. |
 | 2026-11-09 | A mesma caça com linhas temporárias `HUNT` em `offer`, `apply_with` e `spread` (já removidas): 2 falhas em 1800 execuções, uma de cada teste da área (rodadas 15 e 148), as duas a segunda causa acima. Corrigido no `spread` com o teste acima. |
-| 2026-11-09 | Verificado: 1200 execuções sem nenhuma falha dos dois testes da área. A primeira versão do teste novo dependia de a entrada inteira caber nos 5 s da chamada e falhava no container sob carga; reescrito (a pausa em `topics` e a nova tentativa) e rodado 300 vezes sem falha. A única falha dessas 300 foi outra: [um nó excluído enquanto sincroniza que não consegue voltar](#um-nó-excluído-enquanto-sincroniza-que-não-consegue-voltar). |
+| 2026-11-09 | Verificado: 1200 execuções sem nenhuma falha dos dois testes da área. A primeira versão do teste novo dependia de a entrada inteira caber nos 5 s da chamada e falhava no container sob carga; reescrito (a pausa em `topics` e a nova tentativa) e rodado 300 vezes sem falha. A única falha dessas 300 foi outra: [um nó excluído enquanto sincroniza que não consegue voltar](#ki-023-um-nó-excluído-enquanto-sincroniza-que-não-consegue-voltar). |
 
-## Um accept de canal que travou os peers duas vezes
+## KI-006: Um accept de canal que travou os peers duas vezes
 
 **Status:** Corrigido · **Achado em:** 2026-10-26 · **Solução em:** 2026-10-26
 
@@ -460,7 +463,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-10-26 | Correção aplicada, teste adicionado (falha sem a correção). `cargo clippy --all-targets -- -D warnings` limpo com o novo lint. Os dois testes, repetidos no mesmo container com 8 processos ao mesmo tempo: veja a linha seguinte. |
 | 2026-10-26 | Verificação: 100 rodadas de 8 processos ao mesmo tempo (800 execuções dos dois testes) no container que travava antes, nenhuma travou; antes da correção travava uma vez a cada 16 a 56 execuções. O binário `channel` passou (16 testes). |
 
-## Teste de reinício da FIFO que espera 30 s numa execução combinada
+## KI-005: Teste de reinício da FIFO que espera 30 s numa execução combinada
 
 **Status:** Aberto · **Achado em:** 2026-10-22 · **Solução em:** —
 
@@ -478,7 +481,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-10-22 | Três execuções completas (`cargo test -p taba-node --no-fail-fast`) falharam com o mesmo `waited 30 s` e uma, sem o teste novo de `messages.rs`, passou. Falhou em `messages.rs` › `stopping_saves_memory_to_disk_and_the_next_start_resumes_it` (duas vezes) e em `fifo.rs` › `a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate`; o binário `messages` sozinho passou 3 vezes seguidas e o teste sozinho, 3. A causa segue sem identificação (não é um teste só). |
 | 2026-10-23 | O `messages.rs` › `stopping_saves_memory_to_disk_and_the_next_start_resumes_it` falhou com o mesmo `waited 30 s for: the folders of the previous lives to be restored` em 2 de 6 execuções completas (`cargo test -p taba-node --no-fail-fast`, o binário `messages` levando 34 s em vez de 2 s), enquanto um cluster Docker com os dados de teste rodava na mesma máquina; o binário `messages` sozinho passou 5 vezes seguidas. Apareceu enquanto as mudanças de OpenAPI e de portas eram testadas, mas o sintoma, o teste e a espera são os das entradas de 2026-10-22, e nada da restauração do disco foi tocado. A causa continua não identificada. |
 
-## Teste de aviso que espera 30 s uma vez na suíte completa
+## KI-004: Teste de aviso que espera 30 s uma vez na suíte completa
 
 **Status:** Resolvido · **Achado em:** 2026-10-20 · **Solução em:** 2026-11-08
 
@@ -497,7 +500,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-10-22 | Falhou de novo numa execução completa local (`waited 30 s for: the old notice counted as empty`); passou 6 de 6 sozinho logo depois. A mudança em teste não toca os avisos. Causa ainda não identificada. |
 | 2026-11-08 | Falhou no CI do pull request do provider Pulumi (`Server (build and tests, amd64)`). Reproduzido com a caça (20 de 30 rodadas), causa achada no log e corrigida nos testes; 480 execuções sem problema. |
 
-## Reingresso depois de uma partição simétrica
+## KI-003: Reingresso depois de uma partição simétrica
 
 **Status:** Corrigido · **Achado em:** 2026-10-19 · **Solução em:** 2026-10-20
 
@@ -516,7 +519,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-10-20 | Reproduzido localmente com 40 a 60 execuções simultâneas do binário (1 falha em cada um de dois lotes). Um despejo temporário do estado e das tabelas de cada nó no estouro mostrou o nó preso em `syncing` com uma tabela antiga; a causa acima. |
 | 2026-10-20 | Correção aplicada e `#[ignore]` removido. Verificação: 180 execuções simultâneas (3 lotes de 60) do teste, todas passaram; o teste novo falha sem a correção; a suíte inteira do `taba-node` passou (uma falha isolada e não relacionada, registrada acima). |
 
-## Canal saudável que não volta
+## KI-002: Canal saudável que não volta
 
 **Status:** Corrigido · **Achado em:** 2026-10-18 · **Solução em:** 2026-10-19
 
@@ -532,7 +535,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-10-18 | Falhas vistas no CI; os dois testes marcados com `#[ignore]`. Causa reproduzida localmente com uma queda simulada de 100 ms entre os nós 1 e 2. |
 | 2026-10-19 | Correção aplicada em `NO_VOTE` e `#[ignore]` removido dos dois testes. Verificação: os seis arquivos de teste que usam `NO_VOTE` passaram 6 vezes seguidas com seis processos em paralelo (36 execuções). O travamento raro no `cluster.shutdown()` (≈ 1 em 25), visto numa tentativa anterior, não apareceu. |
 
-## Inversão de ordem de travas ao escolher réplicas
+## KI-001: Inversão de ordem de travas ao escolher réplicas
 
 **Status:** Corrigido · **Achado em:** 2026-10-18 · **Solução em:** 2026-10-18
 

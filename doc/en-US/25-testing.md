@@ -133,7 +133,7 @@ cargo test --release -p taba-node --lib engine::messages::tests::cost -- --nocap
 4. **Read the stack.** A frame of the crate's own function under `Mutex::lock` (or `RwLock::read`/`write`) with no other thread holding that lock is a lock taken twice by the same thread; two threads, each inside a lock the other holds, is an inversion. With the `current_thread` runtime of `#[tokio::test]` there is a single thread to look at.
 5. **Make the test fail instead of hang.** When the call under test can block for good, run it on its own `std::thread` (entering the runtime with `Handle::enter` if it spawns tasks) and wait with `mpsc::Receiver::recv_timeout`; see `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node`.
 
-The case that taught this is in [36-known-issues.md](36-known-issues.md#a-channel-accept-that-locked-the-peers-twice).
+The case that taught this is in [36-known-issues.md](36-known-issues.md#ki-006-a-channel-accept-that-locked-the-peers-twice).
 
 ## The connector contract tests: `connectors/contract/run.sh`
 

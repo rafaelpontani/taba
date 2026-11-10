@@ -144,7 +144,7 @@ Found while hunting the intermittent tests ([36-known-issues.md](36-known-issues
 
 | Code | Effect | Proposal |
 |---|---|---|
-| **PRB-111** | **A node excluded while it synchronizes stays out of the cluster for 5 minutes.** A node that registered and is still synchronizing is a member of the table, so a drop of its channel opens the exclusion vote like for any member (`channel-down`). Once excluded it notices and redoes the join, but its ID is frozen (D106, `left_secs=300`) and every join is refused until the freezing ends. Seen in a test under load ([36-known-issues.md](36-known-issues.md#a-node-excluded-while-it-synchronizes-that-cannot-come-back)) | Do not freeze a node that never became active (its exclusion only cleans the table), or let a synchronizing member be excluded only by the timeout of the synchronization and not by a drop of the channel. Then a test that drops the channel of a synchronizing node |
+| **PRB-111** | **A node excluded while it synchronizes stays out of the cluster for 5 minutes.** A node that registered and is still synchronizing is a member of the table, so a drop of its channel opens the exclusion vote like for any member (`channel-down`). Once excluded it notices and redoes the join, but its ID is frozen (D106, `left_secs=300`) and every join is refused until the freezing ends. Seen in a test under load ([36-known-issues.md](36-known-issues.md#ki-023-a-node-excluded-while-it-synchronizes-that-cannot-come-back)) | Do not freeze a node that never became active (its exclusion only cleans the table), or let a synchronizing member be excluded only by the timeout of the synchronization and not by a drop of the channel. Then a test that drops the channel of a synchronizing node |
 
 ## 1. Unblocked
 

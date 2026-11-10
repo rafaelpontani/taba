@@ -117,14 +117,14 @@ Every implementation that finds something open records it **in the same change**
 
 A test that fails only sometimes (usually on the slow CI runners) is recorded in [doc/en-US/36-known-issues.md](doc/en-US/36-known-issues.md) / [doc/pt-BR/36-problemas-conhecidos.md](doc/pt-BR/36-problemas-conhecidos.md), in both languages, in the same change.
 
-- **One section per test or issue, with a title.** Right after the title: the **status** (`Open`, `Fixed` or `Reopened`), the date **found** and the date **fixed**; then the test, symptom, cause and fix, and a **History** table (date, event) with every occurrence and attempt. The summary table at the top is kept in sync.
+- **One section per test or issue, with a code and a title.** The title starts with the next free code `KI-NNN` (`## KI-029: A ...`); codes are never reused, and a reopened issue keeps its code. Right after the title: the **status** (`Open`, `Fixed` or `Reopened`), the date **found** and the date **fixed**; then the test, symptom, cause and fix, and a **History** table (date, event) with every occurrence and attempt. The summary table at the top (code, issue, status, dates) is kept in sync.
 - **Sections are never deleted.** When fixed, set the status to `Fixed`, fill the fixed date and add the history row (what changed and how it was verified). If the problem **comes back**, do not open a new section: set the status to `Reopened`, clear the fixed date, add the history row for the new occurrence and, when it is solved again, add another row and set `Fixed` again with the new date.
 - **Ignoring a test (`#[ignore = "..."]`)** is a last resort: it needs a section in the known issues first, and the reason points to it. Removing the `#[ignore]` goes in the same change as the fix and its verification (repeated runs under parallel load, noting how many).
 - Do not hide an intermittent failure by raising a timeout or retrying without understanding the cause; if the cause is not identified, say so in the section ("Cause: not identified") and record the next step.
 
 ### A test that goes silent: locks taken twice and lock-order inversions
 
-Lesson of [a channel accept that locked the peers twice](doc/en-US/36-known-issues.md#a-channel-accept-that-locked-the-peers-twice) (2026-10-26): a `std::sync::Mutex` is not reentrant, a guard lives until the end of its block, and the guard of a **temporary in the scrutinee of a `match`, `if let`, `while let` or `for`** lives until the end of the whole block. Calling, inside it, anything that locks the same `Mutex` blocks the thread on itself, with no error and no log.
+Lesson of [KI-006, a channel accept that locked the peers twice](doc/en-US/36-known-issues.md#ki-006-a-channel-accept-that-locked-the-peers-twice) (2026-10-26): a `std::sync::Mutex` is not reentrant, a guard lives until the end of its block, and the guard of a **temporary in the scrutinee of a `match`, `if let`, `while let` or `for`** lives until the end of the whole block. Calling, inside it, anything that locks the same `Mutex` blocks the thread on itself, with no error and no log.
 
 **How to recognise it**
 
@@ -153,7 +153,7 @@ Lesson of [a channel accept that locked the peers twice](doc/en-US/36-known-issu
 
 ### A test that waits 30 s for something that never arrives: lost deliveries
 
-Lesson of [a definition offered to a node that was still joining](doc/en-US/36-known-issues.md#a-definition-offered-to-a-node-that-was-still-joining) (2026-10-26). Unlike a silent test, the node is alive and the log keeps moving: the test ends with `waited 30 s for: <state>` and one node simply never got something that the others have.
+Lesson of [KI-007, a definition offered to a node that was still joining](doc/en-US/36-known-issues.md#ki-007-a-definition-offered-to-a-node-that-was-still-joining) (2026-10-26). Unlike a silent test, the node is alive and the log keeps moving: the test ends with `waited 30 s for: <state>` and one node simply never got something that the others have.
 
 **How to recognise it**
 

@@ -144,7 +144,7 @@ Achados ao caçar os testes intermitentes ([36-problemas-conhecidos.md](36-probl
 
 | Código | Efeito | Proposta |
 |---|---|---|
-| **PRB-111** | **Um nó excluído enquanto sincroniza fica fora do cluster por 5 minutos.** Um nó que se registrou e ainda sincroniza é membro da tabela, então uma queda do canal dele abre a votação de exclusão como para qualquer membro (`channel-down`). Excluído, ele percebe e refaz a entrada, mas o ID dele está congelado (D106, `left_secs=300`) e toda entrada é recusada até o congelamento acabar. Visto num teste sob carga ([36-problemas-conhecidos.md](36-problemas-conhecidos.md#um-nó-excluído-enquanto-sincroniza-que-não-consegue-voltar)) | Não congelar um nó que nunca ficou ativo (a exclusão dele só limpa a tabela), ou deixar que um membro que sincroniza só seja excluído pelo prazo da sincronização e não por uma queda do canal. Depois, um teste que derruba o canal de um nó que sincroniza |
+| **PRB-111** | **Um nó excluído enquanto sincroniza fica fora do cluster por 5 minutos.** Um nó que se registrou e ainda sincroniza é membro da tabela, então uma queda do canal dele abre a votação de exclusão como para qualquer membro (`channel-down`). Excluído, ele percebe e refaz a entrada, mas o ID dele está congelado (D106, `left_secs=300`) e toda entrada é recusada até o congelamento acabar. Visto num teste sob carga ([36-problemas-conhecidos.md](36-problemas-conhecidos.md#ki-023-um-nó-excluído-enquanto-sincroniza-que-não-consegue-voltar)) | Não congelar um nó que nunca ficou ativo (a exclusão dele só limpa a tabela), ou deixar que um membro que sincroniza só seja excluído pelo prazo da sincronização e não por uma queda do canal. Depois, um teste que derruba o canal de um nó que sincroniza |
 
 ## 1. Sem bloqueio
 
