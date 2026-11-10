@@ -72,8 +72,13 @@ struct Link {
     sent_max: AtomicU64,
     /// When each batch without a `confirm` was sent (the `confirm` comes back in the same order).
     in_flight: Mutex<VecDeque<Instant>>,
-    /// When the peer's last message arrived on this connection.
+    /// When the peer's last message arrived on this connection (at the opening, the moment it opened: the
+    /// grace before the silence brings it down).
     heard: Mutex<Instant>,
+    /// The peer already sent something on this connection. Until then the connection does not prove the peer
+    /// is alive: a node that opens connections and then says nothing (mute) would look reachable to the
+    /// vote at every reopening (KI-017).
+    spoke: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -328,8 +333,9 @@ impl Channels {
         self.lock().get(node_id).is_some_and(|p| p.lock().up)
     }
 
-    /// The peer is talking now: the connection is open and its last signal arrived less than the
-    /// silence deadline ago. It is what the voter checks before voting on the exclusion.
+    /// The peer is talking now: the connection is open, the peer already said something on it and its
+    /// last signal arrived less than the silence deadline ago. It is what the voter checks before voting
+    /// on the exclusion. A connection just opened, on which the peer said nothing yet, does not count.
     pub fn is_live(&self, node_id: &str) -> bool {
         let Some(peer) = self.lock().get(node_id).cloned() else {
             return false;
@@ -337,11 +343,13 @@ impl Channels {
         let state = peer.lock();
         state.up
             && state.link.as_ref().is_some_and(|link| {
-                link.heard
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .elapsed()
-                    < self.dead_after()
+                link.spoke.load(Ordering::SeqCst)
+                    && link
+                        .heard
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .elapsed()
+                        < self.dead_after()
             })
     }
 
@@ -542,6 +550,7 @@ impl Channels {
             sent_max: AtomicU64::new(0),
             in_flight: Mutex::new(VecDeque::new()),
             heard: Mutex::new(Instant::now()),
+            spoke: AtomicBool::new(false),
         });
         let mine_wins = ring::position(self.service.node_id().as_bytes())
             > ring::position(peer.node_id.as_bytes());
@@ -639,6 +648,7 @@ impl Channels {
                     };
                     let Some(message) = message else { break };
                     *link.heard.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
+                    link.spoke.store(true, Ordering::SeqCst);
                     // The peer spoke: the connection is valid, and the previous failures are left behind.
                     {
                         let mut state = peer.lock();

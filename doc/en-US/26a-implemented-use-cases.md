@@ -3,7 +3,7 @@ title: Implemented use cases
 summary: The catalogue of Taba use cases that have at least one test citing them, by area, with the case, the level and the tests that prove it.
 type: reference
 status: stable
-verified-on: 2026-11-07 @ 4fbb808
+verified-on: 2026-11-10 @ d6e1d66
 sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp, connectors/terraform]
 ---
 
@@ -44,7 +44,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `ARM` | Storage: memory, overflow, SQLite, integrity | 24 | 5 |
 | `ING` | Node join (bootstrap) | 33 | 4 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 32 | 1 |
-| `FRZ` | Freezing period | 13 | 1 |
+| `FRZ` | Freezing period | 14 | 1 |
 | `CNC` | Concurrency between membership changes | 12 | 3 |
 | `SIN` | Distributed synchronization of blocks | 31 | 1 |
 | `STR` | NDJSON streams between nodes | 8 | 7 |
@@ -6280,7 +6280,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-CAN-029
 
 **Case:** A channel opened by a node the peers do **not know yet** is refused **without blocking the node**  
-**Then:** `accept` looks the peer up, asks `sync_members` to adjust the channels to the table and looks again; whoever is still unknown is dropped. It never locks the peers a second time while it holds them (that deadlock stopped the node for good: doc 36, "A channel accept that locked the peers twice").  
+**Then:** `accept` looks the peer up, asks `sync_members` to adjust the channels to the table and looks again; whoever is still unknown is dropped. It never locks the peers a second time while it holds them (that deadlock stopped the node for good: doc 36f, "A channel accept that locked the peers twice").  
 **Level:** C  
 **Tests:**
   - `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node`
@@ -6349,6 +6349,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `tests/replication.rs::the_visibility_can_be_changed_and_an_expired_one_is_redelivered_without_propagation`
 
+  - `src/engine/messages/tests/cluster.rs::a_replicated_delivery_older_than_a_change_of_deadline_does_not_bring_the_deadline_back`
 ---
 
 ### UC-INV-008
@@ -6573,6 +6574,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `src/engine/messages/tests/cluster.rs::on_a_plain_queue_a_copy_that_is_not_the_owner_only_checks_that_the_message_exists`
   - `src/engine/messages/tests/cluster.rs::a_replicated_delivery_never_takes_the_copy_back_to_an_earlier_delivery`
 
+  - `src/engine/messages/tests/cluster.rs::a_replicated_delivery_older_than_a_change_of_deadline_does_not_bring_the_deadline_back`
 ---
 
 
@@ -7230,6 +7232,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/failures.rs::a_node_that_stops_answering_with_the_connection_open_is_detected_and_excluded`
+  - `tests/failures.rs::a_connection_the_mute_node_opens_does_not_make_it_reachable_to_the_vote`
 
 ---
 
@@ -7396,6 +7399,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/failures.rs::a_node_that_stays_down_is_excluded_by_two_of_three_and_every_table_changes`
+  - `tests/failures.rs::a_commit_that_arrives_after_the_membership_frame_is_not_counted_again_as_a_join`
 
 ---
 
@@ -7662,6 +7666,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/cluster/members/tests.rs::the_frozen_list_has_only_the_nodes_still_in_freezing`
   - `tests/freezing.rs::the_channel_snapshot_carries_the_nodes_still_in_freezing`
+
+---
+
+### UC-FRZ-015
+
+**Case:** A node excluded while it was still synchronizing (`syncing` in the table) is not frozen: it joins again at once, with the same ID (PRB-111).  
+**Level:** U, C  
+**Tests:**
+  - `src/cluster/members/tests.rs::a_node_excluded_while_it_synchronizes_is_not_frozen_and_an_active_one_is`
+  - `tests/failures.rs::a_node_excluded_while_it_synchronizes_is_not_frozen_and_joins_again`
 
 ---
 
@@ -8624,6 +8638,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `tests/restore_lives.rs::a_life_outside_the_window_is_not_restored_and_its_folder_goes_with_the_end_of_the_pass`
 
+  - `tests/restore_lives.rs::the_folder_of_a_restored_life_is_deleted_even_if_a_file_in_it_is_held_for_a_moment`
 ---
 
 ### UC-RTN-050
@@ -8705,7 +8720,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-058
 
 **Case:** A definition offered by a node that joined reaches **every member of the table**, not only the peers the channel knows at that instant
-**Then:** besides the frame of the channel, the node sends a `definition-apply` to each member (a change decided by an owner does the same), so a node that registered a few milliseconds later and is still synchronizing records it with the events and applies it; when the wait for the answers ends the table is read again, and a member that came in meanwhile gets it too; the key's lock is released before the spread (doc 36, "A definition offered to a node that was still joining").
+**Then:** besides the frame of the channel, the node sends a `definition-apply` to each member (a change decided by an owner does the same), so a node that registered a few milliseconds later and is still synchronizing records it with the events and applies it; when the wait for the answers ends the table is read again, and a member that came in meanwhile gets it too; the key's lock is released before the spread (doc 36f, "A definition offered to a node that was still joining").
 **Level:** C
 **Tests:**
   - `tests/cold_start.rs::an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to_the_peers_the_channel_knows`

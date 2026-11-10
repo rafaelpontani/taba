@@ -3448,7 +3448,38 @@ impl Messages {
         let now = self.clock.now_millis();
         let state = self.state_of(topic);
         let mut state = lock(&state);
-        let result = self.visibility_held(topic, &mut state, id, until_ms, delivery, now);
+        let result = self.visibility_held(topic, &mut state, id, until_ms, delivery, None, now);
+        self.ready_changed(topic, &mut state);
+        drop(state);
+        if result? {
+            self.wake(topic, 1);
+        }
+        Ok(())
+    }
+
+    /// The commit of a change of deadline (`PUT .../visibility`) on a responsible node: the new deadline, and the
+    /// `receiptToken` of the delivery it refers to. On a copy that has not heard of that delivery yet (it arrives after,
+    /// D199), the token is what tells [`apply_deliveries`](Self::apply_deliveries) that the delivery is older than the
+    /// change and must not bring the deadline back (KI-028).
+    pub fn apply_change(
+        &self,
+        topic: &str,
+        id: &str,
+        until_ms: u64,
+        receipt_token: &str,
+    ) -> Result<(), TabaError> {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let result = self.visibility_held(
+            topic,
+            &mut state,
+            id,
+            until_ms,
+            None,
+            Some(receipt_token),
+            now,
+        );
         self.ready_changed(topic, &mut state);
         drop(state);
         if result? {
@@ -3459,6 +3490,7 @@ impl Messages {
 
     /// [`apply_visibility`](Self::apply_visibility) with the topic's state already held, without the notice of
     /// ready messages. Returns whether the message was released (the caller wakes the waiting `GET`s).
+    #[allow(clippy::too_many_arguments)]
     fn visibility_held(
         &self,
         topic: &str,
@@ -3466,6 +3498,7 @@ impl Messages {
         id: &str,
         until_ms: u64,
         delivery: Option<(u32, &str)>,
+        receipt: Option<&str>,
         now: u64,
     ) -> Result<bool, TabaError> {
         let owned = self.know(topic, state, id);
@@ -3488,6 +3521,8 @@ impl Messages {
         meta.invisible_until_ms = until_ms;
         if let Some((count, token)) = delivery {
             meta.delivery_count = count;
+            meta.receipt_token = Some(token.to_owned());
+        } else if let Some(token) = receipt {
             meta.receipt_token = Some(token.to_owned());
         }
         self.save_meta(state, topic, &meta, place)?;
@@ -3528,6 +3563,7 @@ impl Messages {
                                 id,
                                 *until,
                                 Some((*count, token)),
+                                None,
                                 now,
                             )
                         })
@@ -3560,8 +3596,35 @@ impl Messages {
             .iter()
             .map(
                 |(id, until, count, token)| match self.info_held(topic, &mut state, id)? {
+                    // A change of deadline that referred to this delivery got here first (KI-028): the delivery is
+                    // older than it, so only its counter is taken, and the deadline of the change stays.
+                    Some(info) if info.meta.receipt_token.as_deref() == Some(token.as_str()) => {
+                        if info.meta.delivery_count < *count {
+                            let kept = info.meta.invisible_until_ms;
+                            self.visibility_held(
+                                topic,
+                                &mut state,
+                                id,
+                                kept,
+                                Some((*count, token)),
+                                None,
+                                now,
+                            )
+                            .map(|_| ())
+                        } else {
+                            Ok(())
+                        }
+                    }
                     Some(info) if info.meta.delivery_count <= *count => self
-                        .visibility_held(topic, &mut state, id, *until, Some((*count, token)), now)
+                        .visibility_held(
+                            topic,
+                            &mut state,
+                            id,
+                            *until,
+                            Some((*count, token)),
+                            None,
+                            now,
+                        )
                         .map(|_| ()),
                     _ => Ok(()),
                 },
@@ -3620,7 +3683,9 @@ impl Messages {
                 now,
             )
             .and_then(|()| match change {
-                Some(until_ms) => self.visibility_held(topic, &mut state, id, until_ms, None, now),
+                Some(until_ms) => {
+                    self.visibility_held(topic, &mut state, id, until_ms, None, None, now)
+                }
                 None => self.ack_held(topic, &mut state, id, now).map(|()| false),
             });
         self.ready_changed(topic, &mut state);

@@ -678,3 +678,46 @@ fn a_registration_without_commit_or_rollback_expires_and_each_phase_repeats_by_i
     );
     assert!(!membership.is_member("dddd"));
 }
+
+/// UC: UC-FRZ-015
+#[test]
+fn a_node_excluded_while_it_synchronizes_is_not_frozen_and_an_active_one_is() {
+    let membership = Membership::new(TTL, 16);
+    let mut syncing = member("bb");
+    syncing.state = MemberState::Syncing;
+    membership.install(MemberTable {
+        version: 1,
+        members: vec![member("a"), syncing, member("ccc")],
+        ..MemberTable::default()
+    });
+    for (operation, node) in [("op1", "bb"), ("op2", "ccc")] {
+        membership
+            .register(
+                operation,
+                Change::Exclude {
+                    node_id: node.to_owned(),
+                },
+                at(0),
+            )
+            .unwrap();
+        membership.commit(operation, at(0)).unwrap();
+    }
+    assert_eq!(
+        membership.frozen_remaining("bb", at(1), FREEZING),
+        None,
+        "it never served: it may join again at once"
+    );
+    assert!(
+        membership
+            .frozen_remaining("ccc", at(1), FREEZING)
+            .is_some()
+    );
+    let left: Vec<String> = membership
+        .table()
+        .unwrap()
+        .members
+        .into_iter()
+        .map(|m| m.node_id)
+        .collect();
+    assert_eq!(left, vec!["a".to_owned()]);
+}

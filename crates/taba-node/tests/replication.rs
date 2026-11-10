@@ -255,22 +255,30 @@ async fn a_get_on_any_node_delivers_what_the_other_nodes_own() {
         assert!(message["receiptToken"].is_string());
     }
 
-    // When the client received the message, the quorum (owner plus one copy) already had the token.
+    // The owner delivers alone and the copies learn of the delivery right after, in the background (D199): the owner
+    // and at least one copy end up with the token (checking it at the moment of the answer failed under load).
     for message in &got {
-        let id = message["id"].as_str().unwrap();
-        let token = message["receiptToken"].as_str().unwrap();
-        let with_token = (1..=3)
-            .filter(|n| {
-                messages_of(cluster.node(*n))
-                    .message_info("orders", id)
-                    .unwrap()
-                    .is_some_and(|i| i.meta.receipt_token.as_deref() == Some(token))
-            })
-            .count();
-        assert!(
-            with_token >= 2,
-            "{id}: only {with_token} copies with the token"
-        );
+        let id = message["id"].as_str().unwrap().to_owned();
+        let token = message["receiptToken"].as_str().unwrap().to_owned();
+        let copies: Vec<_> = (1..=3).map(|n| messages_of(cluster.node(n))).collect();
+        eventually(
+            "the owner and a copy with the token of the delivery",
+            move || {
+                copies
+                    .iter()
+                    .filter(|messages| {
+                        messages
+                            .message_info("orders", &id)
+                            .unwrap()
+                            .is_some_and(|i| {
+                                i.meta.receipt_token.as_deref() == Some(token.as_str())
+                            })
+                    })
+                    .count()
+                    >= 2
+            },
+        )
+        .await;
     }
 
     // Nothing more is delivered while they are invisible.
@@ -1175,11 +1183,12 @@ async fn a_rollback_that_does_not_arrive_leaves_a_pending_that_expires_by_itself
         .unwrap()
         .replica
         .clone();
-    assert_eq!(
-        replica.pending(),
-        1,
-        "the register stayed pending on the secondary"
-    );
+    // The coordinator answers as soon as the primary fails, while the secondary's register may still be on the way.
+    let waiting = replica.clone();
+    eventually("the register to stay pending on the secondary", move || {
+        waiting.pending() == 1
+    })
+    .await;
     for number in 1..=3 {
         assert!(
             messages_of(cluster.node(number))
@@ -1210,7 +1219,9 @@ async fn a_rollback_that_does_not_arrive_leaves_a_pending_that_expires_by_itself
 
 #[tokio::test]
 async fn a_lost_ready_signal_is_corrected_by_the_periodic_repeat() {
-    let cluster = TestCluster::start(3).await;
+    // Losing the channel frames brings the channels down and refuses them while the test publishes: without NO_VOTE, a
+    // slow publication outlasts the reconnect attempts and the nodes exclude each other (KI-011).
+    let cluster = TestCluster::start_with(3, NO_VOTE).await;
     create_queue(cluster.node(1), "orders").await;
     // No signal reaches anyone while the messages are published.
     for number in 1..=3 {
