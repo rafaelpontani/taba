@@ -110,7 +110,7 @@ send queue=$qd.url body=toolong delay=901 => error=InvalidParameterValue|AWS.Sim
 
 # --- counts -----------------------------------------------------------------------------------------------------------
 # SQS calls them approximate (they can take a while to settle), and an emulator answered ApproximateNumberOfMessages=0
-# right after this receive once (doc 36): here they only have to be there; the exact counts, which Taba answers from the
+# right after this receive once (doc 36f): here they only have to be there; the exact counts, which Taba answers from the
 # index at the instant, are in taba/limits-sqs.scn.
 createQueue name={p}-count as=qc
 sendBatch queue=$qc.url bodies=c1,c2,c3 => ok=3 failed=0

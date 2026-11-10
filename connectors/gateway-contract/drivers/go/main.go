@@ -743,7 +743,7 @@ func main() {
 // WriteTo after the close with io.EOF instead of (0, nil). net/http, after writing the body, reads it once more to check
 // that nothing is left (transfer.go, writeBody); when the machine is loaded that read comes after the close, the EOF is
 // taken as a write error and the writeLoop closes the connection in the middle of the response: ReceiveMessage of a large
-// message failed with "use of closed network connection" (doc 36). A plain Read after the close is (0, io.EOF), which
+// message failed with "use of closed network connection" (doc 36f). A plain Read after the close is (0, io.EOF), which
 // io.Copy takes as the end.
 type plainBodyTransport struct{ next http.RoundTripper }
 
