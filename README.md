@@ -328,6 +328,32 @@ The `taba-cli`, the client command line ([connectors/rust/cli](connectors/rust/c
 
 **Terraform and OpenTofu provider.** [`connectors/terraform`](connectors/terraform/README.md) manages queues, distributors and access tokens as code (`rafaelpontani/taba`), with plan, drift detection, import, a guard against removing a queue that still holds messages (`force_destroy`) and an optional `create_or_update` that takes over what already exists. It is on the [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba) and on the [OpenTofu Registry](https://search.opentofu.org/provider/rafaelpontani/taba) ([documentation](https://registry.terraform.io/providers/rafaelpontani/taba/latest/docs)), and its zips also come with each [Release](https://github.com/rafaelpontani/taba/releases) ([the guide](doc/en-US/40-terraform.md)).
 
+```hcl
+terraform {
+  required_providers {
+    taba = { source = "rafaelpontani/taba" }
+  }
+}
+
+provider "taba" {
+  endpoint = "https://taba.example.com:8080" # or TABA_URL
+  token    = var.taba_token                  # or TABA_TOKEN
+}
+
+resource "taba_queue" "orders" {
+  name           = "orders"
+  ttl            = 86400
+  max_deliveries = 5
+}
+
+resource "taba_token" "orders_app" {
+  name           = "orders-app"
+  permissions    = ["publish", "consume"]
+  topic_prefixes = ["orders"]
+  lifecycle { create_before_destroy = true }
+}
+```
+
 **Pulumi provider.** [`connectors/pulumi`](connectors/pulumi/README.md) is the same provider for Pulumi, with SDKs for TypeScript/JavaScript, Python, .NET and Go (`@rafaelpontani/pulumi-taba`, `pulumi-taba`, `Taba.Pulumi` and a Go module): queues, distributors and access tokens as code, with `preview`, drift detection, import and the same `forceDestroy` and `createOrUpdate`. It is packaged with each [Release](https://github.com/rafaelpontani/taba/releases) and waits for the setup of its package registries ([the guide](doc/en-US/41-pulumi.md)).
 
 Other languages (C and C++ are deferred, with no date) use their own HTTP client. The design is in [the connectors guide](doc/en-US/21-connectors.md).
