@@ -289,6 +289,9 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 - **Test:** `tests/failures.rs::only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion` (UC-FAL on the exclusion), the assertion on the coordinators of the `unregister` calls (line 1087).
 - **Symptom:** it failed once in a full `cargo test` in a Linux container (22 tests of the file in parallel with the other binaries' load); alone it passed 3 of 3, and a second full run passed.
 - **Cause:** not identified. It does not touch the register of a message (found while validating [a register that checked the message before taking it](#a-register-that-checked-the-message-before-taking-it)). The reading to check is a second healthy node that also registers the unregistration before it sees the first one finished.
+- **Hypothesis (2026-11-09, not confirmed):** the test asks for something the server does not guarantee under load, so the defect would be in the test. In `exclude()` (`cluster/vote/mod.rs`) each node that closes the quorum sorts the voters that answered it and waits `rank × write.commit.timeout` before it coordinates; in the tests that timeout is 400 ms (`FAST` in `common/cluster.rs`). In `unregister_node_traced` a node only sends `unregister` to the others if phase 1 of the lowest has not reached it yet (otherwise its own register fails with `cluster.conflict` before any call). So a second coordinator shows up when the lowest starts its exclusion more than 400 ms after the second one: under load each node sees the channel of the candidate fall at a different moment, and the vote waits for the answer of every voter, so a slow voter delays the quorum of one node and not of another. The second node then gets `cluster.conflict`, waits, finds the node out of the table and ends with `excluded`: the exclusion is right, but the test sees two senders of `unregister` and fails.
+- **How to confirm:** the hunt below, and in the log the instants when each node opened the vote and closed the quorum, and who was the extra coordinator. If the ranks differ between the nodes (a voter that did not answer one of them), the cause may be in the server instead.
+- **Fix, if confirmed (in the test):** a larger `TABA_WRITE_COMMIT_TIMEOUT` for this test (5 s, for example), so the stagger absorbs the variation under load; or the assertion changed to "the first `unregister` came from the lowest and the exclusion did not fail".
 - **Next step:** `docker/hang-hunt.sh failures only_the_lowest_node_id` and read which node was the extra coordinator.
 
 **History**
@@ -296,6 +299,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | Date | Event |
 |---|---|
 | 2026-10-29 | One failure in the full suite, 3 passes alone, 1 full pass after. |
+| 2026-11-09 | Hypothesis recorded from the reading of the code (the stagger of 400 ms of the tests too short under load); not confirmed by a hunt yet. |
 
 ## A register that checked the message before taking it
 
