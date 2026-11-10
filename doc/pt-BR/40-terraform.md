@@ -13,7 +13,7 @@ fontes: [connectors/terraform/internal/provider/provider.go, connectors/terrafor
 
 O provider gerencia como código o que de outro jeito se cria pela API de clientes ou pelo `taba-cli`: **filas, distribuidores e tokens de acesso**, com `plan`, detecção de desvio, `import` e remoção controlada. É um programa Go em `connectors/terraform` (terraform-plugin-framework) que chama a API de clientes pelo conector Go (`connectors/go`), então não precisa de nada no nó além da API de clientes. O mesmo binário serve o **Terraform** e o **OpenTofu**, e o [provider Pulumi](41-pulumi.md) é gerado a partir dele.
 
-**Estado.** O provider está pronto e testado (unitários, aceitação contra um nó real com Terraform e OpenTofu, uma rodada de três nós com um nó fora). Está publicado no [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba) como `rafaelpontani/taba` desde a `v0.3.8-rc.3`, e no [OpenTofu Registry](https://search.opentofu.org/provider/rafaelpontani/taba), com o mesmo nome e a mesma chave de assinatura, com todas as versões desde a `v0.3.8-rc.3` ([Publicação](#publicação)). Os zips de cada versão também ficam na Release do GitHub dela.
+**Estado.** O provider está pronto e testado (unitários, aceitação contra um nó real com Terraform e OpenTofu, uma rodada de três nós com um nó fora). Está publicado no [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba) como `rafaelpontani/taba` desde a `v0.3.8-rc.3`, e no [OpenTofu Registry](https://search.opentofu.org/provider/rafaelpontani/taba), com o mesmo nome e a mesma chave de assinatura, com todas as versões desde a `v0.3.8-rc.3` ([Publicação](#publicação)). A documentação dos recursos e das fontes de dados está no [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba/latest/docs). Os zips de cada versão também ficam na Release do GitHub dela.
 
 ```hcl
 terraform {
@@ -181,7 +181,7 @@ O Terraform Registry e o OpenTofu Registry só leem um repositório público cha
 
 O que o mantenedor cria está em [27-ci-cd.md](27-ci-cd.md#provider-terraform).
 
-**A documentação no OpenTofu Registry.** O OpenTofu Registry instala qualquer provider, mas só mostra a documentação (as páginas de `docs/`) de uma versão cujo repositório tem uma licença da lista aprovada por ele (Apache-2.0, MPL-2.0, MIT, BSD e outras; não GPL nem AGPL), e responde `451 Unavailable for Legal Reasons` para as outras. Até a `v0.3.11` o espelho levava por engano o `LICENSE` do servidor (AGPL-3.0), então essas versões não têm documentação lá (as tags do espelho não são reescritas); da próxima versão em diante ele leva o `connectors/LICENSE`. As páginas também estão em `connectors/terraform/docs/` e no `docs/` de cada tag do espelho.
+**A documentação no OpenTofu Registry.** O OpenTofu Registry instala qualquer provider, mas só mostra a documentação (as páginas de `docs/`) de uma versão cujo repositório tem uma licença da lista aprovada por ele (Apache-2.0, MPL-2.0, MIT, BSD e outras; não GPL nem AGPL), e responde `451 Unavailable for Legal Reasons` para as outras. Até a `v0.3.11` o espelho levava por engano o `LICENSE` do servidor (AGPL-3.0), então essas versões não têm documentação lá (as tags do espelho não são reescritas); da próxima versão em diante ele leva o `connectors/LICENSE`. As páginas estão no [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba/latest/docs), em `connectors/terraform/docs/` e no `docs/` de cada tag do espelho.
 
 ## Limites
 

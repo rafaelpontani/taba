@@ -40,7 +40,7 @@ resource "taba_token" "orders_app" {
 
 ## Installing
 
-From the [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba), and from the [OpenTofu Registry](https://search.opentofu.org/provider/rafaelpontani/taba), as `rafaelpontani/taba` in both, signed with the same key. Without a registry, each [Taba Release](https://github.com/rafaelpontani/taba/releases) carries the zips (`terraform-provider-taba_<version>_<os>_<arch>.zip`) with their `SHA256SUMS`: put them in a [filesystem mirror](https://developer.hashicorp.com/terraform/cli/config/config-file#filesystem_mirror) under `registry.terraform.io/rafaelpontani/taba/` (or `registry.opentofu.org/...` for OpenTofu).
+From the [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba), and from the [OpenTofu Registry](https://search.opentofu.org/provider/rafaelpontani/taba), as `rafaelpontani/taba` in both, signed with the same key. The documentation of every resource and data source is on the [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba/latest/docs). Without a registry, each [Taba Release](https://github.com/rafaelpontani/taba/releases) carries the zips (`terraform-provider-taba_<version>_<os>_<arch>.zip`) with their `SHA256SUMS`: put them in a [filesystem mirror](https://developer.hashicorp.com/terraform/cli/config/config-file#filesystem_mirror) under `registry.terraform.io/rafaelpontani/taba/` (or `registry.opentofu.org/...` for OpenTofu).
 
 ## Developing
 
