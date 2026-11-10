@@ -52,7 +52,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 **Status:** Aberto · **Achado em:** 2026-11-10 · **Solução em:** —
 
 - **Teste:** `tests/failures.rs::a_node_that_announces_its_failure_is_excluded_while_its_channel_is_still_up` (UC-FAL-005, UC-FAL-023).
-- **Sintoma:** `failures.rs:274`, `left: 2.0, right: 0.0`: a soma de `taba_cluster_channel_reconnects_total` nos dois nós saudáveis, que o teste espera ser zero (a votação foi aberta pelo aviso do nó, não pela conexão). Na caça que validou o KI-013 (`ROUNDS=30 KEEP_GOING=1 docker/hang-hunt.sh failures`, 8 processos do binário inteiro com os logs detalhados ligados) falhou em 49 das 120 primeiras execuções; não foi visto nas execuções normais.
+- **Sintoma:** `failures.rs:274`, `left: 2.0, right: 0.0`: a soma de `taba_cluster_channel_reconnects_total` nos dois nós saudáveis, que o teste espera ser zero (a votação foi aberta pelo aviso do nó, não pela conexão). Na caça que validou o KI-013 (`ROUNDS=30 KEEP_GOING=1 docker/hang-hunt.sh failures`, 8 processos do binário inteiro com os logs detalhados ligados) falhou em 86 das 240 execuções; não foi visto nas execuções normais.
 - **Causa:** não identificada. A leitura a conferir: sob essa carga o keepalive do canal (200 ms em `FAST`) expira e o canal reconecta uma vez em cada nó saudável, e o contador não fica em zero embora a exclusão esteja certa; se for isso, o defeito está na asserção e não no servidor.
 - **Próximo passo:** ler num log guardado (`target/hang-hunt/run_*.log`) por que os canais reconectaram (o keepalive, ou a própria exclusão fechando-os antes de o contador ser lido).
 - **Não fazer:** aumentar os 30 s do `eventually`.
@@ -61,7 +61,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Data | Evento |
 |---|---|
-| 2026-11-10 | Achado na caça que validou o KI-013: 49 falhas em 120 execuções sob essa carga. |
+| 2026-11-10 | Achado na caça que validou o KI-013: 86 falhas em 240 execuções sob essa carga. |
 
 ## KI-028: Um novo prazo que não chega a todas as cópias em 30 s no arm64
 
@@ -312,7 +312,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 - **Como confirmar:** a caça abaixo, e no log os instantes em que cada nó abriu a votação e fechou o quórum, e quem foi o coordenador a mais. Se os ranks diferirem entre os nós (um eleitor que não respondeu a um deles), a causa pode estar no servidor.
 - **Correção, se confirmada (no teste):** um `TABA_WRITE_COMMIT_TIMEOUT` maior para este teste (5 s, por exemplo), para o escalonamento absorver a variação sob carga; ou a asserção trocada por "o primeiro `unregister` veio do de menor ID e a exclusão não falhou".
 - **Correção (2026-11-10, no teste):** o teste roda com `TABA_WRITE_COMMIT_TIMEOUT=5s`, de modo que a vez do segundo nó (5 s) é maior que a diferença entre os instantes em que os nós veem a queda sob carga; e a contagem de todos os `vote` foi trocada por "o coordenador pediu o voto a cada um dos outros três saudáveis", que vale sempre que ele fechou o quórum. O servidor não mudou: o que ele garante (uma exclusão, nenhuma falha) já era conferido.
-- **Verificação:** `ROUNDS=30 KEEP_GOING=1 docker/hang-hunt.sh failures` (8 processos do binário inteiro ao mesmo tempo, logs detalhados ligados): nas 15 primeiras rodadas (120 execuções) este teste não falhou nenhuma vez. As outras falhas dessa caça são o [KI-029](#ki-029-um-aviso-de-falha-que-conta-reconexões-do-canal-sob-carga) e o [KI-017](#ki-017-um-nó-que-para-de-responder-e-não-é-excluído-em-30-s).
+- **Verificação:** `ROUNDS=30 KEEP_GOING=1 docker/hang-hunt.sh failures` (8 processos do binário inteiro ao mesmo tempo, logs detalhados ligados): nas 30 rodadas (240 execuções) este teste não falhou nenhuma vez. As outras falhas dessa caça são o [KI-029](#ki-029-um-aviso-de-falha-que-conta-reconexões-do-canal-sob-carga) e o [KI-017](#ki-017-um-nó-que-para-de-responder-e-não-é-excluído-em-30-s).
 
 **Histórico**
 
@@ -321,7 +321,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | 2026-10-29 | Uma falha na suíte completa, 3 passagens sozinho, 1 passagem completa depois. |
 | 2026-11-09 | Hipótese registrada a partir da leitura do código (o escalonamento de 400 ms dos testes curto demais sob carga); ainda não confirmada por uma caça. |
 | 2026-11-10 | Falhou no job do servidor em amd64 do pull request "Release v0.3.12" (#82) na outra asserção, `all the healthy ones voted`; o job rodou de novo. |
-| 2026-11-10 | Corrigido no teste (vez de 5 s, o voto conferido no coordenador); 120 execuções na caça sem falha deste teste. |
+| 2026-11-10 | Corrigido no teste (vez de 5 s, o voto conferido no coordenador); 240 execuções na caça sem falha deste teste. |
 
 ## KI-010: Um register que verificou a mensagem antes de tomá-la
 
