@@ -3158,16 +3158,43 @@ impl Messages {
     pub fn apply_publish_with(
         &self,
         topic: &str,
-        mut meta: MessageMeta,
+        meta: MessageMeta,
         body: Bytes,
         durable: bool,
     ) -> Result<(), TabaError> {
+        self.publish_applied(topic, meta, body, durable, false)
+            .map(|_| ())
+    }
+
+    /// The store of [`apply_publish_with`](Self::apply_publish_with). With `refuse_dead`, the log of excluded
+    /// messages is read under the same hold of the topic as the store, and a message it has is not stored:
+    /// `Ok(None)`. Otherwise `Ok(Some(stored))`, `false` when the node already had it.
+    pub(super) fn publish_applied(
+        &self,
+        topic: &str,
+        mut meta: MessageMeta,
+        body: Bytes,
+        durable: bool,
+        refuse_dead: bool,
+    ) -> Result<Option<bool>, TabaError> {
         let now = self.clock.now_millis();
         meta.position = self.position_for(topic, &meta.id, meta.group_id.as_deref());
         let owned = self.owns(topic, &meta.id, meta.group_id.as_deref());
         let stored = {
             let state = self.state_of(topic);
             let mut state = lock(&state);
+            // An ack takes the message out and records its exclusion under this same hold, so once the
+            // message is not here the log already says whether it died.
+            if refuse_dead
+                && !self.know(topic, &mut state, &meta.id)
+                && !state.replicas.contains(&meta.id)
+                && self.store.is_excluded(topic, &meta.id).map_err(|e| {
+                    self.disk_error("failed to read the log of excluded messages", &e)
+                })?
+            {
+                state.index.forget_adopted();
+                return Ok(None);
+            }
             let stored = self.publish_held(topic, &mut state, meta, body, durable, owned, now);
             if matches!(stored, Ok(true)) {
                 self.ready_changed(topic, &mut state);
@@ -3177,7 +3204,7 @@ impl Messages {
         if stored && owned {
             self.wake(topic, 1);
         }
-        Ok(())
+        Ok(Some(stored))
     }
 
     /// The publications of a node that is the only responsible one (factor 1, D191), `(metadata, body, start)`

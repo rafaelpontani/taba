@@ -3,8 +3,8 @@ title: Cluster API
 summary: The routes the nodes use among themselves — members and channel, definitions, messages, synchronization, recovery, observability and forwarding — with the two-phase protocol, the NDJSON streams and the DTOs.
 type: reference
 status: stable
-verified-on: 2026-11-07 @ d79a140
-sources: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/protocol/http.rs, crates/taba-node/src/cluster/protocol, crates/taba-node/src/http/cluster_api, crates/taba-node/src/cluster/service, crates/taba-node/src/cluster/channel]
+verified-on: 2026-11-09 @ edcf155
+sources: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/protocol/http.rs, crates/taba-node/src/cluster/protocol, crates/taba-node/src/http/cluster_api, crates/taba-node/src/cluster/service, crates/taba-node/src/cluster/channel, crates/taba-node/src/cluster/recovery/finish.rs]
 ---
 
 # Cluster API
@@ -161,7 +161,7 @@ All the streams follow the [NDJSON](#ndjson-streams) contract.
 | `POST /cluster/messages/recover[?replicate=false][&durable=true]` | A node that **returns** sends the responsible one the messages it found in the loss list. **The body is an NDJSON stream** (`Content-Type: application/x-ndjson`) of `MessageRecord` with the final line; response `RecoverResult` (`end`, `count` applied). With `replicate=false` it only writes to the local disk; with `durable=true` whoever writes puts the message **on disk**, not only in memory (the restoration of the previous lives uses it between the owners). `415` with another `Content-Type` |
 | `POST /cluster/topics/{topic}/messages/restore[?topicId=]` | The node that keeps the **folder of a previous life** sends the **new primary** of the block its messages, with the original ID ([07-cluster.md](07-cluster.md), section 10.6). NDJSON body like `recover`'s; `topicId` is the topic's when the folder was created. The primary checks the topic (deleted, or recreated with another `topicId`, discards), its own log of excluded messages, the other present nodes' and the S3 journal, and activates what is alive through the path of `recover` (disk and quorum). Response `RecoverResult`: `count` is what ended up **resolved** (activated, already there or discarded). Members only |
 | `POST /cluster/topics/{topic}/messages/dead` | Body `{"ids":[...]}`; answers `{"dead":[...]}` with the IDs that are in this node's **log of excluded messages**. It is the batch query the restoring primary makes to the present nodes. Members only |
-| `GET /cluster/restore` | The state of the node's restoration of the previous lives ([07-cluster.md](07-cluster.md), section 10.8): `status` (`unknown`, `restoring` or `restored`), `finished` (it sent everything its lives keep), `forced`, `missing` (the old nodes still awaited) and `lives` (the manifests of the lives it keeps, with the watermark). The nodes poll it every 500 ms while they restore. Members only |
+| `GET /cluster/restore` | The state of the node's restoration of the previous lives ([07-cluster.md](07-cluster.md), section 10.8): `status` (`unknown`, `restoring` or `restored`), `finished` (it sent everything its lives keep), `forced`, `logsReady` (the logs of excluded messages of its lives are already in its own, so its answer to `messages/dead` has them; absent in an earlier version, which counts as ready), `missing` (the old nodes still awaited) and `lives` (the manifests of the lives it keeps, with the watermark). The nodes poll it every 500 ms while they restore. Members only |
 | `POST /cluster/restore/decided` | The coordinator (the lowest ID) tells each node that the vote closed: the node deduplicates the FIFO queues, releases them and marks the cluster **restored from disk**. Idempotent. Members only |
 | `POST /cluster/restore/force` | The operator's force, spread by the node that received it ([17-operations-api.md](17-operations-api.md)): the node decides at once, whatever the vote says. Members only |
 

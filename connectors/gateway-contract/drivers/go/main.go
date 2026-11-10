@@ -11,7 +11,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -46,7 +48,8 @@ var snsClient *sns.Client
 var ctx = context.Background()
 
 func makeClients(c *[2]string) {
-	opts := []func(*config.LoadOptions) error{config.WithRegion(valueOr("region", "us-east-1")), config.WithRetryMaxAttempts(1)}
+	opts := []func(*config.LoadOptions) error{config.WithRegion(valueOr("region", "us-east-1")), config.WithRetryMaxAttempts(1),
+		config.WithHTTPClient(&http.Client{Transport: plainBodyTransport{http.DefaultTransport.(*http.Transport).Clone()}})}
 	if c != nil {
 		opts = append(opts, config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(c[0], c[1], "")))
 	}
@@ -733,4 +736,23 @@ func main() {
 	}
 	args["sdk"] = strings.TrimSpace(sdk)
 	fmt.Printf("SUMMARY lang=%s variant=%s sdk=%s pass=%d fail=%d connect=%d\n", args["lang"], args["variant"], args["sdk"], counts["PASS"], counts["FAIL"], counts["CONNECT"])
+}
+
+// plainBodyTransport hands the request body to net/http without its WriteTo. The SDK (smithy-go, every version up to
+// v1.28 at least) closes the request body as soon as the response headers arrive, and its safeWriteToReadCloser answers
+// WriteTo after the close with io.EOF instead of (0, nil). net/http, after writing the body, reads it once more to check
+// that nothing is left (transfer.go, writeBody); when the machine is loaded that read comes after the close, the EOF is
+// taken as a write error and the writeLoop closes the connection in the middle of the response: ReceiveMessage of a large
+// message failed with "use of closed network connection" (doc 36). A plain Read after the close is (0, io.EOF), which
+// io.Copy takes as the end.
+type plainBodyTransport struct{ next http.RoundTripper }
+
+type plainBody struct{ io.ReadCloser }
+
+func (t plainBodyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.Body != nil && r.Body != http.NoBody {
+		r = r.Clone(r.Context())
+		r.Body = plainBody{r.Body}
+	}
+	return t.next.RoundTrip(r)
 }

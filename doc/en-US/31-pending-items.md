@@ -13,7 +13,7 @@ sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 >
 > **Legend:** `[ ]` open, undecided; `[~]` partially resolved (the text carries **only the questions still missing**, each with its sub-code); **Depends on** = the question can only be answered after another.
 >
-> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D224** and **PRB-110**; D217 and PRB-108 are taken by plans still in development).
+> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D224** and **PRB-111**; D217 and PRB-108 are taken by plans still in development).
 
 ## Known limits
 
@@ -137,6 +137,14 @@ Found while implementing the provider ([41-pulumi.md](41-pulumi.md), D212, D213,
 | Code | Effect | Proposal |
 |---|---|---|
 | **PRB-110** | **Part of the Pulumi provider is not proved by a program.** The .NET and Go SDKs are only compiled (`test.sh acc`), and no program in those languages runs `up` and `preview`; and the final `verify` job of `release.yml` installs none of the published packages (the npm one is checked by `pulumi-npm`, the PyPI and NuGet ones not at all). The cases `UC-IAC-025`, `026` and `030` to `034` are covered by shell scripts, which `uc_coverage` does not read | A minimal program in each language in `examples/`, and a step in `verify` that installs the three published packages and runs `pulumi preview`. Moving the scenarios to a test runner that `uc_coverage` reads would let the cases leave [26b](26b-planned-use-cases.md) |
+
+## Intermittent tests (new problems and limits)
+
+Found while hunting the intermittent tests ([36-known-issues.md](36-known-issues.md)).
+
+| Code | Effect | Proposal |
+|---|---|---|
+| **PRB-111** | **A node excluded while it synchronizes stays out of the cluster for 5 minutes.** A node that registered and is still synchronizing is a member of the table, so a drop of its channel opens the exclusion vote like for any member (`channel-down`). Once excluded it notices and redoes the join, but its ID is frozen (D106, `left_secs=300`) and every join is refused until the freezing ends. Seen in a test under load ([36-known-issues.md](36-known-issues.md#a-node-excluded-while-it-synchronizes-that-cannot-come-back)) | Do not freeze a node that never became active (its exclusion only cleans the table), or let a synchronizing member be excluded only by the timeout of the synchronization and not by a drop of the channel. Then a test that drops the channel of a synchronizing node |
 
 ## 1. Unblocked
 

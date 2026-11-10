@@ -289,13 +289,25 @@ impl Recovery {
         }
         let cutoff = self.cluster_cutoff().await;
         let slack = self.service.rules().restore.clock_slack;
+        let mut restorable = Vec::new();
         for life in lives {
             if !life_restorable(life.manifest.last_seen_ms, cutoff, slack) {
                 summary.outside_window += 1;
                 tracing::info!(life = %life.id, ?cutoff, "the life is outside the window of the log of excluded messages; it follows the loss list");
                 continue;
             }
-            self.send_life(&life, &mut summary).await;
+            restorable.push(life);
+        }
+        // Every log before any message: a newer life may have recorded the ack of a message an older life still
+        // keeps, and the older one is sent first.
+        for life in &restorable {
+            self.import_log(life, true).await;
+        }
+        for life in &restorable {
+            if self.service.cancel_token().is_cancelled() {
+                break;
+            }
+            self.send_life(life, &mut summary).await;
         }
         // The last step of the start with S3 (doc 33, the scan at the start): the notice of "I finished" includes it.
         self.scan_backup().await;
@@ -341,19 +353,35 @@ impl Recovery {
         }
     }
 
-    /// One life: incorporates its log of excluded messages and sends its messages, a window of rows at a time.
+    /// Incorporates the log of excluded messages of every life this node keeps, inside the window or not: they only
+    /// add evidence of death, and the start of the recording stays (only [`restore_lives`](Self::restore_lives)
+    /// moves it, for the restorable lives). Called before the node tells the others its logs are in (doc 07,
+    /// section 10.7), so the query of the dead finds them however the passes of the nodes interleave.
+    pub(super) async fn import_logs(self: &Arc<Self>) {
+        for life in self.lives() {
+            self.import_log(&life, false).await;
+        }
+    }
+
+    /// Adds the life's log of excluded messages to the node's; with `since`, the start of the recording too.
+    async fn import_log(self: &Arc<Self>, life: &Life, since: bool) {
+        let store = self.messages.open_life(&life.dir);
+        let messages = self.messages.clone();
+        let (since, seen) = (
+            life.manifest.excluded_since_ms.filter(|_| since),
+            life.manifest.last_seen_ms,
+        );
+        let merged =
+            tokio::task::spawn_blocking(move || messages.import_life_log(&store, since, seen))
+                .await;
+        if !matches!(merged, Ok(Ok(()))) {
+            tracing::warn!(life = %life.id, "could not incorporate the log of excluded messages of the life");
+        }
+    }
+
+    /// One life: sends its messages, a window of rows at a time (its log is already in the node's).
     async fn send_life(self: &Arc<Self>, life: &Life, summary: &mut RestoreSummary) {
         let store = Arc::new(self.messages.open_life(&life.dir));
-        {
-            let (messages, store) = (self.messages.clone(), store.clone());
-            let (since, seen) = (life.manifest.excluded_since_ms, life.manifest.last_seen_ms);
-            let merged =
-                tokio::task::spawn_blocking(move || messages.import_life_log(&store, since, seen))
-                    .await;
-            if !matches!(merged, Ok(Ok(()))) {
-                tracing::warn!(life = %life.id, "could not incorporate the log of excluded messages of the life");
-            }
-        }
         let Ok(Ok(topics)) = ({
             let store = store.clone();
             tokio::task::spawn_blocking(move || store.topics_on_disk()).await

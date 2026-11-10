@@ -3,7 +3,7 @@ título: Provider Pulumi
 resumo: "O provider do Taba para o Pulumi (`taba`), em `connectors/pulumi`: o provider Terraform ligado ao TypeScript/JavaScript, Python, .NET e Go; os pacotes e como o plugin é instalado, a configuração do provider, os recursos e os nomes deles nos SDKs, por que nada recebe nome automático, `preview`, desvio e `import`, o `forceDestroy`, o `createOrUpdate` opcional, como funcionam a substituição e a rotação de um token no Pulumi, `protect` e `retainOnDelete`, o segredo do token no estado, como os SDKs são gerados e testados e como são publicados."
 tipo: guia
 status: parcial
-verificado-em: 2026-11-08 @ 6ba2488
+verificado-em: 2026-11-08 @ f8a9a0a
 fontes: [connectors/pulumi/provider/resources.go, connectors/pulumi/provider/docs_edits.go, connectors/pulumi/provider/resources_test.go, connectors/pulumi/provider/cmd/pulumi-resource-taba/main.go, connectors/pulumi/provider/cmd/pulumi-tfgen-taba/main.go, connectors/pulumi/provider/cmd/pulumi-resource-taba/schema.json, connectors/pulumi/scripts/generate.sh, connectors/pulumi/scripts/test.sh, connectors/pulumi/scripts/package.sh, connectors/pulumi/scripts/verify-release.sh, connectors/pulumi/scripts/mirror.sh, connectors/pulumi/examples/scenarios.sh, connectors/terraform/shim/shim.go, .github/workflows/release.yml, .github/workflows/build-connector-pulumi.yml]
 ---
 
@@ -168,11 +168,11 @@ Casos de uso `UC-IAC-024` a `UC-IAC-034` ([26a](26a-casos-de-uso-implementados.m
 
 ## Publicação
 
-O `release.yml` empacota o provider a cada versão (`scripts/package.sh`: seis arquivos do plugin, o pacote npm, a wheel e o sdist, o pacote NuGet, o módulo do SDK Go e um `SHA256SUMS`, reproduzíveis) e os arquivos vão para a Release do Taba. Depois o job `pulumi-verify` roda o `verify-release.sh` contra a imagem recém-publicada e, só se passar, cada destino roda, cada um com a sua variável (vazia = não publica):
+O `release.yml` empacota o provider a cada versão (`scripts/package.sh`: seis arquivos do plugin, o pacote npm, a wheel e o sdist, o pacote NuGet, com o README do provider como o que o nuget.org mostra, o módulo do SDK Go e um `SHA256SUMS`, reproduzíveis) e os arquivos vão para a Release do Taba. Depois o job `pulumi-verify` roda o `verify-release.sh` contra a imagem recém-publicada (ele lê também o `.nupkg`: id, versão e README, que não mudam depois do push) e, só se passar, cada destino roda, cada um com a sua variável (vazia = não publica):
 
 | Destino | Variável | O quê |
 |---|---|---|
-| Espelho `rafaelpontani/pulumi-taba` (D213) | `PULUMI_PROVIDER_REPO` e o segredo `PULUMI_MIRROR_TOKEN` | `scripts/mirror.sh`: o SDK Go (`sdk/`), o schema, os exemplos e o README na `main`, as tags `v<versão>` e `sdk/v<versão>` (o módulo Go está em `sdk/`, então o Go lê as versões das tags `sdk/`) e uma Release com os arquivos, que é o que `pulumi plugin install --server github://...` baixa |
+| Espelho `rafaelpontani/pulumi-taba` (D213) | `PULUMI_PROVIDER_REPO` e o segredo `PULUMI_MIRROR_TOKEN` | `scripts/mirror.sh`: o SDK Go (`sdk/`), o schema, os exemplos e o README na `main`, as tags `v<versão>` e `sdk/v<versão>` (o módulo Go está em `sdk/`, então o Go lê as versões das tags `sdk/`) e uma Release com os arquivos, que é o que `pulumi plugin install --server github://...` baixa; o que a API do GitHub responde com 5xx é tentado de novo (até 5 vezes) e uma Release criada só em parte é completada |
 | npm | `PULUMI_NPM=true` | Trusted Publishing; `--tag next` num candidato; depois instala o pacote do npm e confere |
 | PyPI | `PULUMI_PYPI=true` | Trusted Publishing; `skip-existing` |
 | nuget.org | `PULUMI_NUGET_USER` | Trusted Publishing (`NuGet/login`); `--skip-duplicate` |

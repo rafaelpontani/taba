@@ -48,6 +48,54 @@ async fn the_node_tells_which_ids_its_log_of_excluded_messages_has() {
     assert!(h.messages.excluded_among("other", &ids).is_empty());
 }
 
+/// UC: UC-RTN-028
+#[tokio::test]
+async fn a_copy_of_a_message_acknowledged_after_the_check_of_the_dead_is_not_stored_again() {
+    // Two lives keep copies of the same message. The primary checks the dead of both batches, the copy of the first
+    // life is activated, delivered and acknowledged, and only then the copy of the second life reaches the store.
+    let h = harness();
+    h.topics.create(queue("orders")).await.unwrap();
+    let view = h.topics.get("orders").unwrap();
+    let (meta, body) = h
+        .messages
+        .draft_publish(&view, &json_body("{\"seq\":10}"))
+        .unwrap();
+    let id = meta.id.clone();
+    assert_eq!(
+        h.messages
+            .apply_recovered("orders", meta.clone(), body.clone(), true)
+            .unwrap(),
+        Loaded::Stored
+    );
+    assert_eq!(
+        h.messages
+            .apply_recovered("orders", meta.clone(), body.clone(), true)
+            .unwrap(),
+        Loaded::Existing,
+        "while it is here, the second copy is the same message"
+    );
+    let got = consume(&h, "orders", q(Some("1"), Some("30"), None)).await;
+    assert_eq!(got.len(), 1);
+    h.messages
+        .ack("orders", &id, Some(&got[0].receipt_token))
+        .unwrap();
+
+    assert_eq!(
+        h.messages
+            .apply_recovered("orders", meta.clone(), body.clone(), true)
+            .unwrap(),
+        Loaded::Dead,
+        "the log of excluded messages has it: it is not brought back"
+    );
+    assert!(h.messages.message_info("orders", &id).unwrap().is_none());
+    assert!(
+        consume(&h, "orders", q(Some("1"), Some("30"), None))
+            .await
+            .is_empty(),
+        "delivered once"
+    );
+}
+
 /// UC: UC-RTN-026
 #[tokio::test]
 async fn the_log_of_a_life_is_added_to_the_nodes_and_the_start_goes_back_only_if_they_meet() {

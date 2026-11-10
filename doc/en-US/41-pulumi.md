@@ -3,7 +3,7 @@ title: Pulumi provider
 summary: "The Taba provider for Pulumi (`taba`), in `connectors/pulumi`: the Terraform provider bridged to TypeScript/JavaScript, Python, .NET and Go; the packages and how the plugin is installed, the provider configuration, the resources and their names in the SDKs, why nothing is named automatically, `preview`, drift and `import`, `forceDestroy`, the optional `createOrUpdate`, how a replacement and the rotation of a token work in Pulumi, `protect` and `retainOnDelete`, the token secret in the state, how the SDKs are generated and tested, and how it is published."
 type: guide
 status: partial
-verified-on: 2026-11-08 @ 6ba2488
+verified-on: 2026-11-08 @ f8a9a0a
 sources: [connectors/pulumi/provider/resources.go, connectors/pulumi/provider/docs_edits.go, connectors/pulumi/provider/resources_test.go, connectors/pulumi/provider/cmd/pulumi-resource-taba/main.go, connectors/pulumi/provider/cmd/pulumi-tfgen-taba/main.go, connectors/pulumi/provider/cmd/pulumi-resource-taba/schema.json, connectors/pulumi/scripts/generate.sh, connectors/pulumi/scripts/test.sh, connectors/pulumi/scripts/package.sh, connectors/pulumi/scripts/verify-release.sh, connectors/pulumi/scripts/mirror.sh, connectors/pulumi/examples/scenarios.sh, connectors/terraform/shim/shim.go, .github/workflows/release.yml, .github/workflows/build-connector-pulumi.yml]
 ---
 
@@ -168,11 +168,11 @@ Use cases `UC-IAC-024` to `UC-IAC-034` ([26a](26a-implemented-use-cases.md), [26
 
 ## Publication
 
-`release.yml` packages the provider with every version (`scripts/package.sh`: six plugin archives, the npm package, the wheel and the sdist, the NuGet package, the Go SDK module and a `SHA256SUMS`, reproducible) and the files go to the Taba Release. Then the job `pulumi-verify` runs `verify-release.sh` against the image just published, and only if it passes does each destination run, each with its own variable (empty = not published):
+`release.yml` packages the provider with every version (`scripts/package.sh`: six plugin archives, the npm package, the wheel and the sdist, the NuGet package, with the README of the provider as the one nuget.org shows, the Go SDK module and a `SHA256SUMS`, reproducible) and the files go to the Taba Release. Then the job `pulumi-verify` runs `verify-release.sh` against the image just published (it also reads the `.nupkg`: id, version and README, which cannot be changed after the push), and only if it passes does each destination run, each with its own variable (empty = not published):
 
 | Destination | Variable | What |
 |---|---|---|
-| Mirror `rafaelpontani/pulumi-taba` (D213) | `PULUMI_PROVIDER_REPO` and the secret `PULUMI_MIRROR_TOKEN` | `scripts/mirror.sh`: the Go SDK (`sdk/`), the schema, the examples and the README on `main`, the tags `v<version>` and `sdk/v<version>` (the Go module is in `sdk/`, so Go reads its versions from `sdk/` tags), and a Release with the files, which is what `pulumi plugin install --server github://...` downloads |
+| Mirror `rafaelpontani/pulumi-taba` (D213) | `PULUMI_PROVIDER_REPO` and the secret `PULUMI_MIRROR_TOKEN` | `scripts/mirror.sh`: the Go SDK (`sdk/`), the schema, the examples and the README on `main`, the tags `v<version>` and `sdk/v<version>` (the Go module is in `sdk/`, so Go reads its versions from `sdk/` tags), and a Release with the files, which is what `pulumi plugin install --server github://...` downloads; what the GitHub API answers with a 5xx is tried again (up to 5 times) and a Release that was created only in part is completed |
 | npm | `PULUMI_NPM=true` | Trusted Publishing; `--tag next` on a candidate; then installs the package from npm and checks it |
 | PyPI | `PULUMI_PYPI=true` | Trusted Publishing; `skip-existing` |
 | nuget.org | `PULUMI_NUGET_USER` | Trusted Publishing (`NuGet/login`); `--skip-duplicate` |
