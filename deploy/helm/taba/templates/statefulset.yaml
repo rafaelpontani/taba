@@ -19,9 +19,11 @@ spec:
     rollingUpdate:
       maxUnavailable: {{ .Values.updateStrategy.maxUnavailable }}
     {{- end }}
+  {{- if .Values.persistence.enabled }}
   persistentVolumeClaimRetentionPolicy:
     whenScaled: {{ .Values.persistence.retentionPolicy.whenScaled }}
     whenDeleted: {{ .Values.persistence.retentionPolicy.whenDeleted }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "taba.selectorLabels" . | nindent 6 }}
@@ -189,6 +191,17 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        {{- if not .Values.persistence.enabled }}
+        # Sem disco permanente: o disco nasce vazio com o pod, como o nó já espera de um reinício (doc 34).
+        - name: data
+          emptyDir:
+            {{- with .Values.persistence.emptyDir.medium }}
+            medium: {{ . }}
+            {{- end }}
+            {{- with .Values.persistence.emptyDir.sizeLimit }}
+            sizeLimit: {{ . }}
+            {{- end }}
+        {{- end }}
         - name: config
           configMap:
             name: {{ include "taba.fullname" . }}
@@ -242,6 +255,7 @@ spec:
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+  {{- if .Values.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -254,3 +268,4 @@ spec:
         resources:
           requests:
             storage: {{ .Values.persistence.size }}
+  {{- end }}
