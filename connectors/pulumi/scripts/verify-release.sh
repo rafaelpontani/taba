@@ -33,6 +33,20 @@ for want in "<id>Taba.Pulumi</id>" "<version>$version</version>" "<readme>README
 done
 files="$(unzip -Z1 "$dir/Taba.Pulumi.$version.nupkg")"
 case "$files" in *README.md*) ;; *) contract_die "README.md is not in Taba.Pulumi.$version.nupkg" ;; esac
+# The README of each package (what npm, PyPI and nuget.org show) has the example of its own language only (scripts/readme.sh).
+readme_has_only() { # <package file> <its language> <README text>
+  local fence other
+  case "$2" in nodejs) fence=typescript ;; python) fence=python ;; dotnet) fence=csharp ;; esac
+  case "$3" in *'```'"$fence"*) ;; *) contract_die "the README of $1 has no $fence example" ;; esac
+  for other in typescript python csharp go; do
+    [ "$other" = "$fence" ] && continue
+    case "$3" in *'```'"$other"*) contract_die "the README of $1 shows the $other example" ;; esac
+  done
+  case "$3" in *'<!-- lang:'*) contract_die "the README of $1 still has the language markers" ;; esac
+}
+readme_has_only "Taba.Pulumi.$version.nupkg" dotnet "$(unzip -p "$dir/Taba.Pulumi.$version.nupkg" README.md)"
+readme_has_only "rafaelpontani-pulumi-taba-$version.tgz" nodejs "$(tar -xzOf "$dir/rafaelpontani-pulumi-taba-$version.tgz" package/README.md)"
+readme_has_only "pulumi_taba-$pyversion-py3-none-any.whl" python "$(unzip -p "$dir/pulumi_taba-$pyversion-py3-none-any.whl" '*.dist-info/METADATA')"
 
 pulumi_tools_install
 if [ -n "${TABA_IMAGE:-}" ] && ! docker image inspect "$TABA_IMAGE" >/dev/null 2>&1; then
