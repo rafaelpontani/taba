@@ -3,8 +3,8 @@ title: Pulumi provider
 summary: "The Taba provider for Pulumi (`taba`), in `connectors/pulumi`: the Terraform provider bridged to TypeScript/JavaScript, Python, .NET and Go; the packages and how the plugin is installed, the provider configuration, the resources and their names in the SDKs, why nothing is named automatically, `preview`, drift and `import`, `forceDestroy`, the optional `createOrUpdate`, how a replacement and the rotation of a token work in Pulumi, `protect` and `retainOnDelete`, the token secret in the state, how the SDKs are generated and tested, and how it is published."
 type: guide
 status: partial
-verified-on: 2026-11-08 @ f8a9a0a
-sources: [connectors/pulumi/provider/resources.go, connectors/pulumi/provider/docs_edits.go, connectors/pulumi/provider/resources_test.go, connectors/pulumi/provider/cmd/pulumi-resource-taba/main.go, connectors/pulumi/provider/cmd/pulumi-tfgen-taba/main.go, connectors/pulumi/provider/cmd/pulumi-resource-taba/schema.json, connectors/pulumi/scripts/generate.sh, connectors/pulumi/scripts/test.sh, connectors/pulumi/scripts/package.sh, connectors/pulumi/scripts/verify-release.sh, connectors/pulumi/scripts/mirror.sh, connectors/pulumi/examples/scenarios.sh, connectors/terraform/shim/shim.go, .github/workflows/release.yml, .github/workflows/build-connector-pulumi.yml]
+verified-on: 2026-11-11 @ fef5dda
+sources: [connectors/pulumi/provider/resources.go, connectors/pulumi/provider/docs_edits.go, connectors/pulumi/provider/resources_test.go, connectors/pulumi/provider/cmd/pulumi-resource-taba/main.go, connectors/pulumi/provider/cmd/pulumi-tfgen-taba/main.go, connectors/pulumi/provider/cmd/pulumi-resource-taba/schema.json, connectors/pulumi/scripts/generate.sh, connectors/pulumi/scripts/test.sh, connectors/pulumi/scripts/package.sh, connectors/pulumi/scripts/readme.sh, connectors/pulumi/README.md, connectors/pulumi/scripts/verify-release.sh, connectors/pulumi/scripts/mirror.sh, connectors/pulumi/examples/scenarios.sh, connectors/terraform/shim/shim.go, .github/workflows/release.yml, .github/workflows/build-connector-pulumi.yml]
 ---
 
 # Pulumi provider
@@ -14,6 +14,10 @@ sources: [connectors/pulumi/provider/resources.go, connectors/pulumi/provider/do
 The provider manages as code, in a Pulumi program, what the [Terraform and OpenTofu provider](40-terraform.md) manages: **queues, distributors and access tokens**, with `preview`, drift detection, `import` and a controlled removal. It is **the same provider**, bridged to Pulumi with the [pulumi-terraform-bridge](https://github.com/pulumi/pulumi-terraform-bridge): `connectors/pulumi` embeds the Terraform provider (`connectors/terraform/shim`), maps its resources to Pulumi tokens and generates the SDKs of **TypeScript/JavaScript, Python, .NET and Go**. There is one body of code for the behaviour and one set of tests for it; a behaviour that is wrong in Pulumi is wrong in Terraform, and is fixed and tested there (D212).
 
 **Status.** The provider is done and tested locally: units, the generated SDKs up to date, acceptance scenarios in TypeScript and Python against a real node, and the release files installed as a user gets them. The pipeline packages it with every version; **nothing is published yet**: the mirror repository, the npm, PyPI and NuGet packages wait for the maintainer's setup ([Publication](#publication)). Java is not generated yet ([31-pending-items.md](31-pending-items.md)).
+
+The same program in each language: a queue, a distributor that copies each publication to the queues starting with `orders` or `billing`, and a token that publishes and consumes only the topics whose name starts with `orders`.
+
+**TypeScript**
 
 ```typescript
 import * as taba from "@rafaelpontani/pulumi-taba";
@@ -29,6 +33,87 @@ const token = new taba.Token("orders-app", {
 });
 
 export const secret = token.secret; // a Pulumi secret
+```
+
+**Python**
+
+```python
+import pulumi
+import pulumi_taba as taba
+
+orders = taba.Queue("orders", name="orders", ttl=86400, max_deliveries=5)
+
+events = taba.Distributor("events", name="events", prefixes=["orders", "billing"])
+
+token = taba.Token("orders-app",
+    name="orders-app",
+    permissions=["publish", "consume"],
+    topic_prefixes=[orders.name])
+
+pulumi.export("secret", token.secret)  # a Pulumi secret
+```
+
+**C#**
+
+```csharp
+using System.Collections.Generic;
+using Pulumi;
+using Taba.Pulumi;
+
+return await Deployment.RunAsync(() =>
+{
+    var orders = new Queue("orders", new QueueArgs { Name = "orders", Ttl = 86400, MaxDeliveries = 5 });
+
+    var events = new Distributor("events", new DistributorArgs { Name = "events", Prefixes = { "orders", "billing" } });
+
+    var token = new Token("orders-app", new TokenArgs
+    {
+        Name = "orders-app",
+        Permissions = { "publish", "consume" },
+        TopicPrefixes = { orders.Name },
+    });
+
+    return new Dictionary<string, object?> { ["secret"] = token.Secret }; // a Pulumi secret
+});
+```
+
+**Go**
+
+```go
+package main
+
+import (
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/rafaelpontani/pulumi-taba/sdk/go/taba"
+)
+
+func main() {
+	pulumi.Run(func(ctx *pulumi.Context) error {
+		orders, err := taba.NewQueue(ctx, "orders", &taba.QueueArgs{
+			Name: pulumi.String("orders"), Ttl: pulumi.Int(86400), MaxDeliveries: pulumi.Int(5),
+		})
+		if err != nil {
+			return err
+		}
+		_, err = taba.NewDistributor(ctx, "events", &taba.DistributorArgs{
+			Name:     pulumi.String("events"),
+			Prefixes: pulumi.ToStringArray([]string{"orders", "billing"}),
+		})
+		if err != nil {
+			return err
+		}
+		token, err := taba.NewToken(ctx, "orders-app", &taba.TokenArgs{
+			Name:          pulumi.String("orders-app"),
+			Permissions:   pulumi.ToStringArray([]string{"publish", "consume"}),
+			TopicPrefixes: pulumi.StringArray{orders.Name},
+		})
+		if err != nil {
+			return err
+		}
+		ctx.Export("secret", token.Secret) // a Pulumi secret
+		return nil
+	})
+}
 ```
 
 The version of the provider is the version of the repository (`vX.Y.Z`), and it targets **the node of the same version**, like the Terraform one (D221).
@@ -168,7 +253,7 @@ Use cases `UC-IAC-024` to `UC-IAC-034` ([26a](26a-implemented-use-cases.md), [26
 
 ## Publication
 
-`release.yml` packages the provider with every version (`scripts/package.sh`: six plugin archives, the npm package, the wheel and the sdist, the NuGet package, with the README of the provider as the one nuget.org shows, the Go SDK module and a `SHA256SUMS`, reproducible) and the files go to the Taba Release. Then the job `pulumi-verify` runs `verify-release.sh` against the image just published (it also reads the `.nupkg`: id, version and README, which cannot be changed after the push), and only if it passes does each destination run, each with its own variable (empty = not published):
+`release.yml` packages the provider with every version (`scripts/package.sh`: six plugin archives, the npm package, the wheel and the sdist, the NuGet package, each with the README of the provider showing only the example of its language (`scripts/readme.sh` keeps one of the language blocks of `connectors/pulumi/README.md`; GitHub and the mirror show all four), the Go SDK module and a `SHA256SUMS`, reproducible) and the files go to the Taba Release. Then the job `pulumi-verify` runs `verify-release.sh` against the image just published (it also reads the `.nupkg`: id, version and README, which cannot be changed after the push; and checks that the README of the npm, PyPI and NuGet packages has the example of its language and no other), and only if it passes does each destination run, each with its own variable (empty = not published):
 
 | Destination | Variable | What |
 |---|---|---|

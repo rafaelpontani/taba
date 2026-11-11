@@ -19,13 +19,24 @@ The Pulumi CLI also needs the **plugin** of the provider, which is not in those 
 pulumi plugin install resource taba 0.3.9 --server github://api.github.com/rafaelpontani/pulumi-taba
 ```
 
+The provider reads the address and the token of the cluster from the stack configuration (or from `TABA_URL` and `TABA_TOKEN`):
+
+```bash
+pulumi config set taba:endpoint https://taba.example.com:8080
+pulumi config set --secret taba:token "$ROOT_TOKEN"
+```
+
+A queue, a distributor that copies each publication to the queues starting with `orders` or `billing`, and a token that publishes and consumes only the topics whose name starts with `orders`:
+
+<!-- lang:nodejs -->
+**TypeScript**
+
 ```typescript
 import * as taba from "@rafaelpontani/pulumi-taba";
 
-// pulumi config set taba:endpoint https://taba.example.com:8080   (or TABA_URL)
-// pulumi config set --secret taba:token ...                       (or TABA_TOKEN)
-
 const orders = new taba.Queue("orders", { name: "orders", ttl: 86400, maxDeliveries: 5 });
+
+const events = new taba.Distributor("events", { name: "events", prefixes: ["orders", "billing"] });
 
 const token = new taba.Token("orders-app", {
     name: "orders-app",
@@ -35,6 +46,94 @@ const token = new taba.Token("orders-app", {
 
 export const secret = token.secret; // a Pulumi secret
 ```
+<!-- /lang -->
+
+<!-- lang:python -->
+**Python**
+
+```python
+import pulumi
+import pulumi_taba as taba
+
+orders = taba.Queue("orders", name="orders", ttl=86400, max_deliveries=5)
+
+events = taba.Distributor("events", name="events", prefixes=["orders", "billing"])
+
+token = taba.Token("orders-app",
+    name="orders-app",
+    permissions=["publish", "consume"],
+    topic_prefixes=[orders.name])
+
+pulumi.export("secret", token.secret)  # a Pulumi secret
+```
+<!-- /lang -->
+
+<!-- lang:dotnet -->
+**C#**
+
+```csharp
+using System.Collections.Generic;
+using Pulumi;
+using Taba.Pulumi;
+
+return await Deployment.RunAsync(() =>
+{
+    var orders = new Queue("orders", new QueueArgs { Name = "orders", Ttl = 86400, MaxDeliveries = 5 });
+
+    var events = new Distributor("events", new DistributorArgs { Name = "events", Prefixes = { "orders", "billing" } });
+
+    var token = new Token("orders-app", new TokenArgs
+    {
+        Name = "orders-app",
+        Permissions = { "publish", "consume" },
+        TopicPrefixes = { orders.Name },
+    });
+
+    return new Dictionary<string, object?> { ["secret"] = token.Secret }; // a Pulumi secret
+});
+```
+<!-- /lang -->
+
+<!-- lang:go -->
+**Go**
+
+```go
+package main
+
+import (
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/rafaelpontani/pulumi-taba/sdk/go/taba"
+)
+
+func main() {
+	pulumi.Run(func(ctx *pulumi.Context) error {
+		orders, err := taba.NewQueue(ctx, "orders", &taba.QueueArgs{
+			Name: pulumi.String("orders"), Ttl: pulumi.Int(86400), MaxDeliveries: pulumi.Int(5),
+		})
+		if err != nil {
+			return err
+		}
+		_, err = taba.NewDistributor(ctx, "events", &taba.DistributorArgs{
+			Name:     pulumi.String("events"),
+			Prefixes: pulumi.ToStringArray([]string{"orders", "billing"}),
+		})
+		if err != nil {
+			return err
+		}
+		token, err := taba.NewToken(ctx, "orders-app", &taba.TokenArgs{
+			Name:          pulumi.String("orders-app"),
+			Permissions:   pulumi.ToStringArray([]string{"publish", "consume"}),
+			TopicPrefixes: pulumi.StringArray{orders.Name},
+		})
+		if err != nil {
+			return err
+		}
+		ctx.Export("secret", token.Secret) // a Pulumi secret
+		return nil
+	})
+}
+```
+<!-- /lang -->
 
 - **Resources:** `Queue`, `Distributor`, `Token`. **Functions:** `getTopic`, `getTopics`, `getToken`, `getTokens`.
 - **`name` is required** in the three resources: nothing generates it (no autonaming), because the name of a queue is a contract with the applications and is how `createOrUpdate` finds what exists.

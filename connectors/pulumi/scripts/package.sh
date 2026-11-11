@@ -55,8 +55,8 @@ if has nodejs; then
     sed -i "s/\${VERSION}/$VERSION/" package.json
     npm install --no-audit --no-fund --loglevel=error
     npm run build --silent
-    # The README of the package is the one of connectors/pulumi (the generator writes none).
-    cp package.json /repo/connectors/pulumi/README.md bin/ && cd bin
+    # The README of the package is the one of connectors/pulumi with only the TypeScript example (the generator writes none).
+    cp package.json bin/ && sh /repo/connectors/pulumi/scripts/readme.sh nodejs > bin/README.md && cd bin
     npm pack --silent --pack-destination /out >/dev/null
     chown "$HOST_UID" /out/* 2>/dev/null || true'
 fi
@@ -65,8 +65,8 @@ if has python; then
   contract_step "Python wheel and sdist ($PYTHON_IMAGE)"
   docker run --rm -v "$sdk_root:/repo:ro" -v "$(contract_hostpath "$out"):/out" -e PYVERSION="$pyversion" -e HOST_UID="$uid" "$PYTHON_IMAGE" bash -euc '
     cp -r /repo/connectors/pulumi/sdk/python /tmp/sdk && cd /tmp/sdk
-    # pyproject.toml names README.md at the root of the SDK: the one of connectors/pulumi.
-    cp /repo/connectors/pulumi/README.md README.md
+    # pyproject.toml names README.md at the root of the SDK: the one of connectors/pulumi, with only the Python example.
+    sh /repo/connectors/pulumi/scripts/readme.sh python > README.md
     sed -i "s/^  version = .*/  version = \"$PYVERSION\"/" pyproject.toml
     pip install --quiet build
     python -m build --outdir /out >/dev/null
@@ -81,9 +81,9 @@ if has dotnet; then
     rm -rf bin obj
     # The version is read from version.txt (an embedded resource) and used by the project as the package version.
     echo "$VERSION" > version.txt
-    # The README of the package is the one of connectors/pulumi (the generator writes a one-line file): nuget.org
-    # shows it on the page of the package.
-    cp /repo/connectors/pulumi/README.md README.md
+    # The README of the package is the one of connectors/pulumi with only the C# example (the generator writes a
+    # one-line file): nuget.org shows it on the page of the package.
+    sh /repo/connectors/pulumi/scripts/readme.sh dotnet > README.md
     cat > Directory.Build.props <<"PROPS"
 <Project>
   <PropertyGroup>
