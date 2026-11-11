@@ -184,6 +184,12 @@ embutido) sobrescreve o que vier em `config`; as credenciais NUNCA entram aqui (
 {{- if and .Values.backup.s3.bucket (ne (empty .Values.backup.s3.accessKey) (empty .Values.backup.s3.secretKey)) -}}
 {{- fail "backup.s3.accessKey e backup.s3.secretKey andam sempre em par" -}}
 {{- end -}}
+{{- if and (not .Values.persistence.enabled) (not (include "taba.backupEnabled" .)) (not .Values.persistence.allowWithoutBackup) -}}
+{{- fail "persistence.enabled=false (emptyDir) exige backup em S3 (backup.s3.bucket ou seaweedfs.enabled): sem ele, a perda de todos os pods apaga tópicos, tokens e mensagens. Use persistence.allowWithoutBackup=true só se aceitar isso" -}}
+{{- end -}}
+{{- if and (not .Values.persistence.enabled) .Values.autoscaling.enabled .Values.autoscaling.disk.enabled (ne .Values.autoscaling.disk.source "app") (not .Values.autoscaling.disk.query) -}}
+{{- fail "autoscaling.disk.source=kubelet lê os PVCs dos nós, que não existem com persistence.enabled=false: use disk.source=app (com capacityBytes), disk.query ou disk.enabled=false" -}}
+{{- end -}}
 {{- if and .Values.autoscaling.enabled (include "taba.isDev" .) -}}
 {{- fail "autoscaling não funciona no perfil de um nó (replication.factor=1)" -}}
 {{- end -}}

@@ -340,6 +340,12 @@ Como o cluster retoma do disco depois de uma queda total: [07-cluster.md](07-clu
 | D213 | **O plugin e o SDK Go são publicados por um repositório espelho, `rafaelpontani/pulumi-taba`, alimentado pelo `release.yml`; o código continua em `connectors/pulumi`.** O `pulumi plugin install --server github://...` lê os assets de uma Release de um repositório, e o módulo Go (em `sdk/`) precisa de tags `sdk/vX.Y.Z`, que o ruleset de tags deste repositório não permite (liberar um padrão novo no repositório de produção foi descartado). O espelho recebe `sdk/`, o schema, os exemplos e o README; o `mirror.sh` é idempotente e não escreve nada aqui. Como o do Terraform (D211), só é usado quando a variável `PULUMI_PROVIDER_REPO` existe, depois de o `verify-release.sh` passar contra a imagem da versão | [41-pulumi.md](41-pulumi.md#publicação), [27-ci-cd.md](27-ci-cd.md#provider-pulumi) |
 | D222 | **Nada tem nome automático no Pulumi: `name` é obrigatório em `Queue`, `Distributor` e `Token`.** O sufixo aleatório do autonaming quebraria o contrato do nome com as aplicações e o `createOrUpdate`, que acha uma fila pelo nome exato. Uma fila e um distribuidor são substituídos apagando primeiro (`deleteBeforeReplace`), porque o nome é o id; um token (o id é do servidor) é criado primeiro, e a rotação dele é `pulumi up --replace` | [41-pulumi.md](41-pulumi.md#sem-nomes-automáticos) |
 
+## Chart sem disco permanente (D225)
+
+| Código | Decisão | Onde |
+|---|---|---|
+| D225 | **O chart aceita `emptyDir` no lugar do PVC (`persistence.enabled: false`) e, com ele, exige o backup em S3.** O nó já volta como nó novo a cada reinício, então o disco de um nó não precisa sobreviver ao pod; o que o PVC ainda dava era retomar a vida anterior quando todos os pods caem juntos, e isso passa a ser coberto pelo backup. Sem backup o chart recusa, salvo `persistence.allowWithoutBackup: true`. O gatilho de disco do KEDA com `disk.source=kubelet` lê os PVCs e também é recusado. O padrão continua o PVC, então quem já usa o chart não muda nada | [34-chart-helm.md](34-chart-helm.md#sem-disco-permanente) |
+
 ## Problemas resolvidos (PRB)
 
 

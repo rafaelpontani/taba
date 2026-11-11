@@ -13,7 +13,7 @@ sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 >
 > **Legend:** `[ ]` open, undecided; `[~]` partially resolved (the text carries **only the questions still missing**, each with its sub-code); **Depends on** = the question can only be answered after another.
 >
-> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D224** and **PRB-111**; D217 and PRB-108 are taken by plans still in development).
+> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D225** and **PRB-112**; D217 and PRB-108 are taken by plans still in development).
 
 ## Known limits
 
@@ -137,6 +137,14 @@ Found while implementing the provider ([41-pulumi.md](41-pulumi.md), D212, D213,
 | Code | Effect | Proposal |
 |---|---|---|
 | **PRB-110** | **Part of the Pulumi provider is not proved by a program.** The .NET and Go SDKs are only compiled (`test.sh acc`), and no program in those languages runs `up` and `preview`; and the final `verify` job of `release.yml` installs none of the published packages (the npm one is checked by `pulumi-npm`, the PyPI and NuGet ones not at all). The cases `UC-IAC-025`, `026` and `030` to `034` are covered by shell scripts, which `uc_coverage` does not read | A minimal program in each language in `examples/`, and a step in `verify` that installs the three published packages and runs `pulumi preview`. Moving the scenarios to a test runner that `uc_coverage` reads would let the cases leave [26b](26b-planned-use-cases.md) |
+
+## Helm chart without a permanent disk (new problems and limits)
+
+Found while adding `emptyDir` to the chart ([34-helm-chart.md](34-helm-chart.md#no-permanent-disk), D225).
+
+| Code | Effect | Proposal |
+|---|---|---|
+| **PRB-112** | **With `emptyDir`, the node measures the machine's disk, not the volume's limit.** Disk usage (`backup.disk.*`, `stats.disk.free-min`, `taba_storage_disk_free_bytes`) comes from the file system of `storage.dir`, which in an `emptyDir` is the machine's disk, shared with other pods. With `persistence.emptyDir.sizeLimit`, the kubelet evicts the pod that goes over the limit before the backup's eviction acts; without it, the node can fill the machine's disk | A node key with the volume's capacity (for example `storage.capacity`), which the chart would fill with the `sizeLimit` and which would replace the file system in the usage calculation. Until then: `memory.limit` to keep the backlog in memory, a `sizeLimit` with headroom and a disk alert on the machine |
 
 ## 1. Unblocked
 

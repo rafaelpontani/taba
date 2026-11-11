@@ -13,7 +13,7 @@ fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 >
 > **Legenda:** `[ ]` em aberto, sem decisão; `[~]` parcialmente resolvida (o texto traz **só as perguntas que faltam**, cada uma com seu sub-código); **Depende de** = a dúvida só se responde depois de outra.
 >
-> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D224** e **PRB-111**; D217 e PRB-108 estão tomados por planos ainda em desenvolvimento).
+> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D225** e **PRB-112**; D217 e PRB-108 estão tomados por planos ainda em desenvolvimento).
 
 ## Limites conhecidos
 
@@ -137,6 +137,14 @@ Achados ao implementar o provider ([41-pulumi.md](41-pulumi.md), D212, D213, D22
 | Código | Efeito | Proposta |
 |---|---|---|
 | **PRB-110** | **Parte do provider Pulumi não é provada por um programa.** Os SDKs .NET e Go são só compilados (`test.sh acc`), e nenhum programa nessas linguagens roda `up` e `preview`; e o job `verify` final do `release.yml` não instala nenhum dos pacotes publicados (o do npm é conferido pelo `pulumi-npm`, os do PyPI e do NuGet não são). Os casos `UC-IAC-025`, `026` e `030` a `034` são cobertos por scripts de shell, que o `uc_coverage` não lê | Um programa mínimo em cada linguagem em `examples/` e um passo no `verify` que instala os três pacotes publicados e roda `pulumi preview`. Levar os cenários para um executor de testes que o `uc_coverage` leia tiraria os casos do [26b](26b-casos-de-uso-planejados.md) |
+
+## Chart Helm sem disco permanente (problemas e limites novos)
+
+Achados ao acrescentar o `emptyDir` ao chart ([34-chart-helm.md](34-chart-helm.md#sem-disco-permanente), D225).
+
+| Código | Efeito | Proposta |
+|---|---|---|
+| **PRB-112** | **Com `emptyDir`, o nó mede o disco da máquina, não o limite do volume.** O uso do disco (`backup.disk.*`, `stats.disk.free-min`, `taba_storage_disk_free_bytes`) vem do sistema de arquivos de `storage.dir`, que num `emptyDir` é o disco da máquina, compartilhado com outros pods. Com `persistence.emptyDir.sizeLimit`, o kubelet despeja o pod que passa do limite antes de a evicção do backup agir; sem ele, o nó pode encher o disco da máquina | Uma chave do nó com a capacidade do volume (por exemplo `storage.capacity`), que o chart preencheria com o `sizeLimit` e que substituiria o sistema de arquivos no cálculo do uso. Até lá: `memory.limit` para manter o backlog em memória, `sizeLimit` com folga e alerta de disco na máquina |
 
 ## 1. Sem bloqueio
 

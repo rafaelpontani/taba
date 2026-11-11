@@ -29,6 +29,14 @@ ports:                   # as três portas devem ser diferentes
   operations: 9090       # health, métricas, drain. Sem autenticação: NUNCA expor fora do cluster
 
 persistence:             # storage.dir = /var/lib/taba (último diretório se chama "taba": exigido pelo nó)
+  # true = um PVC por nó (volumeClaimTemplates). false = emptyDir: para clusters sem disco permanente. O nó
+  # já volta como NÓ NOVO a cada reinício, então só a perda de TODOS os pods exige o backup em S3, que o
+  # chart passa a exigir (doc 34). Trocar em um release existente exige reinstalar (volumeClaimTemplates é imutável).
+  enabled: true
+  emptyDir:
+    sizeLimit: ""        # vazio = sem limite. O kubelet despeja o pod que passar dele; o nó mede o disco do host (PRB-112)
+    medium: ""           # "" = disco do nó; Memory = tmpfs (conta no limite de memória do pod)
+  allowWithoutBackup: false   # true aceita emptyDir sem backup: a perda de todos os pods apaga tópicos, tokens e mensagens
   size: 10Gi
   storageClass: ""       # vazio = padrão do cluster; "-" = sem classe
   accessModes: [ReadWriteOnce]
