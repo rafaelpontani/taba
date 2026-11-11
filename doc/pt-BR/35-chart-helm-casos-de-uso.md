@@ -1,6 +1,6 @@
 ---
 título: Chart Helm — casos de uso
-resumo: Os modos de operação do chart Helm do Taba (mínimo, desenvolvimento, segredos próprios, Ingress, backup em S3 embutido (SeaweedFS) ou externo, restauração, coletores, OTLP, autoscaling com KEDA, upgrade, configuração avançada e falhas), cada um com seus values, o resultado esperado e os testes em bash que o provam.
+resumo: Os modos de operação do chart Helm do Taba (mínimo, desenvolvimento, segredos próprios, Ingress, backup em S3 embutido (SeaweedFS) ou externo, restauração, coletores, OTLP, autoscaling com KEDA, upgrade, configuração avançada, falhas e sem disco permanente), cada um com seus values, o resultado esperado e os testes em bash que o provam.
 tipo: guia
 status: estável
 verificado-em: 2026-10-16 @ 4faa639
@@ -25,12 +25,12 @@ cd deploy/helm/tests
 | Ferramenta | Para quê |
 |---|---|
 | `helm` 3.x e `kubectl` | tudo (sem `helm` local, o `00-static.sh` usa a imagem `alpine/helm` pelo Docker) |
-| `kind` + Docker | os casos de uso 01–15 criam o cluster `taba-helm` sozinhos. Para usar outro cluster: `TABA_TEST_CONTEXT=<contexto>` |
+| `kind` + Docker | os casos de uso 01–16 criam o cluster `taba-helm` sozinhos. Para usar outro cluster: `TABA_TEST_CONTEXT=<contexto>` |
 | acesso à internet | baixa imagens, e o KEDA (UC-12) e o CRD do Prometheus Operator (UC-10) |
 
 Variáveis: `TABA_TEST_TAG` (tag das imagens `taba` e `taba-cli`, padrão `rc`), `TABA_TEST_LOAD` (imagens locais para `kind load`), `TABA_TEST_KEEP=1` (não apaga o namespace no fim), `TABA_TEST_TIMEOUT`, `TABA_TEST_NO_NETPOL=1` (CNI sem NetworkPolicy), `TABA_TEST_INGRESS_URL` (UC-04 com tráfego real). **Falta de ferramenta ou de rede é `SKIP` (código 77), nunca `PASS`.** O código de saída é 0 sem falhas.
 
-O `00-static.sh` cobre cada caso também sem cluster: renderiza os `ci/*.yaml` e confere os manifestos (prefixo `UC-NN` nos nomes dos testes), além de recusas do chart (UC-15).
+O `00-static.sh` cobre cada caso também sem cluster: renderiza os `ci/*.yaml` e confere os manifestos (prefixo `UC-NN` nos nomes dos testes), além de recusas do chart (UC-15 e UC-16).
 
 ## Mapa dos casos
 
@@ -51,6 +51,7 @@ O `00-static.sh` cobre cada caso também sem cluster: renderiza os `ci/*.yaml` e
 | [UC-13](#uc-13) | Upgrade rolling | `uc-13-upgrade.yaml` | `uc-13-upgrade.sh` |
 | [UC-14](#uc-14) | Configuração avançada do nó | `uc-14-config-avancada.yaml` | `uc-14-config-avancada.sh` |
 | [UC-15](#uc-15) | Falhas e proteções | `uc-15-falhas.yaml` | `uc-15-falhas.sh` |
+| [UC-16](#uc-16) | Sem disco permanente (`emptyDir`) e restauração pelo S3 | `uc-16-sem-disco.yaml` | `uc-16-sem-disco.sh` |
 
 ---
 
@@ -267,6 +268,25 @@ O gatilho de **disco** só é provado por renderização (`00-static.sh`: consul
 
 As **recusas do chart** (`replicaCount` abaixo do mínimo, grace period curto, portas repetidas, `quorum` inválido, `evict-*` fora de ordem, S3 embutido + S3 externo, chave sem par, valores fora do enum, autoscaling inseguro) são testadas em `00-static.sh`, sob o prefixo `UC-15`.
 
+## UC-16
+
+**Sem disco permanente.** `persistence.enabled: false`: os nós usam `emptyDir` e o backup em S3 cobre a perda de todos os pods ([34-chart-helm.md](34-chart-helm.md#sem-disco-permanente)). O teste usa o SeaweedFS do chart, que ainda tem o próprio volume; num cluster sem disco permanente, o S3 é externo.
+
+**Esperado:** nenhum PVC para os nós; um pod que cai volta com o disco vazio e o cluster fica saudável; com todos os pods fora, as mensagens voltam do bucket.
+
+| Teste | O que prova |
+|---|---|
+| UC-16.1 | Três nós prontos e cluster saudável |
+| UC-16.2 – 16.3 | Nenhum PVC para os nós; o volume `data` é um `emptyDir` com o `sizeLimit` |
+| UC-16.4 | Publicar 15 |
+| UC-16.5 | Um pod cai, volta com o disco vazio e o cluster fica saudável |
+| UC-16.6 – 16.7 | `flush` do cluster e `cluster/stop` (root token) |
+| UC-16.8 | Todos os pods dos nós saem (os `emptyDir` somem com eles) |
+| UC-16.9 – 16.10 | Três nós voltam e o cluster fica saudável |
+| UC-16.11 | As 15 mensagens voltaram do bucket |
+
+As recusas (`emptyDir` sem backup, autoscaling lendo o disco pelos PVCs, `medium` inválido) e a renderização (`emptyDir`, `sizeLimit`, `medium`, sem `volumeClaimTemplates`) são testadas em `00-static.sh`, sob o prefixo `UC-16`.
+
 ---
 
 ## Escolhendo o modo
@@ -282,9 +302,10 @@ As **recusas do chart** (`replicaCount` abaixo do mínimo, grace period curto, p
 | Métricas sem stack | UC-08 (Prometheus) ou UC-09 (Telegraf) |
 | Métricas para um OpenTelemetry Collector | UC-11 |
 | Capacidade que acompanha a carga | UC-12 |
+| Um cluster sem disco permanente | UC-16 (com o S3 externo do UC-06) |
 
 ## Fontes e provas
 
 - Scripts e valores de teste: `deploy/helm/tests/` (`lib.sh`, `run.sh`, `00-static.sh`, `uc-*.sh`) e `deploy/helm/taba/ci/`.
 - Um caso de uso é "provado" quando o seu script termina com `0 falhas`; os `SKIP` ficam explícitos na saída e no resumo do `run.sh`.
-- Execução registrada (2026-10-16, `kind` 0.30 com Kubernetes 1.34, imagens `rafaelpontani/taba:rc` e `taba-cli:rc`, KEDA 2.17.2): `00-static.sh` 103 testes e UC-01 a UC-15 sem falhas; o único `SKIP` é o UC-04.8 (sem controlador de Ingress no kind). Nada foi exercitado ainda num cluster de produção, com outro CNI ou com discos reais cheios (o gatilho de disco do KEDA é provado só por renderização).
+- Execução registrada (2026-10-16, `kind` 0.30 com Kubernetes 1.34, imagens `rafaelpontani/taba:rc` e `taba-cli:rc`, KEDA 2.17.2): `00-static.sh` 103 testes e UC-01 a UC-15 sem falhas; o único `SKIP` é o UC-04.8 (sem controlador de Ingress no kind). O UC-16 foi acrescentado depois e executado em 2026-11-11 (`kind` 0.30 com Kubernetes 1.34, imagens `rc`): `00-static.sh` 137 testes, UC-16 11 testes e, de novo, UC-01 e UC-07 (o modo com PVC), sem falhas. Nada foi exercitado ainda num cluster de produção, com outro CNI ou com discos reais cheios (o gatilho de disco do KEDA é provado só por renderização).

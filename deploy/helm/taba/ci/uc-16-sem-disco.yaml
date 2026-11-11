@@ -1,0 +1,21 @@
+# UC-16: sem disco permanente. Os nós usam emptyDir (o disco nasce vazio com o pod) e o backup em S3
+# cobre a perda de todos os pods. O SeaweedFS do teste ainda tem o próprio volume: num cluster sem disco
+# permanente, use um S3 externo (backup.s3.*). Atrasos curtos para o teste não esperar minutos.
+persistence:
+  enabled: false
+  emptyDir:
+    sizeLimit: 1Gi
+seaweedfs:
+  enabled: true
+  persistence:
+    size: 2Gi
+config:
+  backup:
+    delay: 2s
+    meta:
+      interval: 5s
+    segment:
+      max-age: 5s
+    heartbeat:
+      interval: 3s
+    dead-after: 15s

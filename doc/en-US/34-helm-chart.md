@@ -1,6 +1,6 @@
 ---
 title: Helm chart — configuration
-summary: How to install Taba on Kubernetes with the Helm chart — what it creates, every value (node, secrets, Ingress, backup to built-in (SeaweedFS) or external S3, Prometheus or Telegraf collector, OTLP, KEDA autoscaling), how each one becomes node configuration and what the chart refuses.
+summary: How to install Taba on Kubernetes with the Helm chart — what it creates, every value (node, disk on a PVC or `emptyDir`, secrets, Ingress, backup to built-in (SeaweedFS) or external S3, Prometheus or Telegraf collector, OTLP, KEDA autoscaling), how each one becomes node configuration and what the chart refuses.
 type: reference
 status: stable
 verified-on: 2026-10-17 @ 4dc8c9f
@@ -27,7 +27,7 @@ Prerequisites: Kubernetes 1.27+, a default `StorageClass` (one volume per node) 
 
 | Resource | What for |
 |---|---|
-| `StatefulSet` `<release>` | The nodes. One volume per node at `/var/lib/taba`; `enableServiceLinks: false` (Services would inject `TABA_PORT`, `TABA_SERVICE_HOST`… and the node reads the `TABA_*` prefix as configuration) |
+| `StatefulSet` `<release>` | The nodes. One volume per node at `/var/lib/taba` (a PVC, or `emptyDir` with `persistence.enabled: false`); `enableServiceLinks: false` (Services would inject `TABA_PORT`, `TABA_SERVICE_HOST`… and the node reads the `TABA_*` prefix as configuration) |
 | `Service` `<release>` | The **client API** (8080). The only one an Ingress or a load balancer should reach |
 | `Service` `<release>-entry` | **Cluster entry** (`cluster.entry-address`), port 8081, plain TCP. It only has **ready** pods: with no ready node nobody answers, which is how the first node knows it must form the cluster |
 | `Service` `<release>-headless` | Pod identity (`taba-0.taba-headless`), includes pods still bootstrapping |
@@ -61,7 +61,10 @@ Decisions the chart makes for you (from [23-operations.md](23-operations.md)):
 | `replicaCount` | `3` | Production: never fewer than `max(3, replication.factor)`. The chart refuses fewer, unless `allowFewReplicas=true` (tests only). Ignored with `autoscaling.enabled` |
 | `terminationGracePeriodSeconds` | `120` | See above; minimum `drain.timeout + backup.drain.timeout + 5` |
 | `ports.api` / `ports.cluster` / `ports.operations` | `8080` / `8081` / `9090` | Must differ (the node does not start with repeated ports). They become `api.port`, `cluster.port`, `operations.port` |
-| `persistence.size` / `storageClass` / `accessModes` | `10Gi` / cluster default / `ReadWriteOnce` | Volume for `storage.dir` (`/var/lib/taba`, whose last folder is already named `taba`, as the node requires) |
+| `persistence.enabled` | `true` | `false` replaces the PVC with an `emptyDir` ([No permanent disk](#no-permanent-disk)) and requires the S3 backup |
+| `persistence.size` / `storageClass` / `accessModes` | `10Gi` / cluster default / `ReadWriteOnce` | Volume for `storage.dir` (`/var/lib/taba`, whose last folder is already named `taba`, as the node requires). Only with `enabled: true` |
+| `persistence.emptyDir.sizeLimit` / `medium` | empty (no limit) / empty (the machine's disk) | Only with `enabled: false`. The kubelet evicts the pod that goes over `sizeLimit`; `medium: Memory` uses tmpfs |
+| `persistence.allowWithoutBackup` | `false` | Accepts `emptyDir` without an S3 backup |
 | `persistence.retentionPolicy.whenScaled` | `Delete` | When replicas are reduced the node leaves drained and comes back as a **new node**: the old volume is useless |
 | `resources`, `nodeSelector`, `tolerations`, `affinity`, `topologySpreadConstraints`, `priorityClassName` | empty | Kubernetes defaults. Without `affinity` the chart asks (preferred) for nodes on different hosts |
 | `podSecurityContext` / `containerSecurityContext` | uid/gid/fsGroup `10001`, unprivileged | The image user is uid 10001 |
@@ -103,6 +106,8 @@ Changing `config` changes a checksum on the pod and the nodes are restarted **on
 - `config.backup.disk` does not satisfy `evict-to < evict-above < pause-at ≤ 100`;
 - `seaweedfs.enabled` and `backup.s3.bucket` are both on;
 - `backup.s3.accessKey` and `secretKey` do not come as a pair;
+- `persistence.enabled: false` has no S3 backup (without `persistence.allowWithoutBackup`), or autoscaling reads the disk through the PVCs (`disk.source=kubelet` without `disk.query`);
+- `persistence.emptyDir.medium` is neither empty nor `Memory`;
 - `collector.type`, `config.mode` (`production` or `development`), `config.telemetry.logs.format` or `config.telemetry.topics.mode` have an invalid value (`values.schema.json`);
 - autoscaling has `minReplicas` below the safe minimum, is in the one-node profile (`replication.factor: 1`), has no Prometheus, or uses `disk.source=app` without `capacityBytes`.
 
@@ -190,6 +195,28 @@ On AWS prefer **IRSA** (no keys): leave `accessKey`/`secretKey`/`existingSecret`
 
 Fine tuning (`delay`, `segment.*`, `heartbeat.interval`, `dead-after`, `disk.*`…) goes in `config.backup`. With backup on, the chart's `terminationGracePeriodSeconds` must exceed `drain.timeout` + `backup.drain.timeout`.
 
+### No permanent disk
+
+In a cluster whose machines have no permanent disk (or where a PVC would tie the pod to a machine that can be recreated), use `emptyDir`:
+
+```yaml
+persistence:
+  enabled: false
+  emptyDir:
+    sizeLimit: 10Gi        # empty = no limit
+    medium: ""             # Memory = tmpfs, which counts against the pod's memory
+backup:
+  s3: { bucket: taba-backup, endpoint: https://s3.example.com, existingSecret: taba-s3 }
+```
+
+- **Why it works.** Every restart of the process is already a new node with an empty disk ([07-cluster.md](07-cluster.md)): a confirmed message lives in the replicas, not on one node's disk. A pod that falls comes back with an empty `emptyDir`, joins the cluster and gets back what belongs to it, as it would with the PVC.
+- **What is lost without the PVC.** When **every** pod falls at once, there is no disk of a previous life to resume. The S3 backup covers that ([33-s3-backup.md](33-s3-backup.md)), which is why the chart **refuses** `persistence.enabled: false` without `backup.s3.bucket` or `seaweedfs.enabled` (D225). `persistence.allowWithoutBackup: true` accepts the risk: losing every pod deletes topics, tokens and messages.
+- **The S3 must live outside the cluster.** The chart's SeaweedFS keeps its data in a PVC; in a cluster without a permanent disk, use an external S3, which must accept conditional writes.
+- **One Taba node per machine.** Losing a machine with two Taba pods breaks the quorum. The default `affinity` only *prefers* different machines; with `emptyDir`, use `requiredDuringSchedulingIgnoredDuringExecution` and replace the machines one at a time.
+- **Disk.** The node measures usage on the file system of `storage.dir`, which in an `emptyDir` is the machine's disk, shared with other pods, and not the `sizeLimit` (PRB-112). With `sizeLimit`, the kubelet evicts the pod that goes over it before the backup's eviction acts: leave headroom, use `config.memory.limit` to keep the backlog in memory and watch the machine's disk.
+- **Autoscaling.** The disk trigger with `disk.source=kubelet` reads the nodes' PVCs, which do not exist: the chart refuses it. Use `disk.source=app` with `capacityBytes`, `disk.query` or `disk.enabled: false`.
+- **Switching modes** on an existing release needs a reinstall, because a StatefulSet's `volumeClaimTemplates` does not change. With the backup on: `POST /cluster/stop`, `helm uninstall`, delete the `data-<release>-N` PVCs and `helm install` with the new `persistence`; the restore is automatic at startup.
+
 ### Metrics: collector (`collector.type`)
 
 The node exposes `GET /metrics` on the operations port (one target per node, no aggregation) and optionally pushes OTLP. The chart offers four modes:
@@ -246,6 +273,7 @@ helm uninstall taba -n taba                   # keeps the taba-secrets Secret an
 
 - `helm upgrade` replaces the nodes **one at a time**, waiting for `ready` ([23-operations.md](23-operations.md)); the cluster Secret is **not** regenerated.
 - To change the Taba version just `--set image.tag=...`; all nodes need the same version.
+- Switching `persistence.enabled` needs a reinstall ([No permanent disk](#no-permanent-disk)).
 - To delete everything, secrets and data included: `helm uninstall`, then `kubectl delete secret taba-secrets` and `kubectl delete pvc -l app.kubernetes.io/instance=taba`.
 
 ## Known pitfalls

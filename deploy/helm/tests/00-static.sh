@@ -150,6 +150,28 @@ check "UC-14 trusted-proxies"                   has '10\.0\.0\.0/8' <<<"$ADV"
 check "UC-14 extraEnv"                          has 'TABA_API_PAGINATION_MAX_LIMIT' <<<"$ADV"
 check "UC-14 mudança de config muda o checksum" test "$(grep -m1 checksum/config <<<"$DEF")" != "$(grep -m1 checksum/config <<<"$ADV")"
 
+# --- UC-16: sem disco permanente (emptyDir) -----------------------------------------------------
+EPH=$(render_ci uc-16-sem-disco.yaml)
+# taba_sts MANIFESTOS → só o StatefulSet dos nós (o do SeaweedFS tem outro nome)
+taba_sts() {
+  awk 'function out() { if (doc ~ /kind: StatefulSet/ && doc ~ /\n  name: t-taba\n/) printf "%s", doc; doc = "" }
+       /^---/ { out(); next } { doc = doc $0 "\n" } END { out() }' <<<"$1"
+}
+check "UC-16 volume data é emptyDir com sizeLimit" has 'sizeLimit: 1Gi' < <(taba_sts "$EPH")
+check "UC-16 nós sem volumeClaimTemplates"      hasnt 'volumeClaimTemplates' < <(taba_sts "$EPH")
+check "UC-16 sem política de retenção de PVC"   hasnt 'persistentVolumeClaimRetentionPolicy' < <(taba_sts "$EPH")
+check "UC-16 storage.dir continua /var/lib/taba" has 'mountPath: /var/lib/taba' < <(taba_sts "$EPH")
+check "UC-16 medium Memory repassado"           has 'medium: Memory' < <(taba_sts "$(render_ci uc-16-sem-disco.yaml --set persistence.emptyDir.medium=Memory)")
+check "UC-16 sem sizeLimit quando vazio"        hasnt 'sizeLimit' < <(taba_sts "$(render_ci uc-16-sem-disco.yaml --set persistence.emptyDir.sizeLimit=)")
+check "UC-16 padrão continua com PVC"           has 'volumeClaimTemplates' < <(taba_sts "$DEF")
+check "UC-16 padrão sem emptyDir"               hasnt 'emptyDir' < <(taba_sts "$DEF")
+check "UC-16 S3 externo também serve de backup" render --set persistence.enabled=false --set backup.s3.bucket=b
+check "UC-16 sem backup só com allowWithoutBackup" render --set persistence.enabled=false --set persistence.allowWithoutBackup=true
+check "UC-16 autoscaling com disk.source=app"   render --set persistence.enabled=false --set backup.s3.bucket=b --set autoscaling.enabled=true --set autoscaling.disk.source=app --set autoscaling.disk.capacityBytes=1073741824 --set autoscaling.prometheus.serverAddress=http://p:9090 --api-versions keda.sh/v1alpha1
+check_fails "UC-16 recusa emptyDir sem backup"  render --set persistence.enabled=false
+check_fails "UC-16 recusa disk.source=kubelet sem PVC" render --set persistence.enabled=false --set backup.s3.bucket=b --set autoscaling.enabled=true --set autoscaling.prometheus.serverAddress=http://p:9090
+check_fails "UC-16 recusa medium inválido"      render --set persistence.enabled=false --set backup.s3.bucket=b --set persistence.emptyDir.medium=HugePages
+
 # --- UC-15: rede e validações negativas ---------------------------------------------------------
 check "UC-15 NetworkPolicy"                     has 'kind: NetworkPolicy' < <(render_ci uc-15-falhas.yaml)
 check_fails "UC-15 recusa replicaCount=2"       render --set replicaCount=2

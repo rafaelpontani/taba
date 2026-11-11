@@ -339,6 +339,12 @@ How the cluster resumes from disk after a total fall: [07-cluster.md](07-cluster
 | D213 | **The plugin and the Go SDK are published through a mirror repository, `rafaelpontani/pulumi-taba`, fed by `release.yml`; the code stays in `connectors/pulumi`.** `pulumi plugin install --server github://...` reads the Release assets of a repository, and the Go module (in `sdk/`) needs tags `sdk/vX.Y.Z`, which the tag ruleset of this repository does not allow (releasing a new pattern in the production repository was discarded). The mirror receives `sdk/`, the schema, the examples and the README; `mirror.sh` is idempotent and writes nothing here. Like the Terraform one (D211), it is only used when the variable `PULUMI_PROVIDER_REPO` exists, after `verify-release.sh` passed against the image of the version | [41-pulumi.md](41-pulumi.md#publication), [27-ci-cd.md](27-ci-cd.md#pulumi-provider) |
 | D222 | **Nothing has automatic names in Pulumi: `name` is required in `Queue`, `Distributor` and `Token`.** The random suffix of autonaming would break the contract of the name with the applications and `createOrUpdate`, which finds a queue by its exact name. A queue and a distributor are replaced by deleting first (`deleteBeforeReplace`), because the name is the id; a token (the id is the server's) is created first, and its rotation is `pulumi up --replace` | [41-pulumi.md](41-pulumi.md#no-automatic-names) |
 
+## Chart without a permanent disk (D225)
+
+| Code | Decision | Where |
+|---|---|---|
+| D225 | **The chart accepts `emptyDir` instead of the PVC (`persistence.enabled: false`) and, with it, requires the S3 backup.** The node already comes back as a new node on every restart, so a node's disk does not need to outlive the pod; what the PVC still gave was resuming the previous life when every pod falls at once, and the backup now covers that. Without a backup the chart refuses, unless `persistence.allowWithoutBackup: true`. The KEDA disk trigger with `disk.source=kubelet` reads the PVCs and is refused too. The default stays the PVC, so whoever already uses the chart changes nothing | [34-helm-chart.md](34-helm-chart.md#no-permanent-disk) |
+
 ## Resolved problems (PRB)
 
 

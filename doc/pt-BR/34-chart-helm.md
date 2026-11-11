@@ -1,6 +1,6 @@
 ---
 título: Chart Helm — configuração
-resumo: Como instalar o Taba no Kubernetes com o chart Helm — o que ele cria, todos os values (nó, segredos, Ingress, backup em S3 embutido (SeaweedFS) ou externo, coletor Prometheus ou Telegraf, OTLP, autoscaling com KEDA), como cada um vira configuração do nó e o que o chart recusa.
+resumo: Como instalar o Taba no Kubernetes com o chart Helm — o que ele cria, todos os values (nó, disco em PVC ou `emptyDir`, segredos, Ingress, backup em S3 embutido (SeaweedFS) ou externo, coletor Prometheus ou Telegraf, OTLP, autoscaling com KEDA), como cada um vira configuração do nó e o que o chart recusa.
 tipo: referência
 status: estável
 verificado-em: 2026-10-17 @ 4dc8c9f
@@ -27,7 +27,7 @@ Pré-requisitos: Kubernetes 1.27+, uma `StorageClass` padrão (um volume por nó
 
 | Recurso | Para quê |
 |---|---|
-| `StatefulSet` `<release>` | Os nós. Um volume por nó em `/var/lib/taba`; `enableServiceLinks: false` (os Services injetariam `TABA_PORT`, `TABA_SERVICE_HOST`… e o nó lê o prefixo `TABA_*` como configuração) |
+| `StatefulSet` `<release>` | Os nós. Um volume por nó em `/var/lib/taba` (PVC, ou `emptyDir` com `persistence.enabled: false`); `enableServiceLinks: false` (os Services injetariam `TABA_PORT`, `TABA_SERVICE_HOST`… e o nó lê o prefixo `TABA_*` como configuração) |
 | `Service` `<release>` | A **API do cliente** (8080). É o único que o Ingress ou um balanceador deve alcançar |
 | `Service` `<release>-entry` | **Entrada do cluster** (`cluster.entry-address`), porta 8081, TCP puro. Só tem pods **prontos**: sem nó pronto ninguém responde, e é assim que o primeiro nó sabe que deve formar o cluster |
 | `Service` `<release>-headless` | Identidade dos pods (`taba-0.taba-headless`), inclui pods ainda em bootstrap |
@@ -61,7 +61,10 @@ Decisões que o chart toma por você (vêm de [23-operacao.md](23-operacao.md)):
 | `replicaCount` | `3` | Produção: nunca menos de `max(3, replication.factor)`. O chart recusa menos, salvo `allowFewReplicas=true` (só testes). Ignorado com `autoscaling.enabled` |
 | `terminationGracePeriodSeconds` | `120` | Veja acima; mínimo `drain.timeout + backup.drain.timeout + 5` |
 | `ports.api` / `ports.cluster` / `ports.operations` | `8080` / `8081` / `9090` | Devem ser diferentes (o nó não sobe com portas repetidas). Viram `api.port`, `cluster.port`, `operations.port` |
-| `persistence.size` / `storageClass` / `accessModes` | `10Gi` / padrão do cluster / `ReadWriteOnce` | Volume de `storage.dir` (`/var/lib/taba`, cujo último diretório já se chama `taba`, como o nó exige) |
+| `persistence.enabled` | `true` | `false` troca o PVC por um `emptyDir` ([Sem disco permanente](#sem-disco-permanente)) e exige o backup em S3 |
+| `persistence.size` / `storageClass` / `accessModes` | `10Gi` / padrão do cluster / `ReadWriteOnce` | Volume de `storage.dir` (`/var/lib/taba`, cujo último diretório já se chama `taba`, como o nó exige). Só com `enabled: true` |
+| `persistence.emptyDir.sizeLimit` / `medium` | vazio (sem limite) / vazio (disco da máquina) | Só com `enabled: false`. O kubelet despeja o pod que passar do `sizeLimit`; `medium: Memory` usa tmpfs |
+| `persistence.allowWithoutBackup` | `false` | Aceita `emptyDir` sem backup em S3 |
 | `persistence.retentionPolicy.whenScaled` | `Delete` | Ao reduzir réplicas o nó sai drenado e volta como **nó novo**: o volume antigo não serve |
 | `resources`, `nodeSelector`, `tolerations`, `affinity`, `topologySpreadConstraints`, `priorityClassName` | vazio | Padrão do Kubernetes. Sem `affinity`, o chart pede (preferência) nós em hosts diferentes |
 | `podSecurityContext` / `containerSecurityContext` | uid/gid/fsGroup `10001`, sem privilégios | O usuário da imagem é o uid 10001 |
@@ -103,6 +106,8 @@ O `helm install`/`upgrade`/`template` falha com mensagem em português quando:
 - `config.backup.disk` não cumpre `evict-to < evict-above < pause-at ≤ 100`;
 - `seaweedfs.enabled` e `backup.s3.bucket` estão ligados juntos;
 - `backup.s3.accessKey` e `secretKey` não vêm em par;
+- `persistence.enabled: false` não tem backup em S3 (sem `persistence.allowWithoutBackup`), ou o autoscaling lê o disco pelos PVCs (`disk.source=kubelet` sem `disk.query`);
+- `persistence.emptyDir.medium` não é vazio nem `Memory`;
 - `collector.type`, `config.mode` (`production` ou `development`), `config.telemetry.logs.format` ou `config.telemetry.topics.mode` têm valor inválido (`values.schema.json`);
 - o autoscaling tem `minReplicas` abaixo do mínimo seguro, está no perfil de um nó (`replication.factor: 1`), não tem Prometheus ou usa `disk.source=app` sem `capacityBytes`.
 
@@ -190,6 +195,28 @@ Na AWS prefira **IRSA** (sem chaves): deixe `accessKey`/`secretKey`/`existingSec
 
 Os ajustes finos (`delay`, `segment.*`, `heartbeat.interval`, `dead-after`, `disk.*`…) ficam em `config.backup`. Com backup ligado o chart usa `terminationGracePeriodSeconds` maior que `drain.timeout` + `backup.drain.timeout`.
 
+### Sem disco permanente
+
+Num cluster cujas máquinas não têm disco permanente (ou em que um PVC prenderia o pod a uma máquina que pode ser recriada), use `emptyDir`:
+
+```yaml
+persistence:
+  enabled: false
+  emptyDir:
+    sizeLimit: 10Gi        # vazio = sem limite
+    medium: ""             # Memory = tmpfs, que conta na memória do pod
+backup:
+  s3: { bucket: taba-backup, endpoint: https://s3.exemplo.com, existingSecret: taba-s3 }
+```
+
+- **Por que funciona.** Todo reinício do processo já é um nó novo com o disco vazio ([07-cluster.md](07-cluster.md)): a mensagem confirmada está nas réplicas, não no disco de um nó. Um pod que cai volta com o `emptyDir` vazio, entra no cluster e recebe de volta o que lhe cabe, como faria com o PVC.
+- **O que se perde sem o PVC.** Quando **todos** os pods caem juntos, não há o disco de uma vida anterior para retomar. Quem cobre isso é o backup em S3 ([33-backup-s3.md](33-backup-s3.md)), e por isso o chart **recusa** `persistence.enabled: false` sem `backup.s3.bucket` ou `seaweedfs.enabled` (D225). `persistence.allowWithoutBackup: true` aceita o risco: a perda de todos os pods apaga tópicos, tokens e mensagens.
+- **O S3 precisa ficar fora do cluster.** O SeaweedFS do chart guarda os dados num PVC; num cluster sem disco permanente, use um S3 externo, que precisa aceitar escrita condicional.
+- **Um nó do Taba por máquina.** Perder uma máquina com dois pods do Taba derruba o quórum. A `affinity` padrão só *prefere* máquinas diferentes; com `emptyDir`, use `requiredDuringSchedulingIgnoredDuringExecution` e troque as máquinas uma por vez.
+- **Disco.** O nó mede o uso pelo sistema de arquivos de `storage.dir`, que num `emptyDir` é o disco da máquina, compartilhado com outros pods, e não o `sizeLimit` (PRB-112). Com `sizeLimit`, o kubelet despeja o pod que passar dele antes de a evicção do backup agir: deixe folga, use `config.memory.limit` para manter o backlog em memória e acompanhe o disco da máquina.
+- **Autoscaling.** O gatilho de disco com `disk.source=kubelet` lê os PVCs dos nós, que não existem: o chart recusa. Use `disk.source=app` com `capacityBytes`, `disk.query` ou `disk.enabled: false`.
+- **Trocar de modo** num release existente exige reinstalar, porque o `volumeClaimTemplates` de um StatefulSet não muda. Com o backup ligado: `POST /cluster/stop`, `helm uninstall`, apagar os PVCs `data-<release>-N` e `helm install` com o novo `persistence`; a restauração é automática na partida.
+
 ### Métricas: coletor (`collector.type`)
 
 O nó expõe `GET /metrics` na porta de operações (um alvo por nó, sem agregação) e, opcionalmente, faz push OTLP. O chart oferece quatro modos:
@@ -246,6 +273,7 @@ helm uninstall taba -n taba                   # mantém o Secret taba-secrets e 
 
 - `helm upgrade` troca os nós **um por vez** esperando o `ready` ([23-operacao.md](23-operacao.md)); o Secret do cluster **não** é regerado.
 - Para trocar de versão do Taba basta `--set image.tag=...`; todos os nós precisam da mesma versão.
+- Trocar `persistence.enabled` exige reinstalar ([Sem disco permanente](#sem-disco-permanente)).
 - Para apagar tudo, inclusive segredos e dados: `helm uninstall` e depois `kubectl delete secret taba-secrets` e `kubectl delete pvc -l app.kubernetes.io/instance=taba`.
 
 ## Armadilhas conhecidas

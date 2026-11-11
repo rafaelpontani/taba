@@ -96,6 +96,15 @@
     "persistence": {
       "type": "object",
       "properties": {
+        "enabled": { "type": "boolean" },
+        "allowWithoutBackup": { "type": "boolean" },
+        "emptyDir": {
+          "type": "object",
+          "properties": {
+            "sizeLimit": { "type": "string" },
+            "medium": { "enum": ["", "Memory"] }
+          }
+        },
         "retentionPolicy": {
           "type": "object",
           "properties": {
