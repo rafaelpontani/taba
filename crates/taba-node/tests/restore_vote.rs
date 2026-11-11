@@ -449,7 +449,7 @@ async fn a_node_that_comes_back_after_the_release_restores_its_lives_on_its_own_
         has(&cluster, FIFO, &kept.id)
     })
     .await;
-    recovery.drop_lives(&summary);
+    recovery.drop_lives(&summary).await;
     assert!(!life_dir(&cluster, 3, &o1).exists());
     cluster.shutdown().await;
 }

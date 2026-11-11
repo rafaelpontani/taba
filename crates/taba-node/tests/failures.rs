@@ -20,6 +20,7 @@ use common::cluster::{
 use taba_node::cluster::members::MemberTable;
 use taba_node::cluster::protocol::{Ballot, Request, Response, VoteReason, VoteRequest};
 use taba_node::cluster::state::NodeState;
+use taba_node::cluster::transport::memory::Call;
 use taba_node::cluster::transport::{PeerAddr, Transport};
 use taba_node::core::clock::Clock;
 use taba_node::core::id;
@@ -138,19 +139,26 @@ async fn a_node_that_stays_down_is_excluded_by_two_of_three_and_every_table_chan
                 >= 1.0
     })
     .await;
-    for phase in ["register", "commit"] {
-        let label = format!(
+    // The participant takes the second phase from the `commit` call or, when the coordinator's `membership`
+    // frame (sent before the calls) arrives first, from the channel: one of the two, on each node (KI-031).
+    let label = |phase: &str| {
+        format!(
             "taba_operation=\"unregister\",taba_outcome=\"ok\",taba_phase=\"{phase}\",taba_reason=\"vote\""
-        );
+        )
+    };
+    for phases in [&["register"][..], &["commit", "channel"]] {
         eventually_async("the unregistration phase by vote counted", || async {
-            sum_of(
-                &cluster,
-                &[1, 2],
-                "taba_cluster_membership_changes_total",
-                &label,
-            )
-            .await
-                >= 2.0
+            let mut sum = 0.0;
+            for phase in phases {
+                sum += sum_of(
+                    &cluster,
+                    &[1, 2],
+                    "taba_cluster_membership_changes_total",
+                    &label(phase),
+                )
+                .await;
+            }
+            sum >= 2.0
         })
         .await;
     }
@@ -179,6 +187,45 @@ async fn a_node_that_stays_down_is_excluded_by_two_of_three_and_every_table_chan
         3,
         "the isolated node excludes no one"
     );
+    cluster.shutdown().await;
+}
+
+/// UC: UC-FAL-019
+#[tokio::test]
+async fn a_commit_that_arrives_after_the_membership_frame_is_not_counted_again_as_a_join() {
+    let cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    // The lowest ID among the healthy ones coordinates the exclusion; the other one takes part.
+    let participant = if cluster.node_id(1) < cluster.node_id(2) {
+        2
+    } else {
+        1
+    };
+    // The joins of the start already counted their commits.
+    let as_join = "taba_operation=\"register\",taba_outcome=\"ok\",taba_phase=\"commit\"";
+    let metric = "taba_cluster_membership_changes_total";
+    let joins = sum_of(&cluster, &[participant], metric, as_join).await;
+
+    // With the commit calls held, the participant learns the exclusion from the coordinator's `membership` frame.
+    cluster.network.hold_kind("commit");
+    cluster.network.isolate(&host_of(3));
+    let learned = "taba_operation=\"unregister\",taba_outcome=\"ok\",taba_phase=\"channel\",taba_reason=\"vote\"";
+    eventually_async(
+        "the participant to learn the exclusion through the channel",
+        || async { sum_of(&cluster, &[participant], metric, learned).await >= 1.0 },
+    )
+    .await;
+
+    // The commit arrives afterwards: the operation was already counted (in the phase `channel`), and a commit with no
+    // pending change is not a member join.
+    cluster.network.release_kind("commit");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        sum_of(&cluster, &[participant], metric, as_join).await,
+        joins,
+        "the late commit was counted as a join"
+    );
+    assert!(agree_without(&cluster, &[1, 2], 3, 2));
     cluster.shutdown().await;
 }
 
@@ -263,6 +310,12 @@ async fn a_node_that_announces_its_failure_is_excluded_while_its_channel_is_stil
     let cluster = TestCluster::start(3).await;
     settled(&cluster).await;
 
+    // Only the channel with node 3, and only from here on: under load the three nodes of the test (one
+    // thread) can take seconds for node 3 to join, and the channel between nodes 1 and 2 may fall and
+    // come back in the meantime, which says nothing about this exclusion (KI-029).
+    let with_third = format!("taba_peer=\"{}\"", cluster.node_id(3));
+    let reconnects = "taba_cluster_channel_reconnects_total";
+    let before = sum_of(&cluster, &[1, 2], reconnects, &with_third).await;
     cluster.node(3).node.shared().set_failed();
 
     eventually(
@@ -272,14 +325,9 @@ async fn a_node_that_announces_its_failure_is_excluded_while_its_channel_is_stil
     .await;
     // The channel never fell: it was the node's notice, not the connection, that opened the vote.
     assert_eq!(
-        sum_of(
-            &cluster,
-            &[1, 2],
-            "taba_cluster_channel_reconnects_total",
-            ""
-        )
-        .await,
-        0.0
+        sum_of(&cluster, &[1, 2], reconnects, &with_third).await,
+        before,
+        "the channel with the node that failed reconnected"
     );
     assert!(
         sum_of(
@@ -352,6 +400,44 @@ async fn a_node_that_stops_answering_with_the_connection_open_is_detected_and_ex
         agree_without(&cluster, &[1, 2], 3, 2)
     })
     .await;
+    cluster.network.set_silent(&host_of(3), false);
+    cluster.shutdown().await;
+}
+
+/// A mute node that keeps opening connections and says nothing on them never looks reachable to the
+/// vote: each connection it opens brings the channel "up", but without a word from the peer it does
+/// not count (KI-017: the healthy ones voted `no` on each other's vote and no new vote came).
+/// UC: UC-FAL-002
+#[tokio::test]
+async fn a_connection_the_mute_node_opens_does_not_make_it_reachable_to_the_vote() {
+    let cluster = TestCluster::start_with(3, &[MANY_RETRIES]).await;
+    settled(&cluster).await;
+    let mute = cluster.node_id(3);
+    let channels = channels_of(&cluster, 1);
+
+    cluster.network.set_silent(&host_of(3), true);
+    let first = channels.clone();
+    let who = mute.clone();
+    eventually("the channel with the mute node to fall", move || {
+        first.peers().iter().any(|p| p.node_id == who && !p.up)
+    })
+    .await;
+
+    // The mute node opens the connection again and again; each one brings the channel up for a moment.
+    let (mut reopened, mut live) = (0, 0);
+    let until = tokio::time::Instant::now() + Duration::from_secs(4);
+    while tokio::time::Instant::now() < until {
+        let up = channels.peers().iter().any(|p| p.node_id == mute && p.up);
+        if up {
+            reopened += 1;
+            if channels.is_live(&mute) {
+                live += 1;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(reopened > 0, "the mute node opened a connection again");
+    assert_eq!(live, 0, "a connection without a word counted as reachable");
     cluster.network.set_silent(&host_of(3), false);
     cluster.shutdown().await;
 }
@@ -612,10 +698,9 @@ async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins
     let port = cluster.node(3).node.cluster_addr().port();
     cluster.network.clear_calls();
 
-    // The unregistration takes a while: the vote stays in progress long enough for the new node to arrive.
-    cluster
-        .network
-        .set_delay_kind("unregister", Duration::from_millis(1500));
+    // The unregistration is held until the new node's join reaches a member: the vote stays in progress however
+    // long the restart takes (a fixed delay was shorter than the restart under load: KI-030).
+    cluster.network.hold_kind("unregister");
     cluster.nodes.pop().unwrap().shutdown().await;
     cluster.network.unregister(&PeerAddr::new(host_of(3), port));
     eventually("the exclusion vote to open", || {
@@ -638,6 +723,18 @@ async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins
         .expect("the node restarts");
     let new_id = cluster.node_id(number);
     assert_ne!(new_id, old_id, "the ID is new");
+    // The load balancer also repeats the request to the new node itself (same address): only the join that
+    // reached a member counts.
+    let join_reached_a_member = |calls: &[Call]| {
+        calls
+            .iter()
+            .position(|c| c.request == "join" && c.to.host != host_of(3))
+    };
+    eventually("the new node's join to reach a member", || {
+        join_reached_a_member(&cluster.network.calls()).is_some()
+    })
+    .await;
+    cluster.network.release_kind("unregister");
 
     // At no instant does the table have the old and the new node together.
     let mut both = false;
@@ -674,16 +771,16 @@ async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins
             .frozen_remaining(&new_id, now, freezing)
             .is_none()
     );
-    // The load balancer also repeats the request to the new node itself (same address): only the join
-    // that reached a member counts, and it arrived after the vote opened and before the exclusion commit.
+    // The join arrived after the vote opened and before the exclusion commit.
     let calls = cluster.network.calls();
     let first = |name: &str| calls.iter().position(|c| c.request == name);
-    let join = calls
-        .iter()
-        .position(|c| c.request == "join" && c.to.host != host_of(3));
+    let join = join_reached_a_member(&calls);
     assert!(
         first("vote") < join && join < first("commit"),
-        "the join request arrived in the middle of the vote"
+        "the join request arrived in the middle of the vote (vote {:?}, join {:?}, commit {:?})",
+        first("vote"),
+        join,
+        first("commit")
     );
     assert_eq!(cluster.member_ids(1).len(), 3);
     wait_joined(cluster.node(number)).await;
@@ -792,6 +889,46 @@ async fn a_syncing_node_that_the_sources_excluded_redoes_the_join_instead_of_fai
         (1..=3).all(|n| cluster.member_ids(n).len() == 3)
     })
     .await;
+    cluster.shutdown().await;
+}
+
+/// UC: UC-FRZ-015
+#[tokio::test]
+async fn a_node_excluded_while_it_synchronizes_is_not_frozen_and_joins_again() {
+    let mut cluster = TestCluster::start(2).await;
+    queue_with_messages(&cluster, 6).await;
+    let number = start_isolated(&mut cluster, &[]).await;
+    let gate = pause_sync(&cluster, number, "blocks");
+    wait_phase(cluster.node(number), "blocks").await;
+    let id = cluster.node_id(number);
+
+    // Its channels fall in the middle of the synchronization: the other two vote it out (KI-023).
+    cluster.network.isolate(&host_of(number));
+    eventually("the synchronizing node to be excluded", || {
+        [1, 2]
+            .iter()
+            .all(|n| cluster.table(*n).is_some_and(|t| t.member(&id).is_none()))
+    })
+    .await;
+    let freezing = Duration::from_secs(300);
+    for n in [1, 2] {
+        let membership = cluster.node(n).node.cluster().unwrap().membership();
+        assert_eq!(
+            membership.frozen_remaining(&id, cluster.clock.now(), freezing),
+            None,
+            "a node that never served is not frozen"
+        );
+    }
+
+    // Back on the network, the same process (same ID) redoes the join and is accepted at once.
+    cluster.network.restore(&host_of(number));
+    gate.add_permits(100);
+    wait_joined(cluster.node(number)).await;
+    eventually("the three nodes in a single table", || {
+        (1..=3).all(|n| cluster.member_ids(n).len() == 3)
+    })
+    .await;
+    assert_eq!(cluster.node_id(number), id, "the same ID came back");
     cluster.shutdown().await;
 }
 
@@ -1057,7 +1194,9 @@ async fn once_the_exclusion_is_decided_the_nodes_drop_the_channel_and_the_return
 /// UC: UC-FAL-029
 #[tokio::test]
 async fn only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion() {
-    let cluster = TestCluster::start(5).await;
+    // A turn of 5 s (and not the 400 ms of `FAST`): each node sees the channel of node 5 fall at a different moment,
+    // and under load that difference passed the 400 ms, so a second node coordinated before the lowest did (KI-013).
+    let cluster = TestCluster::start_with(5, &[("TABA_WRITE_COMMIT_TIMEOUT", "5s")]).await;
     settled(&cluster).await;
     let lowest = (1..=4)
         .min_by_key(|n| cluster.node_id(*n))
@@ -1070,8 +1209,8 @@ async fn only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion() {
     })
     .await;
 
-    // All opened the vote, but only the one with the lowest ID registered the unregistration on the others: the rest
-    // waited their turn and found the node already out of the table.
+    // Only the one with the lowest ID registered the unregistration on the others: the rest waited their turn and
+    // found the node already out of the table (or did not even open their vote, when the exclusion came first).
     let coordinators: std::collections::BTreeSet<String> = cluster
         .network
         .calls()
@@ -1084,9 +1223,17 @@ async fn only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion() {
         std::collections::BTreeSet::from([host_of(lowest)]),
         "the exclusion's coordinator"
     );
+    // The coordinator closed a quorum: it asked each of the other three healthy ones for its vote. How many of the
+    // others opened a vote of their own depends on when each saw the channel fall, so it is not counted.
+    let asked = cluster
+        .network
+        .calls()
+        .iter()
+        .filter(|call| call.request == "vote" && call.from == host_of(lowest))
+        .count();
     assert!(
-        cluster.network.count("vote") >= 4,
-        "all the healthy ones voted"
+        asked >= 3,
+        "the coordinator asked the healthy ones to vote: {asked}"
     );
     cluster.shutdown().await;
 }

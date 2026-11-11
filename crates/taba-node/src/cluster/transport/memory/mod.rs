@@ -5,14 +5,15 @@
 //! The test programs the failures: **partition** between two nodes (or in one direction only: `cut_one_way`) or the
 //! isolation of one, **lost replies** (the call runs, the caller never hears), **loss** per link from a seed, **loss** of the
 //! next calls to a node, **delay** on all calls (or only those of one type), a **mute** node (accepts and does not
-//! answer, so the caller's deadline runs out) and a node that **falls** (vanishes from the network). A
+//! answer, so the caller's deadline runs out), a call type **held** until the test releases it, and a node that **falls**
+//! (vanishes from the network). A
 //! **load balancer** splits the calls among nodes, like the real `cluster.entry-address`.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 use super::{
@@ -52,6 +53,8 @@ struct State {
     delay: Duration,
     delay_kind: HashMap<String, Duration>,
     delay_host_kind: HashMap<(String, String), Duration>,
+    /// Call types held: a call of one of them waits (after being recorded) until the test releases the type.
+    held: HashMap<String, watch::Sender<bool>>,
     calls: Vec<Call>,
     /// The open channels (the two hosts and how to close them): a partition brings them down, like the drop of
     /// a TCP connection.
@@ -199,6 +202,9 @@ impl MemoryNetwork {
         state.delay = Duration::ZERO;
         state.delay_kind.clear();
         state.delay_host_kind.clear();
+        for (_, held) in state.held.drain() {
+            held.send_replace(true);
+        }
     }
 
     /// One draw from 0 to 99 of the network's generator (xorshift64*).
@@ -270,6 +276,24 @@ impl MemoryNetwork {
         self.lock()
             .delay_host_kind
             .insert((host.to_owned(), request.to_owned()), delay);
+    }
+
+    /// Holds the calls of one type (`Request::name()`): each one is recorded and waits, without reaching the
+    /// destination, until [`MemoryNetwork::release_kind`] (the caller's deadline still runs). To keep a phase of the
+    /// protocol open until something else happened, instead of guessing how long it takes.
+    pub fn hold_kind(&self, request: &str) {
+        self.lock()
+            .held
+            .entry(request.to_owned())
+            .or_insert_with(|| watch::channel(false).0);
+    }
+
+    /// Releases the calls of a type held by [`MemoryNetwork::hold_kind`], the waiting ones and the next ones.
+    pub fn release_kind(&self, request: &str) {
+        let held = self.lock().held.remove(request);
+        if let Some(held) = held {
+            held.send_replace(true);
+        }
     }
 
     /// The calls made so far, in order.
@@ -391,9 +415,14 @@ impl MemoryNetwork {
         let reply_lost = state
             .lost_replies
             .contains(&(from.to_owned(), target.host.clone()));
+        let hold = requests
+            .iter()
+            .find_map(|request| state.held.get(*request))
+            .map(watch::Sender::subscribe);
         Ok(Route {
             handler,
             delay,
+            hold,
             silent: state.silent.contains(&target.host),
             reply_lost,
         })
@@ -405,6 +434,8 @@ impl MemoryNetwork {
 struct Route {
     handler: Arc<dyn Handler>,
     delay: Duration,
+    /// The call's type is held: waits until the test releases it.
+    hold: Option<watch::Receiver<bool>>,
     silent: bool,
     reply_lost: bool,
 }
@@ -510,6 +541,10 @@ impl Transport for MemoryTransport {
                 other => vec![other.name()],
             };
             let route = self.network.route(&self.local, to, &kinds)?;
+            if let Some(mut hold) = route.hold {
+                // Released, or the test dropped the network: either way the call goes on.
+                let _ = hold.wait_for(|released| *released).await;
+            }
             if !route.delay.is_zero() {
                 tokio::time::sleep(route.delay).await;
             }

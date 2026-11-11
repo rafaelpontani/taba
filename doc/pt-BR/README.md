@@ -84,7 +84,9 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 |---|---|
 | [24-convencoes.md](24-convencoes.md) | Código, API, pastas, idioma |
 | [25-testes.md](25-testes.md) | Níveis de teste e como escrever um |
-| [36-problemas-conhecidos.md](36-problemas-conhecidos.md) | Testes desligados por falharem de forma intermitente no CI |
+| [36-problemas-conhecidos.md](36-problemas-conhecidos.md) | Índice dos problemas conhecidos: os abertos, onde estão os abertos e os corrigidos, e como uma seção é escrita |
+| [36a-problemas-conhecidos.md](36a-problemas-conhecidos.md) | Problemas conhecidos ainda abertos: testes intermitentes (alguns desligados no CI), a causa achada até agora e o próximo passo |
+| [36f-problemas-conhecidos.md](36f-problemas-conhecidos.md) | Problemas conhecidos já corrigidos: causa, correção e verificação, guardados como histórico e para quando um voltar |
 | [37-garantias.md](37-garantias.md) | As garantias como regras checáveis (I1 a I6) e a rodada de caos que as verifica |
 | [38-benchmarks.md](38-benchmarks.md) | O benchmark comparativo local (`bench/run.sh`): regras de justiça, níveis de durabilidade, workloads e o relatório |
 | [39-gateway.md](39-gateway.md) | O gateway para os SDKs da AWS: SQS e SNS em portas do nó, as chaves de acesso, o que é suportado e as diferenças do SQS e do SNS |

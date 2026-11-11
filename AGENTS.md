@@ -115,16 +115,16 @@ Every implementation that finds something open records it **in the same change**
 
 ## Intermittent tests and known issues
 
-A test that fails only sometimes (usually on the slow CI runners) is recorded in [doc/en-US/36-known-issues.md](doc/en-US/36-known-issues.md) / [doc/pt-BR/36-problemas-conhecidos.md](doc/pt-BR/36-problemas-conhecidos.md), in both languages, in the same change.
+A test that fails only sometimes (usually on the slow CI runners) is recorded in the known issues, in both languages, in the same change. The index is **36** ([doc/en-US/36-known-issues.md](doc/en-US/36-known-issues.md) / [doc/pt-BR/36-problemas-conhecidos.md](doc/pt-BR/36-problemas-conhecidos.md)): the table of the open issues, where the open and the fixed are, and the pattern every section follows. The sections live in two files per language: **36a** holds the open ones (`Open` or `Reopened`: [doc/en-US/36a-known-issues.md](doc/en-US/36a-known-issues.md) / [doc/pt-BR/36a-problemas-conhecidos.md](doc/pt-BR/36a-problemas-conhecidos.md)) and **36f** the fixed ones, kept as history and for when one comes back ([doc/en-US/36f-known-issues.md](doc/en-US/36f-known-issues.md) / [doc/pt-BR/36f-problemas-conhecidos.md](doc/pt-BR/36f-problemas-conhecidos.md)).
 
-- **One section per test or issue, with a title.** Right after the title: the **status** (`Open`, `Fixed` or `Reopened`), the date **found** and the date **fixed**; then the test, symptom, cause and fix, and a **History** table (date, event) with every occurrence and attempt. The summary table at the top is kept in sync.
-- **Sections are never deleted.** When fixed, set the status to `Fixed`, fill the fixed date and add the history row (what changed and how it was verified). If the problem **comes back**, do not open a new section: set the status to `Reopened`, clear the fixed date, add the history row for the new occurrence and, when it is solved again, add another row and set `Fixed` again with the new date.
+- **One section per test or issue, with a code and a title.** The title starts with the next free code `KI-NNN` (`## KI-029: A ...`), the one after the highest of **both** files; codes are never reused, and a reopened issue keeps its code. Right after the title: the **status** (`Open`, `Fixed` or `Reopened`), the date **found** and the date **fixed**; then the fields (test, symptom, cause, next step or fix, verification) and a **History** table (date, event) with every occurrence and attempt, following the pattern written in 36. The table of the open issues is in 36 and the one of the fixed issues at the top of 36f; each is kept in sync with its sections.
+- **Sections are never deleted; they move between the two files.** A new issue goes to 36a (one found and fixed in the same change goes straight to 36f). When fixed, set the status to `Fixed`, fill the fixed date, add the history row (what changed and how it was verified) and **move the section from 36a to 36f, and its row from the table of 36 to the one of 36f**. If the problem **comes back**, do not open a new section: move it back to 36a, set the status to `Reopened`, clear the fixed date and add the history row for the new occurrence; when it is solved again, add another row, set `Fixed` again with the new date and move it to 36f (the row goes with it each time). Links to a section point to the file it is in at the time (`36a-known-issues.md#ki-...` or `36f-known-issues.md#ki-...`): moving a section updates them.
 - **Ignoring a test (`#[ignore = "..."]`)** is a last resort: it needs a section in the known issues first, and the reason points to it. Removing the `#[ignore]` goes in the same change as the fix and its verification (repeated runs under parallel load, noting how many).
 - Do not hide an intermittent failure by raising a timeout or retrying without understanding the cause; if the cause is not identified, say so in the section ("Cause: not identified") and record the next step.
 
 ### A test that goes silent: locks taken twice and lock-order inversions
 
-Lesson of [a channel accept that locked the peers twice](doc/en-US/36-known-issues.md#a-channel-accept-that-locked-the-peers-twice) (2026-10-26): a `std::sync::Mutex` is not reentrant, a guard lives until the end of its block, and the guard of a **temporary in the scrutinee of a `match`, `if let`, `while let` or `for`** lives until the end of the whole block. Calling, inside it, anything that locks the same `Mutex` blocks the thread on itself, with no error and no log.
+Lesson of [KI-006, a channel accept that locked the peers twice](doc/en-US/36f-known-issues.md#ki-006-a-channel-accept-that-locked-the-peers-twice) (2026-10-26): a `std::sync::Mutex` is not reentrant, a guard lives until the end of its block, and the guard of a **temporary in the scrutinee of a `match`, `if let`, `while let` or `for`** lives until the end of the whole block. Calling, inside it, anything that locks the same `Mutex` blocks the thread on itself, with no error and no log.
 
 **How to recognise it**
 
@@ -140,7 +140,7 @@ Lesson of [a channel accept that locked the peers twice](doc/en-US/36-known-issu
 3. Do not leave the detailed logs on in the repository's normal runs or in CI: they exist to investigate, and they would bury the failures the next time.
 4. Fix it by taking the value out first (`let known = self.lock().get(k).cloned();` then `match known`) or by releasing the guard (`drop`, a smaller block) before the call. Two locks are always taken in the same order (peers map, then the peer's state; tables lock, then the peer's lock never the other way).
 5. Add a test that **fails without the fix and does not hang**: run the call on its own `std::thread` and wait with `recv_timeout`, as in `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node`. Repeat the run that used to hang under the same load and write down how many runs passed.
-6. Record it in the known issues, in both languages (cause, how it was found, fix, test, verification), and add what it taught to the "Lessons learned" there.
+6. Record it in the known issues, in both languages (cause, how it was found, fix, test, verification), and add what it taught to the "Lessons learned" of 36a.
 
 **Look for the same mistake elsewhere** (do this after every fix of this kind, and when you add code that locks):
 
@@ -153,7 +153,7 @@ Lesson of [a channel accept that locked the peers twice](doc/en-US/36-known-issu
 
 ### A test that waits 30 s for something that never arrives: lost deliveries
 
-Lesson of [a definition offered to a node that was still joining](doc/en-US/36-known-issues.md#a-definition-offered-to-a-node-that-was-still-joining) (2026-10-26). Unlike a silent test, the node is alive and the log keeps moving: the test ends with `waited 30 s for: <state>` and one node simply never got something that the others have.
+Lesson of [KI-007, a definition offered to a node that was still joining](doc/en-US/36f-known-issues.md#ki-007-a-definition-offered-to-a-node-that-was-still-joining) (2026-10-26). Unlike a silent test, the node is alive and the log keeps moving: the test ends with `waited 30 s for: <state>` and one node simply never got something that the others have.
 
 **How to recognise it**
 

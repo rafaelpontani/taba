@@ -54,7 +54,9 @@
 - [39 Gateway](39-gateway.md): o gateway para os SDKs da AWS (filas do SQS e tópicos do SNS em portas do nó), o arquivo de chaves de acesso, como uma chamada vira chamada à API do cliente, o que é suportado e as diferenças do SQS e do SNS
 - [40 Provider Terraform e OpenTofu](40-terraform.md): o provider `rafaelpontani/taba` (filas, distribuidores, tokens de acesso, quatro data sources), a configuração, plan, desvio e import, o `force_destroy`, o `create_or_update` opcional, o segredo do token no estado e a rotação, novas tentativas com um nó fora, testes e publicação por um repositório espelho
 - [41 Provider Pulumi](41-pulumi.md): o provider `taba` para o Pulumi (o provider Terraform ligado ao Pulumi; SDKs para TypeScript, Python, .NET e Go), a instalação do plugin e dos pacotes, a configuração, os nomes e o `secret` de um token, sem nomes automáticos, `forceDestroy`, `createOrUpdate`, substituição e rotação, `protect` e `retainOnDelete`, como os SDKs são gerados, testes e publicação por um repositório espelho
-- [36 Problemas conhecidos](36-problemas-conhecidos.md): testes de cluster desligados com #[ignore] por falharem de forma intermitente no CI, causa e correção prevista
+- [36 Problemas conhecidos](36-problemas-conhecidos.md): índice dos problemas conhecidos: os abertos, onde estão os abertos (36a) e os corrigidos (36f), e como uma seção é escrita
+- [36a Problemas conhecidos: abertos](36a-problemas-conhecidos.md): testes intermitentes e problemas conhecidos ainda abertos (alguns desligados com #[ignore]), a causa achada até agora e o próximo passo
+- [36f Problemas conhecidos: corrigidos](36f-problemas-conhecidos.md): problemas conhecidos já corrigidos, com causa, correção e verificação, guardados como histórico e para quando um voltar
 - [26 Casos de uso](26-casos-de-uso.md): o código UC-ÁREA-NNN e a regra de cobertura
 - [26a Casos implementados](26a-casos-de-uso-implementados.md): o catálogo com teste (gerado)
 - [26b Casos planejados](26b-casos-de-uso-planejados.md): o catálogo sem teste (gerado)

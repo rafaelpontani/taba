@@ -708,8 +708,65 @@ async fn a_life_outside_the_window_is_not_restored_and_its_folder_goes_with_the_
 
     // The pass is complete (there was nothing to send): the folder is deleted, and the message follows the path of
     // today, where only the listed losses come back.
-    recovery.drop_lives(&summary);
+    recovery.drop_lives(&summary).await;
     assert!(!dir.exists());
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-049
+///
+/// KI-005: on Windows a file another handle still holds cannot be deleted, and the folder of a restored life used to stay
+/// after a single attempt (the next start would restore it again). The removal tries again while the handle goes away.
+#[cfg(windows)]
+#[tokio::test]
+async fn the_folder_of_a_restored_life_is_deleted_even_if_a_file_in_it_is_held_for_a_moment() {
+    let cluster = setup(&[]).await;
+    cluster.clock.advance(Duration::from_secs(60));
+    let old = id::new_at(1);
+    let dir = messages_of(cluster.node(1))
+        .storage_root()
+        .join(MessageStore::LIVES)
+        .join(&old);
+    std::fs::create_dir_all(&dir).unwrap();
+    Manifest {
+        node_id: old.clone(),
+        members: Vec::new(),
+        table_version: 1,
+        last_seen_ms: 1,
+        watermark: None,
+        excluded_since_ms: None,
+    }
+    .write(&dir)
+    .expect("writes the manifest");
+    let recovery = recovery_of(cluster.node(1));
+    let summary = recovery.restore_lives().await;
+    assert_eq!(summary.lives, 1);
+
+    // A handle without delete sharing, as SQLite opens its files on Windows (and as an antivirus may hold one): while
+    // it lives, the file cannot be deleted, and neither can the folder.
+    let path = dir.join("held.db");
+    std::fs::write(&path, b"x").unwrap();
+    let held = {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 1;
+        const FILE_SHARE_WRITE: u32 = 2;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .open(&path)
+            .unwrap()
+    };
+    assert!(
+        std::fs::remove_file(&path).is_err(),
+        "the held file cannot be deleted"
+    );
+    let releaser = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        drop(held);
+    });
+    recovery.drop_lives(&summary).await;
+    releaser.join().unwrap();
+    assert!(!dir.exists(), "the folder went once the handle was closed");
     cluster.shutdown().await;
 }
 

@@ -3,7 +3,7 @@ título: Testes
 resumo: Como o Taba é testado — os níveis (unitário, um nó, cluster simulado, conectores, ponta a ponta), as ferramentas de teste (TestNode, TestCluster, rede em memória, relógio manual, coletor OTLP falso) e como escrever e rodar um teste.
 tipo: guia
 status: estável
-verificado-em: 2026-11-07 @ 4fbb808
+verificado-em: 2026-11-10 @ d6e1d66
 fontes: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, connectors/contract, docker/validate.sh, docker/seed-demo.sh, docker/hang-hunt.sh]
 ---
 
@@ -53,7 +53,7 @@ Em números: ~330 testes nesses arquivos mais os unitários dos módulos; o clus
 |---|---|
 | **`TestNode`** (`mod.rs`) | Sobe **um nó real** em portas livres, disco numa pasta temporária. `TestNode::single()` (um nó no perfil de um nó, já ativo e com a restauração concluída) e `::production()`; `builder()` (o perfil de um nó por padrão) com `.env(nome, valor)`, `.in_network(&rede, host)`, `.clock(relógio)`, `.real(ip, entry)`, `.single_node()`, `.production()`. Métodos: `client_url()`, `operations_url()`, `cluster_url()`, `client_get()`, `metrics()`, `stats()`, `storage_dir()`, `shutdown()`. Auxiliares: `series()` (lê uma série de `/metrics`), `error_code()` (confere status e devolve o `code`) |
 | **`TestCluster`** (`cluster.rs`) | **Vários nós no mesmo processo** (nó `n` = `10.0.0.n`), ligados pela **`MemoryNetwork`** e por **um `Clock` manual compartilhado**; o balanceador (`balancer:8081`) reparte as chamadas. `start(n)`, `start_with(n, env)`, `add_node()`, `spawn_node()`, `respawn_node()`, `node(n)`, `table(n)`, `member_ids(n)`. Auxiliares: `eventually(…)` (espera uma condição), `settled()` (cluster estável), `create_queue()`, `name_owned_by()` (acha um nome de tópico cujo dono é o nó n), `pause_sync()`/`wait_phase()` (para no meio de uma fase da sincronização), `replication_of()`, `channels_of()`, `signals_of()` |
-| **`MemoryNetwork`** (`src/cluster/transport/memory`) | O `Transport` de teste: **partição** entre dois nós (ou em um sentido só) ou isolamento de um, **respostas perdidas** (a chamada roda, quem chamou nunca fica sabendo), **perda** por enlace sorteada de uma semente, **cura** de tudo de uma vez, **perda** das próximas chamadas a um nó (ou de um tipo), **atraso** em todas as chamadas, nó **mudo** (aceita e não responde), nó que **cai** (some da rede) e **balanceador** |
+| **`MemoryNetwork`** (`src/cluster/transport/memory`) | O `Transport` de teste: **partição** entre dois nós (ou em um sentido só) ou isolamento de um, **respostas perdidas** (a chamada roda, quem chamou nunca fica sabendo), **perda** por enlace sorteada de uma semente, **cura** de tudo de uma vez, **perda** das próximas chamadas a um nó (ou de um tipo), **atraso** em todas as chamadas (ou de um tipo), um tipo de chamada **retido** até o teste soltá-lo (`hold_kind`/`release_kind`: para manter uma fase aberta até outra coisa acontecer, em vez de adivinhar quanto ela demora), nó **mudo** (aceita e não responde), nó que **cai** (some da rede) e **balanceador** |
 | **`ManualClock`** (`src/core/clock`) | O relógio do teste: o teste o avança (invisibilidade, `ttl`, freezing, votação, `idleTimeout`) |
 | **`RealCluster`** (`real.rs`) | Nós por **TCP real em `127.0.0.x`**, com o `Transport` HTTP e **TLS mútuo**; geração e rotação de certificados (`cert_dir`, `new_pair`, `add_named_pair`), conexão com ou sem certificado (`connect`, `anonymous_client`) |
 | **Coletor OTLP falso** (`otlp.rs`) | `Collector::http()` e `::grpc(tls)`, com `metrics()`, `spans()`, `log_records()`. Os testes de OTLP **andam um de cada vez**, porque o assinante do `tracing` é do processo |
@@ -133,7 +133,7 @@ cargo test --release -p taba-node --lib engine::messages::tests::cost -- --nocap
 4. **Leia a pilha.** Um quadro de função do próprio crate sob `Mutex::lock` (ou `RwLock::read`/`write`) sem outra thread segurando essa trava é uma trava tomada duas vezes pela mesma thread; duas threads, cada uma dentro de uma trava que a outra segura, é uma inversão. Com o runtime `current_thread` do `#[tokio::test]` há uma única thread para olhar.
 5. **Faça o teste falhar em vez de travar.** Quando a chamada testada pode bloquear para sempre, rode-a numa `std::thread` própria (entrando no runtime com `Handle::enter` se ela cria tarefas) e espere com `mpsc::Receiver::recv_timeout`; veja `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node`.
 
-O caso que ensinou isso está em [36-problemas-conhecidos.md](36-problemas-conhecidos.md#um-accept-de-canal-que-travou-os-peers-duas-vezes).
+O caso que ensinou isso está em [36f-problemas-conhecidos.md](36f-problemas-conhecidos.md#ki-006-um-accept-de-canal-que-travou-os-peers-duas-vezes).
 
 ## Os testes de contrato dos conectores: `connectors/contract/run.sh`
 

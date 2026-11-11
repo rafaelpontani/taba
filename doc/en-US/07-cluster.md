@@ -3,7 +3,7 @@ title: Cluster
 summary: The life cycle of the cluster — how a node joins, how failure is detected and voted on, freezing, return, call forwarding, synchronization, drain, one-node profile and resuming from disk after a total fall.
 type: explanation
 status: stable
-verified-on: 2026-11-09 @ edcf155
+verified-on: 2026-11-10 @ d6e1d66
 sources: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, cluster/restore, cluster/upgrade, cluster/replication/definitions.rs, http/forward]
 ---
 
@@ -60,7 +60,7 @@ The node has a **state** (`taba.node.state`) and, separately, a **drain state**:
 3. **Join request.** The node picks a member at random and sends, in a single synchronous call, `POST /cluster/nodes/join` with its own IPs and the cluster port; that member starts to **coordinate** the join.
 4. **Connection test.** The coordinator tries to call the new node back at each reported IP. If it fails, the join is aborted.
 5. **Phase 1 (register)** to all nodes. A `409` (another change is pending) is repeated until `write.commit.timeout`.
-6. **Phase 2 (commit)** to all. Each node that takes effect queues the `membership` frame for its peers, so a late or down node fixes its table when it returns.
+6. **Phase 2 (commit)** to all. Each node that takes effect queues the `membership` frame for its peers, so a late or down node fixes its table when it returns. The frame may reach a peer before the commit call: the peer applies the change on receipt and counts it in the phase `channel` of `taba.cluster.membership.changes`, and the commit that arrives afterwards only confirms it, without counting it again.
 7. **Response** to the new node with the **member table**. The topic table is **not** in the response (it grows with the number of topics): the node pulls it afterwards.
 8. The new node opens the permanent channel with each node in the table. When a node goes down and restarts, **it is the one that reopens** the channels.
 9. **Synchronization** (section 5) and only then does the state become `active` and `/health/ready` answers `200`.
@@ -80,7 +80,7 @@ If two changes are coordinated at the same time by different members, the one wi
 1. The permanent channel carries a **heartbeat** (*keepalive*) every `cluster.channel.keepalive.interval` (default **2 s**). **There is no separate ping.**
 2. The channel with a peer **drops** when a call fails, or nothing arrives for `2 × keepalive.interval` (at least 500 ms). The following calls, every `cluster.channel.reconnect.backoff` (default 1 s), are the retries; when `cluster.channel.reconnect.retries` (default **3**) are exhausted, the **vote** opens.
 3. Meanwhile, the signals to the node pile up in an in-memory **output queue**. If it exceeds `cluster.channel.queue.max-size` (default 10,000) or `max-age` (default 60 s), the node on the other side is treated as **failed** and the vote opens without waiting for the end of the retries.
-4. **Exclusion vote.** Each vote is `yes` if the voter also cannot reach the candidate. It requires `ceil(S × cluster.vote.quorum-percent)` votes from **S healthy nodes** (default 51%), with at least `cluster.vote.min-voters` voters (default 2). A **healthy** node is one that the node opening the vote sees with the channel active and that answers the request; nodes that are down **do not vote and are not in the base**. Without enough healthy nodes, no exclusion takes effect (condition `quorum-lost`).
+4. **Exclusion vote.** Each vote is `yes` if the voter also cannot reach the candidate. The voter reaches it when its channel with it is up **and** the candidate has said something on that connection within the silence deadline (`2 × cluster.channel.keepalive.interval`, at least 500 ms); a connection the candidate has just opened and on which it has said nothing does not count, otherwise a node that only opens connections and stays mute would look reachable at every reopening. It requires `ceil(S × cluster.vote.quorum-percent)` votes from **S healthy nodes** (default 51%), with at least `cluster.vote.min-voters` voters (default 2). A **healthy** node is one that the node opening the vote sees with the channel active and that answers the request; nodes that are down **do not vote and are not in the base**. Without enough healthy nodes, no exclusion takes effect (condition `quorum-lost`).
 5. **Who coordinates the exclusion:** the one with the **lowest ID among those who voted**. The one of order `k` waits `k × write.commit.timeout` before trying, if the node is still in the table.
 6. Once the quorum is reached, the **deregistration** follows the same two-phase protocol. The coordinator insists until it is confirmed on all remaining nodes, **except those it sees as down** (waiting for a node that is down would prevent the exclusion of another; whoever is left with the old table shows up as `membership-divergent`).
 7. At the commit, whoever becomes primary of the removed node's positions takes over the **volatile queues** it managed, and the ring is recomputed.
@@ -107,7 +107,7 @@ The voting base is only whoever the voter sees. In a **network partition** where
 
 ![Process restart](../diagrams/img/en-US/process-restart.svg)
 
-**Freezing.** A node excluded for **failure** that **remains the same process** (same ID) is prevented from rejoining for `cluster.freezing.duration` (default **5 min**), so it does not join and leave in a loop. During freezing the join request is **rejected** with `Retry-After`; the node keeps trying in the normal bootstrap loop. Whoever executed the exclusion commit stores `(ID, instant)` and passes it on to its peers through the channel (`frozen` frame), so a member that was down also refuses the `join` of the excluded node. **Drain** and a process **restart** do **not** cause freezing (they are voluntary, or the ID is new).
+**Freezing.** A node excluded for **failure** that **remains the same process** (same ID) is prevented from rejoining for `cluster.freezing.duration` (default **5 min**), so it does not join and leave in a loop. During freezing the join request is **rejected** with `Retry-After`; the node keeps trying in the normal bootstrap loop. Whoever executed the exclusion commit stores `(ID, instant)` and passes it on to its peers through the channel (`frozen` frame), so a member that was down also refuses the `join` of the excluded node. **Drain** and a process **restart** do **not** cause freezing (they are voluntary, or the ID is new). Neither does the exclusion of a node that was still **synchronizing** (`syncing` in the table): it never served, so its exclusion only cleans the table and it joins again at once with the same ID (PRB-111). Whoever saw it already active freezes it, and its `frozen` frame reaches the others.
 
 **How the node finds out it was excluded.** If three consecutive channel calls to a peer return `403 cluster.not-member` **and** the peer's table is newer and does not have it, the node knows it was excluded.
 

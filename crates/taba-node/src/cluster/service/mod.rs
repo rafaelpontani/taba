@@ -531,7 +531,7 @@ impl ClusterService {
         self.hold_for_restoration();
         tokio::spawn(async move {
             let summary = replication.recovery.restoration().await;
-            replication.recovery.drop_lives(&summary);
+            replication.recovery.drop_lives(&summary).await;
         });
     }
 
@@ -988,11 +988,16 @@ impl ClusterService {
                 self.require_member(caller)?;
                 let change = self.membership.pending_change(&request.operation_id);
                 let result = self.membership.commit(&request.operation_id, self.now());
-                self.count_change(
-                    change.as_ref(),
-                    "commit",
-                    if result.is_ok() { "ok" } else { "failed" },
-                );
+                // No pending change and a success: the operation was already applied here. The coordinator's
+                // `membership` frame (sent before the commit calls) arrived first and counted it in the phase
+                // `channel`; counting it again, without the change, would call it a `register` (KI-031).
+                if change.is_some() || result.is_err() {
+                    self.count_change(
+                        change.as_ref(),
+                        "commit",
+                        if result.is_ok() { "ok" } else { "failed" },
+                    );
+                }
                 let table = result.map_err(from_membership)?;
                 self.membership_changed();
                 self.announce_frozen(change.as_ref());
@@ -1958,7 +1963,7 @@ impl ClusterService {
             };
             let (_, summary) = tokio::join!(losses, replication.recovery.restoration());
             let _ = tokio::task::spawn_blocking(move || messages.finish_previous_life()).await;
-            replication.recovery.drop_lives(&summary);
+            replication.recovery.drop_lives(&summary).await;
         });
     }
 

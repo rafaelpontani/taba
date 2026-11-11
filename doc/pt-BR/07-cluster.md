@@ -3,7 +3,7 @@ título: Cluster
 resumo: O ciclo de vida do cluster — como um nó entra, como a falha é detectada e votada, freezing, retorno, repasse de chamadas, sincronização, drain, perfil de um nó e a retomada do disco depois de uma queda total.
 tipo: explicação
 status: estável
-verificado-em: 2026-11-09 @ edcf155
+verificado-em: 2026-11-10 @ d6e1d66
 fontes: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, cluster/restore, cluster/upgrade, cluster/replication/definitions.rs, http/forward]
 ---
 
@@ -60,7 +60,7 @@ O nó tem um **estado** (`taba.node.state`) e, separado, um **estado de drain**:
 3. **Pedido de ingresso.** O nó escolhe um membro ao acaso e envia, numa única chamada síncrona, `POST /cluster/nodes/join` com os próprios IPs e a porta do cluster; esse membro passa a **coordenar** o ingresso.
 4. **Teste de conexão.** O coordenador tenta chamar o nó novo de volta em cada IP informado. Se falhar, o ingresso é abortado.
 5. **Fase 1 (registro)** a todos os nós. Um `409` (há outra mudança pendente) é repetido até `write.commit.timeout`.
-6. **Fase 2 (commit)** a todos. Cada nó que efetiva enfileira o quadro `membership` para os pares, para o nó atrasado ou fora do ar acertar a tabela ao voltar.
+6. **Fase 2 (commit)** a todos. Cada nó que efetiva enfileira o quadro `membership` para os pares, para o nó atrasado ou fora do ar acertar a tabela ao voltar. O quadro pode chegar a um par antes da chamada de commit: o par aplica a mudança ao recebê-lo e a conta na fase `channel` de `taba.cluster.membership.changes`, e o commit que chega depois só a confirma, sem contá-la de novo.
 7. **Resposta** ao nó novo com a **tabela de membros**. A tabela de tópicos **não** vai na resposta (cresce com o número de tópicos): o nó a puxa depois.
 8. O nó novo abre o canal permanente com cada nó da tabela. Quando um nó cai e reinicia, **é ele quem reabre** os canais.
 9. **Sincronização** (seção 5) e só então o estado passa a `active` e `/health/ready` responde `200`.
@@ -80,7 +80,7 @@ Se duas mudanças são coordenadas ao mesmo tempo por membros diferentes, vence 
 1. O canal permanente carrega um **sinal de vida** (*keepalive*) a cada `cluster.channel.keepalive.interval` (padrão **2 s**). **Não há ping separado.**
 2. O canal com um par **cai** quando uma chamada falha, ou nada chega por `2 × keepalive.interval` (no mínimo 500 ms). As chamadas seguintes, a cada `cluster.channel.reconnect.backoff` (padrão 1 s), são as tentativas; esgotadas `cluster.channel.reconnect.retries` (padrão **3**), abre-se a **votação**.
 3. Enquanto isso, os sinais para o nó se acumulam numa **fila de saída** em memória. Se ela passar de `cluster.channel.queue.max-size` (padrão 10 000) ou `max-age` (padrão 60 s), o nó do outro lado é tratado como **falho** e a votação abre sem esperar o fim das tentativas.
-4. **Votação de exclusão.** Cada voto é `yes` se o votante também não alcança o candidato. Exige-se `ceil(S × cluster.vote.quorum-percent)` votos de **S nós saudáveis** (padrão 51%), com pelo menos `cluster.vote.min-voters` votantes (padrão 2). Nó **saudável** é o que o nó que abre a votação enxerga com o canal ativo e que responde ao pedido; os nós fora do ar **não votam e não entram na base**. Sem saudáveis suficientes, nenhuma exclusão se efetiva (condição `quorum-lost`).
+4. **Votação de exclusão.** Cada voto é `yes` se o votante também não alcança o candidato. O votante o alcança quando o seu canal com ele está de pé **e** o candidato disse algo nessa conexão dentro do prazo de silêncio (`2 × cluster.channel.keepalive.interval`, no mínimo 500 ms); uma conexão que o candidato acabou de abrir e na qual não disse nada não conta, senão um nó que só abre conexões e fica mudo pareceria alcançável a cada reabertura. Exige-se `ceil(S × cluster.vote.quorum-percent)` votos de **S nós saudáveis** (padrão 51%), com pelo menos `cluster.vote.min-voters` votantes (padrão 2). Nó **saudável** é o que o nó que abre a votação enxerga com o canal ativo e que responde ao pedido; os nós fora do ar **não votam e não entram na base**. Sem saudáveis suficientes, nenhuma exclusão se efetiva (condição `quorum-lost`).
 5. **Quem coordena a exclusão:** o de **menor ID entre os que votaram**. O de ordem `k` espera `k × write.commit.timeout` antes de tentar, se o nó ainda consta da tabela.
 6. Atingido o quórum, o **desregistro** segue o mesmo protocolo de duas fases. O coordenador insiste até confirmar em todos os nós que sobram, **menos os que ele vê caídos** (esperar um nó fora do ar impediria a exclusão de outro; quem fica com a tabela velha aparece como `membership-divergent`).
 7. No commit, quem passa a ser primário das posições do nó removido assume as **filas voláteis** que ele gerenciava, e o anel é recalculado.
@@ -107,7 +107,7 @@ A base de votantes é só quem o votante enxerga. Numa **partição de rede** em
 
 ![Reinício do processo](../diagrams/img/pt-BR/process-restart.svg)
 
-**Freezing.** Um nó excluído por **falha** que **continua o mesmo processo** (mesmo ID) fica impedido de reentrar por `cluster.freezing.duration` (padrão **5 min**), para não entrar e sair em laço. Durante o freezing o pedido de ingresso é **rejeitado** com `Retry-After`; o nó segue tentando no laço normal do bootstrap. Quem executou o commit da exclusão guarda `(ID, instante)` e o repassa aos pares pelo canal (quadro `frozen`), então um membro que estava fora do ar também recusa o `join` do excluído. O **drain** e o **reinício** do processo **não** geram freezing (são voluntários, ou o ID é novo).
+**Freezing.** Um nó excluído por **falha** que **continua o mesmo processo** (mesmo ID) fica impedido de reentrar por `cluster.freezing.duration` (padrão **5 min**), para não entrar e sair em laço. Durante o freezing o pedido de ingresso é **rejeitado** com `Retry-After`; o nó segue tentando no laço normal do bootstrap. Quem executou o commit da exclusão guarda `(ID, instante)` e o repassa aos pares pelo canal (quadro `frozen`), então um membro que estava fora do ar também recusa o `join` do excluído. O **drain** e o **reinício** do processo **não** geram freezing (são voluntários, ou o ID é novo). Nem a exclusão de um nó que ainda **sincronizava** (`syncing` na tabela): ele nunca serviu, então a exclusão só limpa a tabela e ele entra de novo na hora, com o mesmo ID (PRB-111). Quem já o via ativo o congela, e o quadro `frozen` dele chega aos outros.
 
 **Como o nó descobre que foi excluído.** Se três chamadas seguidas do canal a um par voltam `403 cluster.not-member` **e** a tabela do par é mais nova e não o tem, o nó se sabe excluído.
 

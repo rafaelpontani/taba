@@ -43,6 +43,8 @@ enum Action {
     Visibility {
         until_ms: u64,
         delivery: Option<(u32, String)>,
+        /// The `receiptToken` of a change of deadline (no `delivery`): the delivery the change refers to.
+        receipt: Option<String>,
     },
     Ack,
 }
@@ -215,7 +217,14 @@ fn apply(messages: &Messages, topic: &str, id: &str, action: Action) -> Result<(
     match action {
         Action::Publish { meta, body } => messages.apply_publish(topic, meta, body),
         Action::DeadLetter { source, at_ms } => messages.apply_dead_letter(&source, id, at_ms),
-        Action::Visibility { until_ms, delivery } => messages.apply_visibility(
+        Action::Visibility {
+            until_ms,
+            delivery: None,
+            receipt: Some(receipt),
+        } => messages.apply_change(topic, id, until_ms, &receipt),
+        Action::Visibility {
+            until_ms, delivery, ..
+        } => messages.apply_visibility(
             topic,
             id,
             until_ms,
@@ -516,12 +525,14 @@ impl Replica {
                     // Applied without a register: `handle_batch` sends it to `apply_deliveries`.
                     VisibilityKind::Replicated => return Err(TabaError::internal()),
                 };
+                let receipt = delivery.is_none().then(|| request.receipt_token.clone());
                 Ok(RegisterItem {
                     operation_id: request.operation_id,
                     check: Check::Visibility(check, request.receipt_token),
                     action: Action::Visibility {
                         until_ms: request.invisible_until_ms,
                         delivery,
+                        receipt,
                     },
                     topic,
                     id,
@@ -1020,6 +1031,7 @@ impl Replica {
                     id,
                     Action::Visibility {
                         until_ms: request.invisible_until_ms,
+                        receipt: delivery.is_none().then(|| request.receipt_token.clone()),
                         delivery,
                     },
                     checking,

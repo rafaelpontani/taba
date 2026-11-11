@@ -506,7 +506,7 @@ async fn consume(node: &TestNode) -> Option<serde_json::Value> {
 
 /// Every node of the cluster falls at once, **with the same table**; the nodes come back in the order they were. The
 /// network between them is cut before the first fall, so the ones still up cannot vote the fallen out and rewrite the
-/// manifest of their life with a smaller table (under load, falls one after the other gave them the time: doc 36, "A
+/// manifest of their life with a smaller table (under load, falls one after the other gave them the time: doc 36f, "A
 /// probe that does not end with the node missing in 30 s"). The network is back before the return.
 async fn fall_all(cluster: &mut TestCluster) -> Vec<Fallen> {
     let hosts: Vec<String> = (1..=cluster.nodes.len()).map(host_of).collect();
