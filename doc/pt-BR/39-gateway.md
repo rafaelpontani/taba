@@ -38,7 +38,7 @@ O gateway **não guarda estado**: todos os nós enxergam as mesmas filas e os me
 | Mensagens | `SendMessage`, `SendMessageBatch`, `ReceiveMessage` (long polling, até 10), `DeleteMessage`, `DeleteMessageBatch`, `ChangeMessageVisibility`, `ChangeMessageVisibilityBatch` |
 | Recursos da mensagem | `MessageAttributes` (String, Number, Binary) com `MD5OfMessageAttributes`, `MD5OfMessageBody`, `DelaySeconds` por mensagem e por fila (filas padrão), `ApproximateReceiveCount`, `SentTimestamp`, `SenderId` |
 | Filas FIFO | Nomes `.fifo` com `FifoQueue=true`, `MessageGroupId`, `MessageDeduplicationId`, `ContentBasedDeduplication`, `SequenceNumber`, `MessageGroupId` e `MessageDeduplicationId` de volta no recebimento, fila de dead-letter nomeada na `RedrivePolicy` |
-| Não suportado (erro claro) | `AddPermission`, `RemovePermission`, as tarefas de mover mensagens, `DelaySeconds` em fila FIFO, uma fila de dead-letter compartilhada por várias filas de origem |
+| Não suportado (erro claro) | `AddPermission`, `RemovePermission`, as tarefas de mover mensagens, `DelaySeconds` maior que 0 em fila FIFO, uma fila de dead-letter compartilhada por várias filas de origem |
 | Tópicos do SNS | `CreateTopic` (de novo com o mesmo nome responde o mesmo ARN), `DeleteTopic`, `ListTopics`, `GetTopicAttributes`, `SetTopicAttributes`, `TagResource`, `UntagResource`, `ListTagsForResource` |
 | Assinaturas do SNS | `Subscribe` com o protocolo `sqs`, `Unsubscribe`, `ListSubscriptions`, `ListSubscriptionsByTopic`, `GetSubscriptionAttributes`, `SetSubscriptionAttributes` |
 | Publicação no SNS | `Publish`, `PublishBatch` (até 10), `Subject`, `MessageAttributes` (String, Number, Binary), `MessageStructure=json` |
@@ -131,7 +131,7 @@ O `Subscribe` é idempotente (a mesma fila dá o mesmo ARN), uma assinatura vale
 | `ReceiveRequestAttemptId`, `MessageGroupId` e `MessageDeduplicationId` em fila padrão | Usados na FIFO | Ignorados |
 | Deduplicação em fila FIFO | O id vale na fila toda (por padrão) por 5 minutos | O id vale **dentro do grupo** por `fifo.dedup.window` (5 minutos por padrão): o mesmo id em dois grupos são duas mensagens |
 | Recebimento de fila FIFO | Várias mensagens do mesmo grupo numa chamada | Uma mensagem por grupo em andamento: a próxima de um grupo é entregue depois do delete da anterior. `MaxNumberOfMessages` traz mensagens de grupos diferentes |
-| `DelaySeconds` em fila FIFO | Permitido na fila | O Taba não tem atraso em fila FIFO: uma mensagem com `DelaySeconds` é `InvalidParameterValue` e o atributo da fila precisa ser 0 (`UnsupportedOperation`) |
+| `DelaySeconds` em fila FIFO | Permitido na fila; numa mensagem, só 0 | O Taba não tem atraso em fila FIFO: uma mensagem com `DelaySeconds` maior que 0 é `InvalidParameterValue` e o atributo da fila precisa ser 0 (`UnsupportedOperation`). `DelaySeconds=0` numa mensagem, no envio avulso ou no lote, é aceito como na AWS: SDKs como o .NET mandam o campo sempre que a aplicação o define, mesmo com 0 |
 | Envio FIFO sem id de deduplicação | `InvalidParameterValue`, salvo `ContentBasedDeduplication` | O mesmo; sem `MessageGroupId`, `MissingParameter` |
 | Fila de dead-letter | Qualquer fila do mesmo tipo, compartilhada por várias origens | Uma por fila de origem, criada por você e aliasada (acima) |
 | Erros | `QueueDoesNotExist` com `AWS.SimpleQueueService.NonExistentQueue` | Os dois nomes, como a AWS: o protocolo JSON manda o primeiro em `__type` e o segundo em `x-amzn-query-error`; o Query manda o segundo |

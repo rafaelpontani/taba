@@ -218,6 +218,14 @@ fn a_fifo_message_has_no_delay() {
             .json_code,
         "InvalidParameterValue"
     );
+    // `DelaySeconds=0` is no delay: SDKs send it whenever the application sets it, and the AWS accepts it on a FIFO
+    // queue, so it is accepted here too, as a number (JSON protocol) or as text (Query protocol).
+    for zero in [json!(0), json!("0")] {
+        let entry = json!({"MessageBody": "b", "MessageGroupId": "g", "MessageDeduplicationId": "d", "DelaySeconds": zero});
+        let prepared = prepare_in(&entry, &fifo(false), 1000).unwrap();
+        assert_eq!(prepared.delay, 0);
+        assert!(prepared.fifo.is_some());
+    }
     // The queue's own delay is 0 on a FIFO queue, so it adds nothing; a standard queue ignores the FIFO fields.
     let standard = json!({"MessageBody": "b", "MessageGroupId": "g", "DelaySeconds": 5});
     let prepared = prepare(&standard, 0, 1000).unwrap();

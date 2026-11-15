@@ -11018,7 +11018,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-GTW-022
 
-**Caso:** Um envio para fila FIFO exige `MessageGroupId` e um id de deduplicação (ou a deduplicação por conteúdo, em que o id é o SHA-256 do corpo), recusa atraso, e responde um `SequenceNumber` que cresce com o id da mensagem  
+**Caso:** Um envio para fila FIFO exige `MessageGroupId` e um id de deduplicação (ou a deduplicação por conteúdo, em que o id é o SHA-256 do corpo), recusa atraso maior que 0 (aceita `DelaySeconds=0`, como a AWS), e responde um `SequenceNumber` que cresce com o id da mensagem  
 **Nível:** U  
 **Testes:**
   - `src/gateway/sqs/messages/tests.rs::a_fifo_message_needs_a_group_and_a_deduplication_id`
@@ -11041,7 +11041,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-GTW-024
 
-**Caso:** Num nó real, uma fila FIFO é o tópico FIFO do Taba sem o sufixo (uma fila padrão de mesmo nome não existe ao lado), um grupo é entregue em ordem e uma mensagem por vez, um id de deduplicação repetido é uma mensagem, o envio confere o grupo, o id e o atraso, e a fila nomeada como dead-letter mostra o que a origem manda para a dead-letter e é liberada quando a origem é apagada  
+**Caso:** Num nó real, uma fila FIFO é o tópico FIFO do Taba sem o sufixo (uma fila padrão de mesmo nome não existe ao lado), um grupo é entregue em ordem e uma mensagem por vez, um id de deduplicação repetido é uma mensagem, o envio confere o grupo, o id e o atraso (`DelaySeconds=0` passa, no envio avulso, no lote e nos dois protocolos), e a fila nomeada como dead-letter mostra o que a origem manda para a dead-letter e é liberada quando a origem é apagada  
 **Nível:** I  
 **Testes:**
   - `tests/gateway_sqs.rs::a_fifo_queue_is_the_fifo_topic_of_the_name_without_the_suffix`
