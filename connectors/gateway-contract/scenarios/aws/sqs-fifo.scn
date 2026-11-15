@@ -73,6 +73,11 @@ deleteMessage queue=$f.url handle=$r.handle
 
 # --- the per-message delay does not exist on FIFO queues --------------------------------------------------------
 send queue=$f.url body=delayed group=g1 dedup=dl1 delay=5 => error=InvalidParameterValue|AWS.SimpleQueueService.InvalidParameterValue
+# ... but DelaySeconds=0 is no delay: SDKs send it whenever the application sets it, and AWS accepts it, alone or in a batch
+send queue=$f.url body=nodelay group=g-zero dedup=dz1 delay=0 => id=*
+sendBatch queue=$f.url bodies=nodelay-b group=g-zero-b dedupPrefix=dzb delays=0 => ok=1 failed=0
+drainAll queue=$f.url count=2 timeout=20 => count=2 bodies~nodelay bodies~nodelay-b
+receive queue=$f.url max=10 wait=0 => count=0
 
 # --- dead-letter: after maxReceiveCount the message goes to the other queue -------------------------------------
 createQueue name={p}-dlq.fifo fifo=true as=dlq

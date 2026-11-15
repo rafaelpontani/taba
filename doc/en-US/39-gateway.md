@@ -38,7 +38,7 @@ The gateway keeps **no state**: every node sees the same queues and topics, beca
 | Messages | `SendMessage`, `SendMessageBatch`, `ReceiveMessage` (long polling, up to 10), `DeleteMessage`, `DeleteMessageBatch`, `ChangeMessageVisibility`, `ChangeMessageVisibilityBatch` |
 | Message features | `MessageAttributes` (String, Number, Binary) with `MD5OfMessageAttributes`, `MD5OfMessageBody`, `DelaySeconds` per message and per queue (standard queues), `ApproximateReceiveCount`, `SentTimestamp`, `SenderId` |
 | FIFO queues | `.fifo` names with `FifoQueue=true`, `MessageGroupId`, `MessageDeduplicationId`, `ContentBasedDeduplication`, `SequenceNumber`, `MessageGroupId` and `MessageDeduplicationId` back on receive, a dead-letter queue named in the `RedrivePolicy` |
-| Not supported (clear error) | `AddPermission`, `RemovePermission`, the message move tasks, `DelaySeconds` on a FIFO queue, a dead-letter queue shared by several source queues |
+| Not supported (clear error) | `AddPermission`, `RemovePermission`, the message move tasks, `DelaySeconds` above 0 on a FIFO queue, a dead-letter queue shared by several source queues |
 | SNS topics | `CreateTopic` (again with the same name answers the same ARN), `DeleteTopic`, `ListTopics`, `GetTopicAttributes`, `SetTopicAttributes`, `TagResource`, `UntagResource`, `ListTagsForResource` |
 | SNS subscriptions | `Subscribe` with protocol `sqs`, `Unsubscribe`, `ListSubscriptions`, `ListSubscriptionsByTopic`, `GetSubscriptionAttributes`, `SetSubscriptionAttributes` |
 | SNS publishing | `Publish`, `PublishBatch` (up to 10), `Subject`, `MessageAttributes` (String, Number, Binary), `MessageStructure=json` |
@@ -131,7 +131,7 @@ SNS delivers a publication to every queue subscribed to the topic. Taba already 
 | `ReceiveRequestAttemptId`, `MessageGroupId` and `MessageDeduplicationId` on a standard queue | Used on FIFO | Ignored |
 | Deduplication on a FIFO queue | The id counts in the whole queue (by default) for 5 minutes | The id counts **inside the group** for `fifo.dedup.window` (5 minutes by default): the same id in two groups is two messages |
 | Receiving from a FIFO queue | Several messages of the same group in one call | One message per group in flight: the next of a group is delivered after the delete of the previous. `MaxNumberOfMessages` gives messages of different groups |
-| `DelaySeconds` on a FIFO queue | Allowed on the queue | Taba has no delay on a FIFO queue: a message with `DelaySeconds` is `InvalidParameterValue` and the queue attribute must be 0 (`UnsupportedOperation`) |
+| `DelaySeconds` on a FIFO queue | Allowed on the queue; on a message, only 0 | Taba has no delay on a FIFO queue: a message with `DelaySeconds` above 0 is `InvalidParameterValue` and the queue attribute must be 0 (`UnsupportedOperation`). `DelaySeconds=0` on a message, in a single send or in a batch, is accepted as on AWS: SDKs such as the .NET one send the field whenever the application sets it, even to 0 |
 | A FIFO send without a deduplication id | `InvalidParameterValue` unless the queue has `ContentBasedDeduplication` | The same; without a `MessageGroupId`, `MissingParameter` |
 | Dead-letter queue | Any queue of the same kind, shared by many sources | One per source queue, created by you and aliased (above) |
 | Errors | `QueueDoesNotExist` with `AWS.SimpleQueueService.NonExistentQueue` | Both names, as AWS: the JSON protocol sends the first in `__type` and the second in `x-amzn-query-error`; the Query protocol sends the second |

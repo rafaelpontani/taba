@@ -602,6 +602,64 @@ async fn a_fifo_send_checks_the_group_the_deduplication_and_the_delay_as_sqs_doe
         .await,
         "InvalidParameterValue"
     );
+    // `DelaySeconds=0` is no delay: the AWS accepts it on a FIFO queue, and SDKs such as the .NET one send it whenever
+    // the application sets it. A single send and a batch go through, in both protocols, and the messages arrive.
+    let (status, sent) = json_call(
+        &node,
+        "SendMessage",
+        json!({"QueueUrl": url, "MessageBody": "zero", "MessageGroupId": "g0",
+            "MessageDeduplicationId": "z1", "DelaySeconds": 0}),
+    )
+    .await;
+    assert_eq!(status, 200, "{sent}");
+    let (status, batch) = json_call(
+        &node,
+        "SendMessageBatch",
+        json!({"QueueUrl": url, "Entries": [{"Id": "e1", "MessageBody": "zero-batch",
+            "MessageGroupId": "g1", "MessageDeduplicationId": "z2", "DelaySeconds": 0}]}),
+    )
+    .await;
+    assert_eq!(status, 200, "{batch}");
+    assert_eq!(
+        batch["Successful"].as_array().map(Vec::len),
+        Some(1),
+        "{batch}"
+    );
+    assert!(batch.get("Failed").is_none(), "{batch}");
+    let (status, xml) = query_call(
+        &node,
+        &format!(
+            "Action=SendMessage&Version=2012-11-05&QueueUrl={}&MessageBody=zero-query&MessageGroupId=g2&MessageDeduplicationId=z3&DelaySeconds=0",
+            url.replace(':', "%3A").replace('/', "%2F")
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{xml}");
+    let mut bodies = Vec::new();
+    for _ in 0..10 {
+        let (_, received) = json_call(
+            &node,
+            "ReceiveMessage",
+            json!({"QueueUrl": url, "MaxNumberOfMessages": 10, "WaitTimeSeconds": 1}),
+        )
+        .await;
+        for message in received["Messages"].as_array().into_iter().flatten() {
+            bodies.push(message["Body"].as_str().unwrap().to_owned());
+        }
+        if bodies.len() >= 3 {
+            break;
+        }
+    }
+    bodies.sort();
+    assert_eq!(bodies, ["zero", "zero-batch", "zero-query"]);
+    // The queue may say `DelaySeconds=0` too, as Terraform's `aws_sqs_queue` does by default.
+    let (status, zero_queue) = json_call(
+        &node,
+        "CreateQueue",
+        json!({"QueueName": "gw-zero.fifo", "Attributes": {"FifoQueue": "true", "DelaySeconds": "0"}}),
+    )
+    .await;
+    assert_eq!(status, 200, "{zero_queue}");
     // A queue cannot be made FIFO with a delay, which Taba does not have there.
     let (status, delayed) = json_call(
         &node,

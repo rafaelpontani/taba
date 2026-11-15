@@ -157,7 +157,9 @@ fn prepare_in(entry: &Value, mode: &Mode, max_size: i64) -> Result<Prepared, Aws
             Origin::default(),
         ),
         Mode::Fifo { content_dedup } => {
-            if number_in(entry, "DelaySeconds", 0, MAX_DELAY)?.is_some() {
+            // `DelaySeconds=0` is no delay, and the AWS accepts it on a FIFO queue: SDKs such as the .NET one send the
+            // field whenever the application sets it, even to 0. Only a real delay is refused.
+            if number_in(entry, "DelaySeconds", 0, MAX_DELAY)?.unwrap_or(0) > 0 {
                 return Err(AwsError::invalid_parameter(
                     "The request include parameter that is not valid for this queue type: DelaySeconds.",
                 ));
