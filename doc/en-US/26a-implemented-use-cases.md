@@ -11018,7 +11018,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-GTW-022
 
-**Case:** A send to a FIFO queue needs a `MessageGroupId` and a deduplication id (or content-based deduplication, where the id is the SHA-256 of the body), refuses a delay, and answers a `SequenceNumber` that grows with the message id  
+**Case:** A send to a FIFO queue needs a `MessageGroupId` and a deduplication id (or content-based deduplication, where the id is the SHA-256 of the body), refuses a delay above 0 (accepts `DelaySeconds=0`, as AWS does), and answers a `SequenceNumber` that grows with the message id  
 **Level:** U  
 **Tests:**
   - `src/gateway/sqs/messages/tests.rs::a_fifo_message_needs_a_group_and_a_deduplication_id`
@@ -11041,7 +11041,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-GTW-024
 
-**Case:** On a real node, a FIFO queue is the Taba FIFO topic without the suffix (a standard queue of the same name does not exist beside it), a group is delivered in order and one message at a time, a repeated deduplication id is one message, the send checks the group, the id and the delay, and the queue named as the dead-letter queue shows what the source dead-letters and is freed when the source is deleted  
+**Case:** On a real node, a FIFO queue is the Taba FIFO topic without the suffix (a standard queue of the same name does not exist beside it), a group is delivered in order and one message at a time, a repeated deduplication id is one message, the send checks the group, the id and the delay (`DelaySeconds=0` goes through, in a single send, in a batch and in both protocols), and the queue named as the dead-letter queue shows what the source dead-letters and is freed when the source is deleted  
 **Level:** I  
 **Tests:**
   - `tests/gateway_sqs.rs::a_fifo_queue_is_the_fifo_topic_of_the_name_without_the_suffix`
