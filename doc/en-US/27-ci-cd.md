@@ -3,8 +3,8 @@ title: CI/CD and releases
 summary: How the repository is validated and published — the GitHub Actions workflows, the order of the release (nothing public before everything is green), automatic versioning (semantic-release, candidates and finals), floating tags by digest, publishing to Docker Hub, GHCR, crates.io and nuget.org, and how anyone verifies that an artifact came out of this pipeline.
 type: reference
 status: stable
-verified-on: 2026-11-07 @ 689495f
-sources: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/scripts/package-connectors.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md]
+verified-on: 2026-11-15 @ 3409ed7
+sources: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/scripts/package-connectors.sh, .github/scripts/pinned-deps.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md]
 ---
 
 # CI/CD and releases
@@ -15,7 +15,7 @@ sources: [.github/workflows, .github/actions/node-binary, .github/scripts/set-ve
 
 | Flow | When | What it does |
 |---|---|---|
-| **CI** (`ci.yml`) | **Pull request** to `main`/`release` (and manual, for a branch without a PR). Not on `push`: with a PR open it would run everything twice | The three builds (server, Rust connector, C# connector) **without a version**, the static test of the Helm chart and the lint of the workflows. **Publishes nothing** |
+| **CI** (`ci.yml`) | **Pull request** to `main`/`release` (and manual, for a branch without a PR). Not on `push`: with a PR open it would run everything twice | The three builds (server, Rust connector, C# connector) **without a version**, the static test of the Helm chart, the lint of the workflows and the check of pinned dependencies. **Publishes nothing** |
 | **Release** (`release.yml`) | **Push** to `main` (finals) or `release` (candidates) | The same builds; if semantic-release finds a version, publishes everything **in the order below**, with the tag created only after everything is green |
 | **Scorecard** (`scorecard.yml`) | Push to `main`, weekly and on every protection change | The public OpenSSF Scorecard score (the repository's security practices) |
 | **CodeQL** (`codeql.yml`) | Push to `main`/`release`, pull request to them and weekly | Static analysis (SAST) of the Rust, C# and workflow code; findings in the Security tab |
@@ -47,7 +47,7 @@ feature/*  ── PR ──▶ ci.yml: build + tests (nothing is published, no t
 
 | File | Does |
 |---|---|
-| `ci.yml` | Calls `build-server`, `build-connector-rust`, `build-connector-csharp` and the builds of the Java, Node.js, Python, Go (`build-connector-go.yml`), PHP (`build-connector-php.yml`) and Ruby (`build-connector-ruby.yml`) connectors, of the OMB driver (`build-connector-omb.yml`) and of the Terraform provider (`build-connector-terraform.yml`: `connectors/terraform/scripts/test.sh unit`, `lint` and `docs`, [40-terraform.md](40-terraform.md#tests)) and of the Pulumi provider (`build-connector-pulumi.yml`: `connectors/pulumi/scripts/test.sh unit` and `sdks`, [41-pulumi.md](41-pulumi.md#tests)); job `bench` (the plan of `bench/run.sh` and the report tests of the local benchmark; no benchmark runs on GitHub, [38-benchmarks.md](38-benchmarks.md)); `connector-contract` job (`contract-connectors.yml`, only on pull requests to `release`); `gateway-contract` job (`contract-gateway.yml`, only on pull requests to `release`); `helm` job (`deploy/helm/tests/run.sh static`); `rust-audit` job (`cargo audit` on both `Cargo.lock` files: fails on a RustSec advisory); `workflows` job (`actionlint` and `zizmor`, fails from `medium` up); `plans` job (fails when `doc/plans/` has a file: plans never reach `release` or `main`). `concurrency` cancels old runs of the same ref |
+| `ci.yml` | Calls `build-server`, `build-connector-rust`, `build-connector-csharp` and the builds of the Java, Node.js, Python, Go (`build-connector-go.yml`), PHP (`build-connector-php.yml`) and Ruby (`build-connector-ruby.yml`) connectors, of the OMB driver (`build-connector-omb.yml`) and of the Terraform provider (`build-connector-terraform.yml`: `connectors/terraform/scripts/test.sh unit`, `lint` and `docs`, [40-terraform.md](40-terraform.md#tests)) and of the Pulumi provider (`build-connector-pulumi.yml`: `connectors/pulumi/scripts/test.sh unit` and `sdks`, [41-pulumi.md](41-pulumi.md#tests)); job `bench` (the plan of `bench/run.sh` and the report tests of the local benchmark; no benchmark runs on GitHub, [38-benchmarks.md](38-benchmarks.md)); `connector-contract` job (`contract-connectors.yml`, only on pull requests to `release`); `gateway-contract` job (`contract-gateway.yml`, only on pull requests to `release`); `helm` job (`deploy/helm/tests/run.sh static`); `rust-audit` job (`cargo audit` on both `Cargo.lock` files: fails on a RustSec advisory); `workflows` job (`actionlint` and `zizmor`, fails from `medium` up); `plans` job (fails when `doc/plans/` has a file: plans never reach `release` or `main`); `pinned-dependencies` job (`.github/scripts/pinned-deps.sh`: the Scorecard check `Pinned-Dependencies` on the pull request, [below](#pinned-dependencies)). `concurrency` cancels old runs of the same ref |
 | `build-server.yml` | **Server**, on **two native runners** (`amd64` on `ubuntu-latest`, `arm64` on `ubuntu-24.04-arm`): `cargo fmt --all --check` and `clippy -D warnings` **only on x86_64**, `cargo test --workspace --locked`, the **static musl binary** (`node-binary` action) uploaded as the `taba-node-<arch>` artifact |
 | `build-connector-rust.yml` | **Rust connector** (`connectors/rust` workspace), on both runners: `fmt`, `clippy`, `test`, `cargo package --workspace` (what crates.io would receive), `cargo build --release -p taba-cli` (musl); `taba-cli-<arch>` artifact |
 | `contract-gateway.yml` | **Contract tests of the SQS and SNS gateway**: two jobs. `emulator` runs `connectors/gateway-contract/run.sh --target emulator` (the scenarios of `scenarios/aws/` on ElasticMQ and moto: it is what shows that the tests are right). `taba` builds the server image from the commit, starts one node with `gateway.sqs` and `gateway.sns` on and runs `connectors/gateway-contract/run.sh` (the native AWS SDK of six languages, each in a current and an older version, then each language reading what the previous one sent; [39-gateway.md](39-gateway.md)). Called by `ci.yml` on pull requests to `release`, or by hand. Publishes nothing |
@@ -171,8 +171,28 @@ What backs this trust:
 - **Actions pinned by SHA** (with the version comment) and updated by Dependabot (`.github/dependabot.yml`: actions, cargo in both workspaces, nuget and the Docker bases; the PRs go to `release` with a `ci`/`chore` prefix, which produces no version).
 - **Minimal permissions:** `permissions: {}` at the top and each job asks only for what it uses; `checkout` with `persist-credentials: false`.
 - **No long-lived secrets** for crates.io and nuget.org (OIDC); keyless signatures in Sigstore's public log (Rekor).
-- **Workflow lint** (`actionlint`, `zizmor`), **dependency audit** (`cargo audit`) and **CodeQL** on every PR, and the public **OpenSSF Scorecard**.
+- **Workflow lint** (`actionlint`, `zizmor`), **dependency audit** (`cargo audit`), **pinned dependencies** ([below](#pinned-dependencies)) and **CodeQL** on every PR, and the public **OpenSSF Scorecard**.
 - [SECURITY.md](../../SECURITY.md): how to report a vulnerability and which versions get fixes.
+
+### Pinned dependencies
+
+The OpenSSF Scorecard check `Pinned-Dependencies` lowers the public score for every dependency that a Dockerfile, a workflow or a shell script downloads without a hash (D226). The job `pinned-dependencies` of `ci.yml` runs the same check on the pull request and fails on any warning, so a change that would lower the score of `main` does not get there. Locally, before opening a pull request to `release` or `main`:
+
+```bash
+.github/scripts/pinned-deps.sh   # curl, tar, sha256sum; outside Linux, Docker as well
+```
+
+It downloads the Scorecard binary of a fixed version (checked by its sha256) and scans what git would commit (tracked files and new ones that are not ignored). How to fix each kind of warning:
+
+| Warning | Fix |
+|---|---|
+| `containerImage not pinned by hash` | `FROM image:tag@sha256:<digest>` (the tag stays for reading; `docker buildx imagetools inspect image:tag` gives the digest). The folder goes into the `docker` ecosystem of `.github/dependabot.yml` (`chore` when nothing published is built from it) |
+| `GitHubAction not pinned by hash` | `uses: owner/action@<commit sha> # vX.Y.Z` |
+| `npmCommand not pinned by hash` | `npm ci` with a committed `package-lock.json`, never `npm install` or `npm i <package>` (examples: `connectors/gateway-contract/drivers/node/sdk-*`, `connectors/pulumi/scripts/pins/nodejs`) |
+| `pipCommand not pinned by hash` | `pip install --require-hashes -r <file>` with a requirements file generated by `pip-compile --generate-hashes` (examples: `connectors/gateway-contract/drivers/python/requirements-*.txt`, `connectors/pulumi/scripts/pins/requirements-build.txt`) |
+| `downloadThenRun` / `pipeCommand` | Do not pipe a download into a shell; download a fixed version and check its sha256 before running it |
+
+The commands that regenerate the locks are in the READMEs next to them ([gateway contract](../../connectors/gateway-contract/README.md#pinned-dependencies), [Pulumi pins](../../connectors/pulumi/scripts/pins/README.md)). The `Info: Possibly incomplete results: error parsing shell code` lines do not lower the score: they are `bash -c "..."` strings with `$(...)` that the parser of the Scorecard does not read.
 
 ### Repository configuration (outside the code)
 

@@ -28,6 +28,17 @@ updates:
     groups:
       base-image: { patterns: ["*"] }
 
+  # The images of the benchmark runner (bench/Dockerfile.runner): pinned by digest like the others, but nothing that
+  # is published is built from them, so their update is `chore` and produces no version.
+  - package-ecosystem: docker
+    directory: /bench
+    target-branch: release
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    commit-message: { prefix: chore }
+    groups:
+      bench-image: { patterns: ["*"] }
+
   - package-ecosystem: cargo
     directory: /
     target-branch: release
