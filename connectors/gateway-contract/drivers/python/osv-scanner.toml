@@ -1,0 +1,41 @@
+# Known vulnerabilities that the OSV scanner (and the OpenSSF Scorecard check Vulnerabilities) must not count here.
+# Decision D227 (doc/en-US/30-decisions.md). Only requirements-old.txt has them: the variant old of the driver is
+# boto3 1.28.0 / botocore 1.31.0 on purpose (an SDK from before the switch from the Query protocol), and every botocore
+# of that line requires urllib3 below 2.1, while the fixes start at urllib3 2.5. The driver only runs in the gateway
+# contract tests, against a local node; nothing of it is published. Review on the date below: drop an entry when the
+# advisory no longer applies, or extend the date if the reason still holds.
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-141"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "urllib3 1.26.20 of the variant old (botocore 1.31 requires urllib3<1.27); test-only driver (D227)"
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-1994"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "urllib3 1.26.20 of the variant old (botocore 1.31 requires urllib3<1.27); test-only driver (D227)"
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-1996"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "urllib3 1.26.20 of the variant old (botocore 1.31 requires urllib3<1.27); test-only driver (D227)"
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-1998"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "urllib3 1.26.20 of the variant old (botocore 1.31 requires urllib3<1.27); test-only driver (D227)"
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-1999"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "urllib3 1.26.20 of the variant old (botocore 1.31 requires urllib3<1.27); test-only driver (D227)"
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-4175"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "urllib3 1.26.20 of the variant old (botocore 1.31 requires urllib3<1.27); test-only driver (D227)"
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-4177"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "urllib3 1.26.20 of the variant old (botocore 1.31 requires urllib3<1.27); test-only driver (D227)"

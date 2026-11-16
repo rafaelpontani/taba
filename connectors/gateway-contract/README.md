@@ -67,7 +67,10 @@ docker run --rm -v /tmp/pin:/w python:3.12-slim sh -c "pip install -q pip-tools 
 docker run --rm -v "$PWD/connectors/gateway-contract/drivers/node/sdk-current:/w" -w /w node:22-slim npm install --package-lock-only --ignore-scripts
 ```
 
-Dependabot does not update these files on purpose: the `old` variants must stay old.
+Dependabot does not update these files on purpose: the `old` variants must stay old. Their known vulnerabilities with no
+fix in the line the old SDK accepts are listed, with the reason, in the `osv-scanner.toml` next to the lock file (D227,
+[doc/en-US/27-ci-cd.md](../../doc/en-US/27-ci-cd.md#known-vulnerabilities)); one with a compatible fix is taken instead
+(`overrides` in `drivers/node/sdk-old/package.json`).
 
 ## The scenario language
 
