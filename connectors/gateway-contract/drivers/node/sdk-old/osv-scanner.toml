@@ -1,0 +1,30 @@
+# Known vulnerabilities that the OSV scanner (and the OpenSSF Scorecard check Vulnerabilities) must not count here.
+# Decision D227 (doc/en-US/30-decisions.md). This is the variant old of the driver: the AWS SDK for JavaScript 3.445.0
+# on purpose (an SDK from before the switch from the Query protocol), whose packages ask for versions that have no fix
+# in their major line. What has a compatible fix is taken in package.json (overrides: fast-xml-parser 4.5.5). The driver
+# only runs in the gateway contract tests, against a local node; nothing of it is published. Review on the date below:
+# drop an entry when the advisory no longer applies, or extend the date if the reason still holds.
+
+# @smithy/config-resolver: fixed only in 4.4.0; every package of the SDK 3.445 asks for ^2.
+[[IgnoredVulns]]
+id = "GHSA-6475-r3vj-m8vf"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "@smithy/config-resolver 2.x of the AWS SDK JS 3.445 (fix only in 4.x); test-only driver (D227)"
+
+# fast-xml-parser: fixed only in 5.x (the SDK asks for 4.x); quadratic CPU on a malformed answer of the local node.
+[[IgnoredVulns]]
+id = "GHSA-474x-hrwr-fgx4"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "fast-xml-parser 4.x of the AWS SDK JS 3.445 (fix only in 5.x); test-only driver (D227)"
+
+# fast-xml-parser: fixed only in 5.x; it is in XMLBuilder, which the SDK does not use to read Query answers.
+[[IgnoredVulns]]
+id = "GHSA-gh4j-gqv2-49f6"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "fast-xml-parser 4.x XMLBuilder (fix only in 5.x); test-only driver (D227)"
+
+# uuid: fixed only in 11.1.1 (the SDK asks for ^9); the bug needs a caller-provided buffer, which the SDK does not pass.
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "uuid 9.x of the AWS SDK JS 3.445 (fix only in 11.x); test-only driver (D227)"

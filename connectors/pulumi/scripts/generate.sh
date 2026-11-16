@@ -14,7 +14,9 @@ contract_step "schema and SDKs ($PULUMI_GO_IMAGE)"
 # The sdk folder is emptied first (a removed resource must not leave its file behind). Root owns what the container
 # writes, so the work is done inside it and the files go back to the owner of the repository at the end (also on
 # failure).
-pulumi_go -e PULUMI_VERSION="$PULUMI_VERSION" -- '
+SDK_FLOORS="github.com/klauspost/compress@v1.20.4 golang.org/x/crypto@v0.59.0 go.opentelemetry.io/otel/sdk@v1.47.0 \
+go.opentelemetry.io/otel/sdk/log@v1.47.0 go.opentelemetry.io/otel/trace@v1.47.0"
+pulumi_go -e PULUMI_VERSION="$PULUMI_VERSION" -e SDK_FLOORS="$SDK_FLOORS" -- '
   set -eu
   trap "chown -R \$(stat -c %u:%g /repo) /repo/connectors/pulumi" EXIT
   cmd=provider/cmd/pulumi-resource-taba
@@ -35,6 +37,10 @@ pulumi_go -e PULUMI_VERSION="$PULUMI_VERSION" -- '
   go mod init github.com/rafaelpontani/pulumi-taba/sdk >/dev/null 2>&1
   go mod edit -go="$(sed -n "s/^go //p" ../provider/go.mod | tr -d "\r")"
   go get "github.com/pulumi/pulumi/sdk/v3@v$PULUMI_VERSION" >/dev/null 2>&1
+  # Floors for the indirect modules of the Pulumi SDK that have known vulnerabilities in the versions it asks for
+  # (OSV, Scorecard Vulnerabilities). Raise a floor when a new advisory appears; drop it once PULUMI_VERSION asks for
+  # a fixed version by itself.
+  go get $SDK_FLOORS >/dev/null 2>&1
   GOFLAGS="-mod=mod -buildvcs=false" go mod tidy >/dev/null 2>&1
   cd ..; rm -rf sdk/dotnet/bin sdk/dotnet/obj'
 echo "  generated"

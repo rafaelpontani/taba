@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Shared pieces of the provider scripts (test.sh, cluster.sh): the Go container and the Terraform and OpenTofu CLIs.
 # For `source`, after connectors/contract/lib.sh (REPO_ROOT, contract_hostpath); it does nothing by itself.
-#   GO_IMAGE (golang:1.25), TERRAFORM_VERSION (1.10.5), TOFU_VERSION (1.9.1), GOLANGCI_LINT_IMAGE.
+#   GO_IMAGE (golang:1.26), TERRAFORM_VERSION (1.10.5), TOFU_VERSION (1.9.1), GOLANGCI_LINT_IMAGE.
 # The CLIs are downloaded once, checked against their SHA256SUMS, into the Docker volume taba-terraform-tools; the Go
 # modules are kept in taba-terraform-gomod.
 
-GO_IMAGE="${GO_IMAGE:-golang:1.25}"
+GO_IMAGE="${GO_IMAGE:-golang:1.26}"
 TERRAFORM_VERSION="${TERRAFORM_VERSION:-1.10.5}"
 TOFU_VERSION="${TOFU_VERSION:-1.9.1}"
-GOLANGCI_LINT_IMAGE="${GOLANGCI_LINT_IMAGE:-golangci/golangci-lint:v2.5.0}"
+GOLANGCI_LINT_IMAGE="${GOLANGCI_LINT_IMAGE:-golangci/golangci-lint:v2.15.0}"
 
 # Runs a shell command in the Go container with the repository at /repo and the cwd at the provider.
 #   tf_go [docker options...] -- <shell command>
