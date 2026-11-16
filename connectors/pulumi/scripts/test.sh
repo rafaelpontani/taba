@@ -45,6 +45,16 @@ if [ "$mode" = all ] || [ "$mode" = sdks ]; then
   tree_hash >"${TMPDIR:-/tmp}/pulumi-tree-after.txt"
   diff "${TMPDIR:-/tmp}/pulumi-tree-before.txt" "${TMPDIR:-/tmp}/pulumi-tree-after.txt" >&2 || contract_die "schema.json or an SDK changed: the generated files were out of date (they are regenerated now; review and commit them)"
   echo "  up to date"
+  # package.sh installs the dependencies of the npm package with npm ci from scripts/pins/nodejs/package-lock.json:
+  # a package.json regenerated with other dependencies must fail here, not in the release.
+  contract_step "the npm lock matches the generated package.json ($NODE_IMAGE)"
+  docker run --rm -v "$(contract_hostpath "$REPO_ROOT"):/repo:ro" "$NODE_IMAGE" bash -euc '
+    cp -r /repo/connectors/pulumi/sdk/nodejs /tmp/sdk && cd /tmp/sdk
+    sed -i "s/\${VERSION}/0.0.0/" package.json
+    cp /repo/connectors/pulumi/scripts/pins/nodejs/package-lock.json .
+    npm ci --ignore-scripts --no-audit --no-fund --loglevel=error >/tmp/npm.log 2>&1 || { cat /tmp/npm.log; echo "regenerate scripts/pins/nodejs/package-lock.json (connectors/pulumi/scripts/pins/README.md)" >&2; exit 1; }' \
+    || contract_die "scripts/pins/nodejs/package-lock.json is out of date"
+  echo "  in sync"
 fi
 [ "$mode" = sdks ] && exit 0
 
