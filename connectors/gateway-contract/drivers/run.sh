@@ -2,7 +2,8 @@
 # Runs the driver of one language in the container of its toolchain: run.sh <lang> <variant> <driver arguments...>
 # (the variants of each language are in drivers/<lang>/variants). Needs from lib.sh: GW_NETWORK, GW_DOCKER_ENV, REPO_ROOT.
 #
-# The SDK versions are pinned here. A variant that is "env" is a version that reads AWS_ENDPOINT_URL_SQS and
+# The SDK versions are pinned here; Python and Node take theirs, with the hash of every package, from
+# drivers/python/requirements-<variant>.txt and drivers/node/sdk-<variant>/package-lock.json. A variant that is "env" is a version that reads AWS_ENDPOINT_URL_SQS and
 # AWS_ENDPOINT_URL_SNS, so the application code does not change; a variant that is "code" is an older version, in which
 # the endpoint is a parameter of the client (plan section 7, phase 1). Each driver prints its SDK version in the SUMMARY.
 set -euo pipefail
@@ -12,10 +13,10 @@ lang="$1"; variant="$2"; shift 2
 inside="/repo/connectors/gateway-contract/drivers/$lang/build-and-run.sh"
 
 case "$lang/$variant" in
-  python/current) image=python:3.12-slim; env=(-e PACKAGES="boto3==1.43.123") ;;
-  python/old) image=python:3.12-slim; env=(-e PACKAGES="boto3==1.28.0 botocore==1.31.0") ;;   # Query protocol, before 1.28.82
-  node/current) image=node:22-slim; env=(-e SDK_VERSION=3.1161.0) ;;
-  node/old) image=node:22-slim; env=(-e SDK_VERSION=3.445.0) ;;                              # Query protocol, before 3.447.0
+  python/current) image=python:3.12-slim; env=(-e REQUIREMENTS=requirements-current.txt) ;;   # boto3 1.43.123
+  python/old) image=python:3.12-slim; env=(-e REQUIREMENTS=requirements-old.txt) ;;       # boto3 1.28.0, botocore 1.31.0: Query protocol, before 1.28.82
+  node/current) image=node:22-slim; env=(-e SDK_DIR=sdk-current) ;;                    # 3.1161.0
+  node/old) image=node:22-slim; env=(-e SDK_DIR=sdk-old) ;;                        # 3.445.0: Query protocol, before 3.447.0
   go/current) image=golang:1.25
     env=(-e GET="github.com/aws/aws-sdk-go-v2/config github.com/aws/aws-sdk-go-v2/credentials github.com/aws/aws-sdk-go-v2/service/sqs github.com/aws/aws-sdk-go-v2/service/sns github.com/aws/smithy-go") ;;
   go/old) image=golang:1.25                                                                   # Query protocol, sqs before v1.28.0

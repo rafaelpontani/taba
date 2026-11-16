@@ -1,0 +1,9 @@
+{
+  "name": "taba-gateway-contract-node-current",
+  "private": true,
+  "description": "AWS SDK for JavaScript v3 used by the gateway contract driver (variant current).",
+  "dependencies": {
+    "@aws-sdk/client-sns": "3.1161.0",
+    "@aws-sdk/client-sqs": "3.1161.0"
+  }
+}

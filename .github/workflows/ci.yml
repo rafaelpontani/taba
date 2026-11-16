@@ -139,6 +139,18 @@ jobs:
             exit 1
           fi
 
+  # OpenSSF Scorecard, check Pinned-Dependencies, on the pull request itself: an image without a digest, an `npm install`
+  # or a `pip install` without hashes in a Dockerfile, a workflow or a script fails here, before it lowers the public
+  # score of main (AGENTS.md; doc/pt-BR/27-ci-cd.md).
+  pinned-dependencies:
+    name: Pinned dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: .github/scripts/pinned-deps.sh
+
   # Known vulnerabilities (RustSec) in the locked dependencies of the server and of the Rust connectors: the same
   # advisories the OpenSSF Scorecard counts. Dependabot opens the update; this job keeps one from being merged.
   rust-audit:

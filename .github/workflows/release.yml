@@ -525,7 +525,7 @@ jobs:
         with:
           persist-credentials: false
       - run: .github/scripts/set-version.sh "$VERSION"
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
       - id: auth
@@ -858,7 +858,9 @@ jobs:
           tag=latest
           [[ $VERSION == *-rc.* ]] && tag=next
           npm publish "dist/pulumi/rafaelpontani-pulumi-taba-$VERSION.tgz" --access public --tag "$tag"
-      - name: The published package, as a user installs it
+      # pulumi-verify already ran a Pulumi program on this .tgz; here npm must serve exactly that file (the same
+      # sha512 as the one built), which needs no unpinned `npm install` (OpenSSF Scorecard, Pinned-Dependencies).
+      - name: npm serves the package that was verified
         run: |
           set -euo pipefail
           for _ in 1 2 3 4 5 6; do
@@ -867,9 +869,10 @@ jobs:
             sleep 20
           done
           [ "$got" = "$VERSION" ] || { echo "npm does not list @rafaelpontani/pulumi-taba@$VERSION" >&2; exit 1; }
-          mkdir check && cd check && npm init -y >/dev/null
-          npm install --no-audit --no-fund "@rafaelpontani/pulumi-taba@$VERSION" >/dev/null
-          node -e 'const t = require("@rafaelpontani/pulumi-taba"); if (typeof t.Queue !== "function" || typeof t.Token !== "function") process.exit(1)'
+          want="sha512-$(openssl dgst -sha512 -binary "dist/pulumi/rafaelpontani-pulumi-taba-$VERSION.tgz" | base64 -w0)"
+          served="$(npm view "@rafaelpontani/pulumi-taba@$VERSION" dist.integrity)"
+          [ "$served" = "$want" ] || { echo "npm serves $served, the verified package is $want" >&2; exit 1; }
+          echo "npm serves the verified package ($want)"
 
   pulumi-pypi:
     name: Pulumi provider (PyPI)

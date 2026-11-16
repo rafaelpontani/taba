@@ -53,7 +53,10 @@ if has nodejs; then
   docker run --rm -v "$sdk_root:/repo:ro" -v "$(contract_hostpath "$out"):/out" -e VERSION="$version" -e HOST_UID="$uid" "$NODE_IMAGE" bash -euc '
     cp -r /repo/connectors/pulumi/sdk/nodejs /tmp/sdk && cd /tmp/sdk
     sed -i "s/\${VERSION}/$VERSION/" package.json
-    npm install --no-audit --no-fund --loglevel=error
+    # Exactly the versions and hashes of scripts/pins/nodejs/package-lock.json. npm ci fails when package.json (written
+    # by generate.sh) asks for something the lock does not have: regenerate the lock (connectors/pulumi/scripts/pins/README.md).
+    cp /repo/connectors/pulumi/scripts/pins/nodejs/package-lock.json .
+    npm ci --no-audit --no-fund --loglevel=error
     npm run build --silent
     # The README of the package is the one of connectors/pulumi with only the TypeScript example (the generator writes none).
     cp package.json bin/ && sh /repo/connectors/pulumi/scripts/readme.sh nodejs > bin/README.md && cd bin
@@ -68,8 +71,10 @@ if has python; then
     # pyproject.toml names README.md at the root of the SDK: the one of connectors/pulumi, with only the Python example.
     sh /repo/connectors/pulumi/scripts/readme.sh python > README.md
     sed -i "s/^  version = .*/  version = \"$PYVERSION\"/" pyproject.toml
-    pip install --quiet build
-    python -m build --outdir /out >/dev/null
+    # build and setuptools from scripts/pins/requirements-build.txt, with their hashes. --no-isolation keeps python -m
+    # build from downloading the build backend again, unpinned, into an isolated environment.
+    pip install --quiet --disable-pip-version-check --require-hashes -r /repo/connectors/pulumi/scripts/pins/requirements-build.txt
+    python -m build --no-isolation --outdir /out >/dev/null
     chown "$HOST_UID" /out/* 2>/dev/null || true'
 fi
 

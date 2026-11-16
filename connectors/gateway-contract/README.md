@@ -32,7 +32,7 @@ connectors/gateway-contract/
 
 ## Drivers and versions
 
-| Language | SDK | Variants (`drivers/run.sh` pins the versions) | Endpoint |
+| Language | SDK | Variants (`drivers/run.sh` pins the versions; Python and Node also in lock files) | Endpoint |
 |---|---|---|---|
 | C# | `AWSSDK.SQS`, `AWSSDK.SimpleNotificationService` | `current` 4.0.100.22; `old` 3.7.400.186 (Query protocol) | env / code |
 | Java | `software.amazon.awssdk` v2, `aws-java-sdk` v1 | `v2` 2.57.8; `v2old` 2.20.162 (Query); `v1` 1.12.580 (Query) | env / code / code |
@@ -47,6 +47,27 @@ connectors/gateway-contract/
   the gateway has to speak as well.
 - Not covered yet: Rust before its SQS JSON protocol (the 1.x series of `aws-sdk-sqs` that I tried did not build with the
   driver; the 0.x series needs another driver), PHP and Ruby (out of the first suite).
+
+### Pinned dependencies
+
+The Python and Node drivers install only what their lock files list, with the hash of every package (the OpenSSF
+Scorecard `Pinned-Dependencies` check, run by `.github/scripts/pinned-deps.sh`): `drivers/python/requirements-<variant>.txt`
+is installed with `pip install --require-hashes`, and `drivers/node/sdk-<variant>/` (`package.json` and
+`package-lock.json`) with `npm ci`. To change a version, edit the input named in the header of the requirements file or
+the `package.json`, and regenerate the lock in the image of the driver, from the repository root (Git Bash on Windows:
+prefix with `MSYS_NO_PATHCONV=1`):
+
+```
+# Python (here, the variant current): the input is the line in the header of the file
+mkdir -p /tmp/pin && echo "boto3==1.43.123" > /tmp/pin/current.in
+docker run --rm -v /tmp/pin:/w python:3.12-slim sh -c "pip install -q pip-tools && pip-compile -q --generate-hashes --strip-extras --no-header -o /w/current.txt /w/current.in"
+# then replace everything below the header of drivers/python/requirements-current.txt with /tmp/pin/current.txt
+
+# Node: rewrites package-lock.json from package.json
+docker run --rm -v "$PWD/connectors/gateway-contract/drivers/node/sdk-current:/w" -w /w node:22-slim npm install --package-lock-only --ignore-scripts
+```
+
+Dependabot does not update these files on purpose: the `old` variants must stay old.
 
 ## The scenario language
 
