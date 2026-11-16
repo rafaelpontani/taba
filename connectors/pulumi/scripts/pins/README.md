@@ -25,7 +25,7 @@ docker run --rm -v "$PWD:/repo" node:22-bookworm bash -euc '
   cp package-lock.json /repo/connectors/pulumi/scripts/pins/nodejs/'
 
 # Python: the input is the line in the header of requirements-build.txt
-mkdir -p /tmp/pin && printf "build==1.3.0\nsetuptools==80.9.0\n" > /tmp/pin/build.in
+mkdir -p /tmp/pin && printf "build==1.3.0\nsetuptools==84.2.1\n" > /tmp/pin/build.in
 docker run --rm -v /tmp/pin:/w python:3.12-bookworm sh -c "pip install -q pip-tools && pip-compile -q --generate-hashes --allow-unsafe --strip-extras --no-header -o /w/build.txt /w/build.in"
 # then replace everything below the header of requirements-build.txt with /tmp/pin/build.txt
 ```

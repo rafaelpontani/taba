@@ -1,0 +1,12 @@
+# Known vulnerabilities that the OSV scanner (and the OpenSSF Scorecard check Vulnerabilities) must not count here.
+# Decision D227 (doc/en-US/30-decisions.md). Review on the date below: drop an entry when the advisory no longer
+# applies, or extend the date if the reason still holds.
+
+# golang.org/x/crypto/openpgp is unmaintained and has no fixed version. It is imported by
+# github.com/pulumi/pulumi-terraform-bridge/v3/pkg/tfbridge through github.com/hashicorp/terraform-plugin-sdk (v1)
+# internal/plugin/discovery (the plugin discovery of Terraform 0.12), already at the latest bridge; no Taba code
+# imports it. It goes away when the bridge stops importing the SDK v1.
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+ignoreUntil = 2027-05-16T00:00:00Z
+reason = "openpgp imported by pulumi-terraform-bridge through terraform-plugin-sdk v1; no fixed version (D227)"

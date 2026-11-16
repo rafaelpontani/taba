@@ -1,0 +1,28 @@
+# Known vulnerabilities on main and release, every day: an advisory published after the merge lowers the OpenSSF
+# Scorecard check Vulnerabilities with no change to the repository, and the job `vulnerabilities` of ci.yml only sees
+# pull requests. Runs .github/scripts/vulnerabilities.sh (OSV scanner, the osv-scanner.toml next to each lock file,
+# D227); a failed run is the warning (GitHub notifies it). How to fix: doc/en-US/27-ci-cd.md#known-vulnerabilities.
+name: Vulnerabilities
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Known vulnerabilities (${{ matrix.ref }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: [main, release]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+      - run: .github/scripts/vulnerabilities.sh

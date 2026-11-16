@@ -166,6 +166,18 @@ jobs:
       - run: cargo audit --file Cargo.lock
       - run: cargo audit --file connectors/rust/Cargo.lock
 
+  # Known vulnerabilities in every lock file of the repository (Rust, Go, npm, PyPI, Maven), the same scan as the
+  # OpenSSF Scorecard check Vulnerabilities, honouring the osv-scanner.toml next to each lock file (D227). An advisory
+  # published after the merge is caught by vulnerabilities.yml, which runs the same script every day.
+  vulnerabilities:
+    name: Known vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: .github/scripts/vulnerabilities.sh
+
   # The workflows are code that publishes: actionlint (syntax and expressions) and zizmor (security: injection,
   # excessive permissions, unpinned actions, leaked credentials).
   workflows:

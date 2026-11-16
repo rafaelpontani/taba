@@ -44,7 +44,7 @@ From the [Terraform Registry](https://registry.terraform.io/providers/rafaelpont
 
 ## Developing
 
-The provider is a Go module (Go 1.25) on top of the [Go connector](https://github.com/rafaelpontani/taba/tree/main/connectors/go), linked by a local `replace`. Everything runs in Docker:
+The provider is a Go module (Go 1.26) on top of the [Go connector](https://github.com/rafaelpontani/taba/tree/main/connectors/go), linked by a local `replace`. Everything runs in Docker:
 
 ```
 scripts/test.sh            # units, golangci-lint, docs/ up to date, acceptance with Terraform and OpenTofu against one node
