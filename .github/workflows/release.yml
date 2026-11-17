@@ -905,7 +905,8 @@ jobs:
       - name: npm serves the package that was verified
         run: |
           set -euo pipefail
-          for _ in 1 2 3 4 5 6; do
+          # npm can take minutes to list a new version (v0.3.18-rc.1: over 2 minutes); wait up to 10.
+          for _ in $(seq 30); do
             got="$(npm view "pulumi-taba@$VERSION" version 2>/dev/null || true)"
             [ "$got" = "$VERSION" ] && break
             sleep 20
