@@ -1,0 +1,62 @@
+# Fuzzing of the node with ClusterFuzzLite: the cargo-fuzz targets of crates/taba-node/fuzz (the decoders of the
+# SQS/SNS gateway, which read the bytes of any client before the signature is checked), built with AddressSanitizer
+# by .clusterfuzzlite/. On a pull request it fuzzes for 5 minutes, only what the change touches (code-change); every
+# day, every target on main for 30 minutes (batch; workflow_dispatch runs it on any branch). A crash fails the run and the log has the input that
+# reproduces it. How to run and fix: doc/en-US/27-ci-cd.md#fuzzing.
+name: Fuzzing
+
+on:
+  pull_request:
+    branches: [main, release]
+  schedule:
+    - cron: "43 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: fuzzing-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pr:
+    name: Fuzzing (pull request)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build the fuzz targets
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: rust
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fuzz what the change touches
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          mode: code-change
+          sanitizer: address
+          fuzz-seconds: 300
+          output-sarif: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ClusterFuzzLite builds the commit of the event: main on the schedule, the chosen branch on workflow_dispatch.
+  batch:
+    name: Fuzzing (batch)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build the fuzz targets
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: rust
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fuzz every target
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          mode: batch
+          sanitizer: address
+          fuzz-seconds: 1800
+          output-sarif: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,58 @@
+[package]
+name = "taba-node-fuzz"
+description = "Fuzz targets of the Taba node (cargo-fuzz; run in CI by ClusterFuzzLite, doc 27)."
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "AGPL-3.0-only"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+http = "1"
+taba-node = { path = ".." }
+
+# Its own workspace: the fuzz targets need nightly and libFuzzer, and stay out of `cargo test` and `cargo clippy`
+# of the server.
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "gateway_sqs_query"
+path = "fuzz_targets/gateway_sqs_query.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "gateway_sqs_json"
+path = "fuzz_targets/gateway_sqs_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "gateway_sns_query"
+path = "fuzz_targets/gateway_sns_query.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "gateway_sigv4"
+path = "fuzz_targets/gateway_sigv4.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "gateway_names"
+path = "fuzz_targets/gateway_names.rs"
+test = false
+doc = false
+bench = false

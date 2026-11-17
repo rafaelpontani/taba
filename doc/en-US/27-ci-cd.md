@@ -3,8 +3,8 @@ title: CI/CD and releases
 summary: How the repository is validated and published — the GitHub Actions workflows, the order of the release (nothing public before everything is green), automatic versioning (semantic-release, candidates and finals), floating tags by digest, publishing to Docker Hub, GHCR, crates.io and nuget.org, and how anyone verifies that an artifact came out of this pipeline.
 type: reference
 status: stable
-verified-on: 2026-11-16 @ 8f53943
-sources: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/scripts/package-connectors.sh, .github/scripts/pinned-deps.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md]
+verified-on: 2026-11-16 @ 76f02ba
+sources: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/scripts/package-connectors.sh, .github/scripts/pinned-deps.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md, .clusterfuzzlite, crates/taba-node/fuzz]
 ---
 
 # CI/CD and releases
@@ -19,6 +19,7 @@ sources: [.github/workflows, .github/actions/node-binary, .github/scripts/set-ve
 | **Release** (`release.yml`) | **Push** to `main` (finals) or `release` (candidates) | The same builds; if semantic-release finds a version, publishes everything **in the order below**, with the tag created only after everything is green |
 | **Scorecard** (`scorecard.yml`) | Push to `main`, weekly and on every protection change | The public OpenSSF Scorecard score (the repository's security practices) |
 | **Vulnerabilities** (`vulnerabilities.yml`) | Every day, on `main` and `release` | The known vulnerabilities of the lock files ([below](#known-vulnerabilities)) |
+| **Fuzzing** (`fuzzing.yml`) | Pull request to `main`/`release` (5 minutes, what the change reaches) and every day on `main` (30 minutes) | The cargo-fuzz targets of the gateway decoders, with ClusterFuzzLite ([below](#fuzzing)) |
 | **CodeQL** (`codeql.yml`) | Push to `main`/`release`, pull request to them and weekly | Static analysis (SAST) of the Rust, C# and workflow code; findings in the Security tab |
 
 The three builds are **reusable workflows** (`workflow_call`), used by CI **and** by the release, with the same logic.
@@ -58,6 +59,7 @@ feature/*  ── PR ──▶ ci.yml: build + tests (nothing is published, no t
 | `release.yml` | The release (below) |
 | `scorecard.yml` | `ossf/scorecard-action`; the result goes to the Security tab and to the README badge |
 | `vulnerabilities.yml` | `.github/scripts/vulnerabilities.sh` every day on `main` and `release`: an advisory published after the merge fails the run (GitHub notifies it) before the next Scorecard scan |
+| `fuzzing.yml` | ClusterFuzzLite (`.clusterfuzzlite/`): builds the targets of `crates/taba-node/fuzz` with AddressSanitizer and fuzzes them; `code-change` on pull requests, `batch` every day on `main` ([below](#fuzzing)) |
 | `codeql.yml` | CodeQL for `rust`, `csharp` and `actions`, all with `build-mode: none` (independent of the build toolchains) |
 
 The builds' `version` input is **empty** when there is no release; with a version, `set-version.sh` writes it to the files **only inside the build, without committing**. Every build exports `TABA_GIT_SHA`: `taba --version` and `taba-cli --version` show the commit.
@@ -206,6 +208,17 @@ The OpenSSF Scorecard check `Vulnerabilities` runs the OSV scanner on every lock
 
 The script downloads the OSV scanner of a fixed version, checks its sha256 and scans a copy of what git would commit (not `target/` or `node_modules/`). It runs with `--no-resolve`: the `pom.xml` of the OMB driver depends on the Java connector of the repository, which is not in Maven Central under that version, and its transitive resolution would fail the whole scan; the lock files are read as they are.
 
+### Fuzzing
+
+The OpenSSF Scorecard check `Fuzzing` looks for a fuzzer integration; the repository has ClusterFuzzLite (`.clusterfuzzlite/`: `project.yaml`, a `Dockerfile` on the OSS-Fuzz Rust builder pinned by digest, and `build.sh`). The targets are a cargo-fuzz crate, [`crates/taba-node/fuzz`](../../crates/taba-node/fuzz) (its own workspace, outside `cargo test` and `cargo clippy` of the server), one per decoder that reads the bytes of a gateway client before the signature is checked: `gateway_sqs_query` and `gateway_sns_query` (the forms of the Query protocol), `gateway_sqs_json` (the JSON protocol), `gateway_sigv4` (the `Authorization` header, `X-Amz-Date` and the percent-decoding) and `gateway_names` (receipt handles, queue and topic names, subscription ARNs). A target only calls the function: any panic, overflow or memory error is a crash (D228). `fuzzing.yml` fuzzes on every pull request to `main`/`release` for 5 minutes, only the targets the change reaches (`code-change`), and every day on `main` every target for 30 minutes (`batch`); a crash fails the run and the log has the input that reproduces it. The corpus is not kept between runs (there is no storage repository), and the workflow is outside the required checks. Locally (nightly and cargo-fuzz):
+
+```
+cd crates/taba-node
+cargo +nightly fuzz run gateway_sqs_query -- -max_total_time=60
+```
+
+The same build as CI, in Docker: `docker build -t taba-cflite -f .clusterfuzzlite/Dockerfile .` and then `docker run --rm -e SANITIZER=address -e FUZZING_LANGUAGE=rust taba-cflite compile`. A crash is fixed in the decoder with a unit test that has the input, next to its module; a new decoder of external input gets its target in the same change. `crates/taba-node/fuzz/Cargo.lock` is one more lock file that the OSV scanner reads ([above](#known-vulnerabilities)).
+
 ### Repository configuration (outside the code)
 
 | Where | What |
@@ -288,6 +301,6 @@ The script currently checks the `doc/pt-BR` folder (the Portuguese keys `resumo`
 
 ## Sources and evidence
 
-- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,contract-connectors,contract-gateway,release,scorecard,codeql}.yml`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/scripts/package-connectors.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
-- Decisions: D159 to D163 ([30-decisions.md](30-decisions.md)).
+- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,contract-connectors,contract-gateway,release,scorecard,codeql,vulnerabilities,fuzzing}.yml`, `.clusterfuzzlite/`, `crates/taba-node/fuzz/`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/scripts/package-connectors.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
+- Decisions: D159 to D163, D226 to D228 ([30-decisions.md](30-decisions.md)).
 - Use cases: there are no pipeline `UC-` cases; validation is `docker/validate.sh` ([25-testing.md](25-testing.md)).
