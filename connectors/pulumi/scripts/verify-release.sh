@@ -45,7 +45,7 @@ readme_has_only() { # <package file> <its language> <README text>
   case "$3" in *'<!-- lang:'*) contract_die "the README of $1 still has the language markers" ;; esac
 }
 readme_has_only "Taba.Pulumi.$version.nupkg" dotnet "$(unzip -p "$dir/Taba.Pulumi.$version.nupkg" README.md)"
-readme_has_only "rafaelpontani-pulumi-taba-$version.tgz" nodejs "$(tar -xzOf "$dir/rafaelpontani-pulumi-taba-$version.tgz" package/README.md)"
+readme_has_only "pulumi-taba-$version.tgz" nodejs "$(tar -xzOf "$dir/pulumi-taba-$version.tgz" package/README.md)"
 readme_has_only "pulumi_taba-$pyversion-py3-none-any.whl" python "$(unzip -p "$dir/pulumi_taba-$pyversion-py3-none-any.whl" '*.dist-info/METADATA')"
 
 pulumi_tools_install
@@ -72,10 +72,10 @@ case "$lang" in
   typescript)
     printf "name: verify\nruntime: nodejs\n" > Pulumi.yaml
     printf "{\"name\":\"verify\",\"main\":\"index.ts\",\"dependencies\":{}}\n" > package.json
-    q npm install --no-audit --no-fund "/dist/rafaelpontani-pulumi-taba-$VERSION.tgz" @pulumi/pulumi typescript@5 @types/node@20
+    q npm install --no-audit --no-fund "/dist/pulumi-taba-$VERSION.tgz" @pulumi/pulumi typescript@5 @types/node@20
     cat > index.ts <<EOT
 import * as pulumi from "@pulumi/pulumi";
-import * as taba from "@rafaelpontani/pulumi-taba";
+import * as taba from "pulumi-taba";
 const q = new taba.Queue("q", { name: "verify-$ID", ttl: 600 });
 const t = new taba.Token("t", { name: "verify-$ID", permissions: ["consume"], topicPrefixes: ["verify-$ID"] });
 export const queueName = q.name;

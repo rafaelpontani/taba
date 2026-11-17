@@ -53,8 +53,10 @@ func Provider() tfbridge.ProviderInfo {
 			// The C# class Token cannot have a property Token (CS0542), so the secret is named secret in every language.
 			"taba_token": {Fields: map[string]*tfbridge.SchemaInfo{"token": {Name: "secret"}}},
 		},
+		// Unscoped, like taba-client on npm and pulumi_taba on PyPI. scripts/generate.sh points the repository of its
+		// package.json at rafaelpontani/taba, which is what npm Trusted Publishing checks.
 		JavaScript: &tfbridge.JavaScriptInfo{
-			PackageName: "@rafaelpontani/pulumi-taba",
+			PackageName: "pulumi-taba",
 		},
 		Python: func() *tfbridge.PythonInfo {
 			i := &tfbridge.PythonInfo{PackageName: "pulumi_taba"}

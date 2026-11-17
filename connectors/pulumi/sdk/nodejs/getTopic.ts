@@ -11,7 +11,7 @@ import * as utilities from "./utilities";
  *
  * ```typescript
  * import * as pulumi from "@pulumi/pulumi";
- * import * as taba from "@rafaelpontani/pulumi-taba";
+ * import * as taba from "pulumi-taba";
  *
  * // A queue another team created, and its dead-letter queue.
  * const orders = taba.getTopic({
@@ -120,7 +120,7 @@ export interface GetTopicResult {
  *
  * ```typescript
  * import * as pulumi from "@pulumi/pulumi";
- * import * as taba from "@rafaelpontani/pulumi-taba";
+ * import * as taba from "pulumi-taba";
  *
  * // A queue another team created, and its dead-letter queue.
  * const orders = taba.getTopic({

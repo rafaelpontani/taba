@@ -30,15 +30,13 @@ await client.subscribe('orders', undefined, async (message) => {
 client.close();
 ```
 
-## Installing (not in a registry yet)
-
-Not in a registry yet (the identifiers are still open). Until then, each [Release](https://github.com/rafaelpontani/taba/releases) has the installable file, with its checksum in `SHA256SUMS` and its provenance (`gh attestation verify <file> -R rafaelpontani/taba`). `<release>` below is the version of the Release; the version in the file name is the connector's own.
+## Installing
 
 ```
-npm install https://github.com/rafaelpontani/taba/releases/download/v<release>/taba-client-0.1.0.tgz
+npm install taba-client
 ```
 
-(npm cannot install a folder of a Git repository; with pnpm, `pnpm add "github:rafaelpontani/taba#path:/connectors/node"` also works.)
+The package has the version of the Taba release it came with and is published from the release workflow of this repository with npm provenance; a release candidate goes to the `next` tag (`npm install taba-client@next`). Each [Release](https://github.com/rafaelpontani/taba/releases) also has the same file, `taba-client-<release>.tgz`, with its checksum in `SHA256SUMS` and its provenance (`gh attestation verify <file> -R rafaelpontani/taba`).
 
 ## Declaring a topic
 

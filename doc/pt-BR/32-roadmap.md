@@ -57,7 +57,7 @@ Decisões que precisam estar fechadas: **D68** (versões-base das linguagens ain
 
 | Item | Detalhe |
 |---|---|
-| Pacotes 🟡 | nuget.org (`Taba.*`) e crates.io (`taba-client`, `taba-cli`) automatizados no `release.yml` por Trusted Publishing, ligados pelas variáveis `PUBLISH_CRATES` e `NUGET_USER` ([27-ci-cd.md](27-ci-cd.md#publicação-e-metadados)); faltam os registros das outras linguagens (PRB-079); enquanto isso os arquivos delas são anexados à Release (D70.3). **Não podem ser apagados** |
+| Pacotes 🟡 | nuget.org (`Taba.*`), crates.io (`taba-client`, `taba-cli`) e npm (`taba-client`, D229) automatizados no `release.yml` por Trusted Publishing, ligados pelas variáveis `PUBLISH_CRATES`, `NUGET_USER` e `CONNECTOR_NPM` ([27-ci-cd.md](27-ci-cd.md#publicação-e-metadados)); faltam os registros das outras linguagens (PRB-079); enquanto isso os arquivos delas são anexados à Release (D70.3). **Não podem ser apagados** |
 | Imagens ✅ | Docker Hub e GHCR, com o mesmo digest em todas as tags ([27-ci-cd.md](27-ci-cd.md#tags-docker-e-tags-flutuantes)) |
 | Repositório público ⬜ | Hoje privado; a publicação definitiva é uma decisão do dono |
 

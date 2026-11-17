@@ -13,7 +13,7 @@ import * as utilities from "./utilities";
  *
  * ```typescript
  * import * as pulumi from "@pulumi/pulumi";
- * import * as taba from "@rafaelpontani/pulumi-taba";
+ * import * as taba from "pulumi-taba";
  *
  * // The queues of the billing team whose name contains "orders".
  * const billingOrders = taba.getTopics({
@@ -95,7 +95,7 @@ export interface GetTopicsResult {
  *
  * ```typescript
  * import * as pulumi from "@pulumi/pulumi";
- * import * as taba from "@rafaelpontani/pulumi-taba";
+ * import * as taba from "pulumi-taba";
  *
  * // The queues of the billing team whose name contains "orders".
  * const billingOrders = taba.getTopics({
