@@ -81,7 +81,7 @@ taba_up
 
 step "The cluster formed: taba-cli cluster status"
 [ "$(active_members)" = "3" ] || die "expected 3 active members, found '$(active_members)'"
-cli cluster status -o json | grep -q '"conditions": \[\]' || die "the cluster has conditions: $(cli cluster status -o table)"
+grep -q '"conditions": \[\]' <<<"$(cli cluster status -o json)" || die "the cluster has conditions: $(cli cluster status -o table)"
 ok "3 active members and no conditions"
 
 # --- 2. taba-cli --------------------------------------------------------------------------------
@@ -91,7 +91,7 @@ cli topic create validation-cli --type queue >/dev/null
 cli publish validation-cli --text "hello from taba-cli" --id-only >/dev/null
 got="$(cli consume validation-cli --max 1 --wait 5 --ack -o raw)"
 [ "$got" = "hello from taba-cli" ] || die "consume returned '$got'"
-cli topic list --name validation-cli | grep -q validation-cli || die "topic list does not show the topic"
+grep -q validation-cli <<<"$(cli topic list --name validation-cli)" || die "topic list does not show the topic"
 ok "publish, consume --ack and topic list"
 
 # --- 3. abrupt crash ----------------------------------------------------------------------------

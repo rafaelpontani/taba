@@ -678,8 +678,8 @@ jobs:
         run: |
           set -euo pipefail
           tag="connectors/go/v$VERSION"
-          existing="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha 2>/dev/null || true)"
-          if [[ -n $existing ]]; then
+          # The exit code says whether the tag exists: on a 404, gh api also prints the JSON of the error to stdout.
+          if existing="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha 2>/dev/null)"; then
             echo "$tag already exists ($existing)"
           else
             gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
