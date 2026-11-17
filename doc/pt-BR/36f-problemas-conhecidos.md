@@ -3,8 +3,8 @@ título: "Problemas conhecidos: corrigidos"
 resumo: "Os testes intermitentes e problemas conhecidos já corrigidos, guardados como histórico e para quando um voltar: cada um com causa, correção, verificação e o histórico de ocorrências e tentativas. Os abertos estão no 36a."
 tipo: referência
 status: parcial
-verificado-em: 2026-11-17 @ 8a5aa3a
-fontes: [connectors/gateway-contract/drivers/run.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+verificado-em: 2026-11-17 @ f30a4f9
+fontes: [connectors/terraform/scripts/verify-release.sh, connectors/gateway-contract/drivers/run.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Problemas conhecidos: corrigidos
@@ -15,6 +15,7 @@ Este arquivo guarda as seções dos problemas já **corrigidos**, como históric
 
 | Código | Problema | Status | Achado em | Corrigido em |
 |---|---|---|---|---|
+| KI-036 | [Um grep -q no fim de um pipe que reprova uma conferência que passou](#ki-036-um-grep--q-no-fim-de-um-pipe-que-reprova-uma-conferência-que-passou) | Corrigido | 2026-11-17 | 2026-11-17 |
 | KI-035 | [Drivers Java do contrato do gateway que dividem a pasta inteira do Maven](#ki-035-drivers-java-do-contrato-do-gateway-que-dividem-a-pasta-inteira-do-maven) | Corrigido | 2026-11-17 | 2026-11-17 |
 | KI-033 | [Um register pendente na secundária conferido antes de chegar](#ki-033-um-register-pendente-na-secundária-conferido-antes-de-chegar) | Corrigido | 2026-11-10 | 2026-11-10 |
 | KI-032 | [Uma entrega conferida nas cópias antes de elas saberem dela](#ki-032-uma-entrega-conferida-nas-cópias-antes-de-elas-saberem-dela) | Corrigido | 2026-11-10 | 2026-11-10 |
@@ -48,6 +49,22 @@ Este arquivo guarda as seções dos problemas já **corrigidos**, como históric
 | KI-003 | [Reingresso depois de uma partição simétrica](#ki-003-reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | KI-002 | [Canal saudável que não volta](#ki-002-canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | KI-001 | [Inversão de ordem de travas ao escolher réplicas](#ki-001-inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## KI-036: Um grep -q no fim de um pipe que reprova uma conferência que passou
+
+**Status:** Corrigido · **Achado em:** 2026-11-17 · **Corrigido em:** 2026-11-17
+
+- **Teste:** o job `Terraform provider (mirror)` do `release.yml` (`connectors/terraform/scripts/verify-release.sh`), passo `tofu: install <versão> from the files`.
+- **Sintoma:** `write /dev/stdout: broken pipe` e depois `FAILED: tofu did not install rafaelpontani/taba 0.3.18-rc.3`, logo depois de o mesmo passo passar com o `terraform`; o provider estava instalado.
+- **Causa (confirmada):** `run version -json | grep -q ...` com `set -o pipefail`. O `grep -q` sai no primeiro acerto e fecha o pipe; quando a CLI ainda está escrevendo, ela termina com `broken pipe` e um código diferente de zero, e o `pipefail` faz a linha inteira falhar embora o acerto tenha sido achado. Falhar ou não depende de qual lado termina primeiro.
+- **Correção:** a saída é lida inteira numa variável e o `grep -q` lê a variável (`grep -q ... <<<"$out"`). A mesma mudança nos outros scripts do caminho da release que rodam com `pipefail`: `connectors/pulumi/examples/scenarios.sh` (`stack output`) e `docker/validate.sh` (`cluster status`, `topic list`). Os testes do Helm rodam as conferências em `bash -c` sem `pipefail`, e a espera do `gateway-contract/lib.sh` está dentro de um `until`, que só espera de novo.
+- **Verificação:** `set -o pipefail; seq 1 200000 | grep -q '^1$'` falhou 50 vezes em 50; com a saída numa variável, 0 em 50.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-17 | Reprovou o job `Terraform provider (mirror)` da v0.3.18-rc.3 com o provider instalado; reproduzido com `seq` e corrigido nos três scripts. |
 
 ## KI-035: Drivers Java do contrato do gateway que dividem a pasta inteira do Maven
 
