@@ -633,7 +633,8 @@ jobs:
           fi
           tag=latest
           [[ $VERSION == *-rc.* ]] && tag=next
-          npm publish "dist/taba-client-$VERSION.tgz" --access public --tag "$tag"
+          # "./": without it npm reads "dist/<file>" as the GitHub shorthand <user>/<repository>.
+          npm publish "./dist/taba-client-$VERSION.tgz" --access public --tag "$tag"
 
   # The chart as an OCI artifact on GHCR: helm install oci://ghcr.io/<owner>/charts/taba --version X.Y.Z.
   chart-publish:
@@ -897,7 +898,8 @@ jobs:
           fi
           tag=latest
           [[ $VERSION == *-rc.* ]] && tag=next
-          npm publish "dist/pulumi/pulumi-taba-$VERSION.tgz" --access public --tag "$tag"
+          # "./": without it npm reads "dist/<file>" as the GitHub shorthand <user>/<repository>.
+          npm publish "./dist/pulumi/pulumi-taba-$VERSION.tgz" --access public --tag "$tag"
       # pulumi-verify already ran a Pulumi program on this .tgz; here npm must serve exactly that file (the same
       # sha512 as the one built), which needs no unpinned `npm install` (OpenSSF Scorecard, Pinned-Dependencies).
       - name: npm serves the package that was verified
