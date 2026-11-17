@@ -4,7 +4,7 @@
 
 🇺🇸 **English** | 🇧🇷 [Português (Brasil)](README-pt-BR.md)
 
-[![Release](https://github.com/rafaelpontani/taba/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/rafaelpontani/taba/actions/workflows/release.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rafaelpontani/taba/badge)](https://scorecard.dev/viewer/?uri=github.com/rafaelpontani/taba) [![SLSA provenance](https://img.shields.io/badge/SLSA-provenance-blue)](#verifying-a-release)
+[![Release](https://github.com/rafaelpontani/taba/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/rafaelpontani/taba/actions/workflows/release.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rafaelpontani/taba/badge)](https://scorecard.dev/viewer/?uri=github.com/rafaelpontani/taba) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16831/badge)](https://www.bestpractices.dev/projects/16831) [![SLSA provenance](https://img.shields.io/badge/SLSA-provenance-blue)](#verifying-a-release)
 
 **Taba** is a **messaging suite built for efficiency**: queues (like SQS), FIFO queues and pub/sub (like SNS) behind one HTTP API, from **a single Docker image** and with **no external dependencies** (no coordinator, no database, no separate broker). It **manages itself**: add a node and the cluster rebalances; remove one and it hands its work over before leaving, with no downtime; a node that fails is voted out and rejoins by itself. Every message is replicated across nodes and kept in memory, with a **continuous backup to S3**. A **Helm chart**, a **terminal UI** and published packages come with it.
 

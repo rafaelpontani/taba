@@ -4,7 +4,7 @@
 
 🇺🇸 [English](README.md) | 🇧🇷 **Português (Brasil)**
 
-[![Release](https://github.com/rafaelpontani/taba/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/rafaelpontani/taba/actions/workflows/release.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rafaelpontani/taba/badge)](https://scorecard.dev/viewer/?uri=github.com/rafaelpontani/taba) [![SLSA provenance](https://img.shields.io/badge/SLSA-provenance-blue)](#verificando-um-release)
+[![Release](https://github.com/rafaelpontani/taba/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/rafaelpontani/taba/actions/workflows/release.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rafaelpontani/taba/badge)](https://scorecard.dev/viewer/?uri=github.com/rafaelpontani/taba) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16831/badge)](https://www.bestpractices.dev/projects/16831) [![SLSA provenance](https://img.shields.io/badge/SLSA-provenance-blue)](#verificando-um-release)
 
 O **Taba** é uma **suíte de mensageria feita para ser eficiente**: filas (como o SQS), filas FIFO e pub/sub (como o SNS) na mesma API HTTP, a partir de **uma única imagem Docker** e **sem dependências externas** (sem coordenador, sem banco de dados, sem broker à parte). Ele **se gerencia sozinho**: adicione um nó e o cluster se rebalanceia; retire um e ele entrega o seu trabalho antes de sair, sem downtime; um nó que falha é excluído por votação e volta sozinho. Toda mensagem é replicada entre os nós e mantida em memória, com **backup contínuo no S3**. Vêm junto um **Helm chart**, uma **interface de terminal** e pacotes publicados.
 
