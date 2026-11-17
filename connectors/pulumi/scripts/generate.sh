@@ -30,6 +30,11 @@ pulumi_go -e PULUMI_VERSION="$PULUMI_VERSION" -e SDK_FLOORS="$SDK_FLOORS" -- '
   for lang in nodejs python dotnet go; do
     "$tfgen" "$lang" --out "sdk/$lang" >/dev/null
   done
+  # npm Trusted Publishing only accepts a package whose repository is the one that publishes it (rafaelpontani/taba,
+  # release.yml); the bridge writes the Repository of the provider (the mirror, which the Pulumi Registry reads).
+  sed -i "s|\"repository\": \"https://github.com/rafaelpontani/pulumi-taba\"|\"repository\": {\"type\": \"git\", \"url\": \"git+https://github.com/rafaelpontani/taba.git\", \"directory\": \"connectors/pulumi/sdk/nodejs\"}|" \
+    sdk/nodejs/package.json
+  grep -q "git+https://github.com/rafaelpontani/taba.git" sdk/nodejs/package.json
   # The Go SDK is its own module (tag sdk/vX.Y.Z of the mirror), with the Pulumi SDK pinned to the CLI version.
   cd sdk
   # The go line comes from the provider module, not from the image: golang:1.26 moves with every patch release, and

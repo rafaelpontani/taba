@@ -13,7 +13,7 @@ import * as utilities from "./utilities";
  *
  * ```typescript
  * import * as pulumi from "@pulumi/pulumi";
- * import * as taba from "@rafaelpontani/pulumi-taba";
+ * import * as taba from "pulumi-taba";
  *
  * // A token that publishes and consumes only the topics starting with "orders".
  * // The secret is in taba_token.orders_app.token (sensitive): hand it to the application

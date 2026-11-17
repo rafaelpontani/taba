@@ -1,7 +1,7 @@
 // A queue, a distributor and a token of Taba, and the data sources that read them. The configuration (pulumi config)
 // switches the pieces the acceptance scenarios change: prefix, maxDeliveries, volatile, forceDestroy and adopt.
 import * as pulumi from "@pulumi/pulumi";
-import * as taba from "@rafaelpontani/pulumi-taba";
+import * as taba from "pulumi-taba";
 
 const config = new pulumi.Config();
 const prefix = config.require("prefix");

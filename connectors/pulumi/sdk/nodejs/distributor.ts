@@ -11,7 +11,7 @@ import * as utilities from "./utilities";
  *
  * ```typescript
  * import * as pulumi from "@pulumi/pulumi";
- * import * as taba from "@rafaelpontani/pulumi-taba";
+ * import * as taba from "pulumi-taba";
  *
  * // Each publication to "order-events" is copied to every queue whose name starts with "orders-" or "audit-".
  * const orderEvents = new taba.Distributor("order_events", {

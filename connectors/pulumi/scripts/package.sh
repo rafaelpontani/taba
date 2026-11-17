@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The release files of the Pulumi provider, built in containers from this checkout (nothing is published):
 #   pulumi-resource-taba-v<version>-<os>-<arch>.tar.gz   the plugin, one per platform (-trimpath, no cgo)
-#   rafaelpontani-pulumi-taba-<version>.tgz              the npm package (TypeScript/JavaScript SDK)
+#   pulumi-taba-<version>.tgz                            the npm package (TypeScript/JavaScript SDK)
 #   pulumi_taba-<python version>-py3-none-any.whl and pulumi_taba-<python version>.tar.gz   (PyPI)
 #   Taba.Pulumi.<version>.nupkg                          the NuGet package (.NET SDK)
 #   pulumi-taba-go-sdk-<version>.tar.gz                  the Go SDK module (published as a tag of the mirror)

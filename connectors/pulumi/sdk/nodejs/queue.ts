@@ -13,7 +13,7 @@ import * as utilities from "./utilities";
  *
  * ```typescript
  * import * as pulumi from "@pulumi/pulumi";
- * import * as taba from "@rafaelpontani/pulumi-taba";
+ * import * as taba from "pulumi-taba";
  *
  * // A durable queue: what is not declared follows the node default (see the effective_* attributes).
  * const orders = new taba.Queue("orders", {

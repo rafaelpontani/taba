@@ -20,7 +20,7 @@ The same program in each language: a queue, a distributor that copies each publi
 **TypeScript**
 
 ```typescript
-import * as taba from "@rafaelpontani/pulumi-taba";
+import * as taba from "pulumi-taba";
 
 const orders = new taba.Queue("orders", { name: "orders", ttl: 86400, maxDeliveries: 5 });
 
@@ -124,7 +124,7 @@ A program needs two things: the **package** of its language and the **plugin** (
 
 | Language | Package | Install |
 |---|---|---|
-| TypeScript / JavaScript | `@rafaelpontani/pulumi-taba` (npm) | `npm install @rafaelpontani/pulumi-taba` |
+| TypeScript / JavaScript | `pulumi-taba` (npm) | `npm install pulumi-taba` |
 | Python | `pulumi-taba` (PyPI; import `pulumi_taba`) | `pip install pulumi-taba` |
 | .NET | `Taba.Pulumi` (nuget.org) | `dotnet add package Taba.Pulumi` |
 | Go | `github.com/rafaelpontani/pulumi-taba/sdk/go/taba` | `go get github.com/rafaelpontani/pulumi-taba/sdk` |

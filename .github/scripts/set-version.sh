@@ -3,8 +3,8 @@
 #
 #   .github/scripts/set-version.sh 0.1.0-rc.2
 #
-# Adjusts the server Cargo.toml and Cargo.lock, the Rust connectors' Cargo.toml and Cargo.lock
-# and the <Version> of the C# connector packages.
+# Adjusts the server Cargo.toml and Cargo.lock, the Rust connectors' Cargo.toml and Cargo.lock,
+# the <Version> of the C# connector packages and the version of the Node.js connector's package.json.
 
 set -euo pipefail
 
@@ -49,6 +49,9 @@ sed -i "s|^taba-client = { path = \"../client\", version = \"[^\"]*\" }|taba-cli
 # The chart goes out with the exact version: `version` (the package) and `appVersion` (the default image tag).
 sed -i -e "s|^version: .*|version: $version|" -e "s|^appVersion: .*|appVersion: \"$version\"|" \
   deploy/helm/taba/Chart.yaml
+
+# The Node.js connector (taba-client on npm) goes out with the release version too, like the C# and Rust ones.
+sed -i "0,/\"version\": \"[^\"]*\"/s//\"version\": \"$version\"/" connectors/node/package.json
 
 for csproj in connectors/csharp/Taba.Client*/*.csproj; do
   if grep -q '<Version>' "$csproj"; then

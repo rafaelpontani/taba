@@ -13,7 +13,7 @@ import * as utilities from "./utilities";
  *
  * ```typescript
  * import * as pulumi from "@pulumi/pulumi";
- * import * as taba from "@rafaelpontani/pulumi-taba";
+ * import * as taba from "pulumi-taba";
  *
  * // The tokens whose name contains "ci", oldest first, without the secrets.
  * const ci = taba.getTokens({
@@ -64,7 +64,7 @@ export interface GetTokensResult {
  *
  * ```typescript
  * import * as pulumi from "@pulumi/pulumi";
- * import * as taba from "@rafaelpontani/pulumi-taba";
+ * import * as taba from "pulumi-taba";
  *
  * // The tokens whose name contains "ci", oldest first, without the secrets.
  * const ci = taba.getTokens({
