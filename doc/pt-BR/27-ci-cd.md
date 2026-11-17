@@ -3,7 +3,7 @@ título: CI/CD e releases
 resumo: Como o repositório é validado e publicado — os workflows do GitHub Actions, a ordem do release (nada público antes de tudo verde), o versionamento automático (semantic-release, candidatas e finais), as tags flutuantes por digest, a publicação em Docker Hub, GHCR, crates.io e nuget.org, e como qualquer pessoa verifica que um artefato saiu deste pipeline.
 tipo: referência
 status: estável
-verificado-em: 2026-11-17 @ 08edeca
+verificado-em: 2026-11-17 @ 396b1cf
 fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/scripts/package-connectors.sh, .github/scripts/pinned-deps.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md, .clusterfuzzlite, crates/taba-node/fuzz]
 ---
 
@@ -78,7 +78,7 @@ Princípio: **nada público antes de tudo estar verde, e tudo o que é público 
 | 4 | `images` | Monta `taba` e `taba-cli` (os dois *targets* do `Dockerfile.ci`) para `linux/amd64` e `linux/arm64`, **sem compilar nada**, com proveniência SLSA (`mode=max`), SBOM e labels OCI (`revision` = commit). Envia **só por digest, sem tag**, para Docker Hub e GHCR; atesta (`attest-build-provenance`) e assina (cosign keyless) cada digest |
 | 5 | `tag` | (espera também o `connector-packages`, o `terraform-provider` e o `pulumi-provider`, porque a tag não se desfaz) Só agora o semantic-release cria a **tag** em `github.sha` e a **GitHub Release como rascunho**. Falha se a versão não é a do plano ou se a tag não aponta para o commit |
 | 6 | `release-assets` | Binários (com a arquitetura no nome), `.nupkg`, `.snupkg`, o `.tgz` do chart, os arquivos do `connector-packages` , do `terraform-provider` e do `pulumi-provider` e o `SHA256SUMS`, todos atestados, no rascunho, mais o `taba-<versão>.intoto.jsonl` (o bundle da proveniência como arquivo da Release, que o OpenSSF Scorecard reconhece) |
-| 7 | `crates`, `nuget`, `npm`, `pypi`, `chart-publish` | crates.io, nuget.org, npm e PyPI (`taba-client`) por **Trusted Publishing** (OIDC); o chart em `oci://ghcr.io/rafaelpontani/charts`, atestado e assinado |
+| 7 | `crates`, `nuget`, `npm`, `pypi`, `go-module`, `chart-publish` | crates.io, nuget.org, npm e PyPI (`taba-client`) por **Trusted Publishing** (OIDC); o chart em `oci://ghcr.io/rafaelpontani/charts`, atestado e assinado |
 | 8 | `finalize` | A Release sai do rascunho: `--prerelease` nas candidatas, `--latest` só na maior final |
 | 9 | `floating` | Cria as tags Docker (exata e flutuantes) com `docker buildx imagetools create` **apontando para o digest** (sem reconstruir) e move as tags flutuantes do git |
 | 10 | `verify` | Confere de fora: cada tag git aponta para o commit; cada tag Docker, nos dois registros, é o mesmo digest, com o label `revision` certo; `cosign verify` e `gh attestation verify` passam; o `SHA256SUMS` da Release confere |
@@ -146,6 +146,7 @@ Só a tag **fixa** (`vX.Y.Z`, `vX.Y.Z-rc.N`) é imutável. As flutuantes são po
 | nuget.org | `Taba.Client`, `.Abstractions`, `.Extensions.DependencyInjection` (+ `.snupkg`) | Trusted Publishing (`NuGet/login`) | Variável `NUGET_USER` (a conta dona da política) |
 | npm | `taba-client` (o conector Node.js, com a versão da release; uma candidata vai para a dist-tag `next`) | Trusted Publishing (`npm publish` por OIDC, D229) | Variável `CONNECTOR_NPM=true` |
 | PyPI | `taba-client` (o conector Python, com a versão da release na forma da PEP 440; uma candidata é `0.3.9rc1`, que o `pip` só instala com `--pre`) | Trusted Publishing (`pypa/gh-action-pypi-publish`, `skip-existing`, D230) | Variável `CONNECTOR_PYPI=true` |
+| Proxy de módulos do Go | `github.com/rafaelpontani/taba/connectors/go` (o conector Go): a tag `connectors/go/v<versão>` no commit da release, depois o proxy é consultado, o que a lista no pkg.go.dev | Nada a enviar: o job cria a tag com o `GITHUB_TOKEN` (D231) | Variável `CONNECTOR_GO=true` |
 | Terraform Registry, OpenTofu Registry | `rafaelpontani/taba` (provider) | O repositório espelho `rafaelpontani/terraform-provider-taba` (D211): `TERRAFORM_MIRROR_TOKEN` empurra, os registries leem as Releases assinadas dele | Variável `TERRAFORM_PROVIDER_REPO` |
 | npm, PyPI, nuget.org, plugin do Pulumi | `pulumi-taba`, `pulumi-taba`, `Taba.Pulumi`; os arquivos do plugin e o SDK Go no espelho `rafaelpontani/pulumi-taba` (D212, D213) | Trusted Publishing no npm, no PyPI e no nuget.org; `PULUMI_MIRROR_TOKEN` empurra para o espelho | Variáveis `PULUMI_NPM`, `PULUMI_PYPI`, `PULUMI_NUGET_USER`, `PULUMI_PROVIDER_REPO` (cada uma liga o seu destino) |
 
@@ -229,7 +230,7 @@ O mesmo build do CI, em Docker: `docker build -t taba-cflite -f .clusterfuzzlite
 | Ruleset de tag (`v*.*.*`) | Só o GitHub Actions cria; ninguém atualiza nem apaga. As flutuantes (`v0`, `v0.1`, `v0.1-rc`) não casam com o padrão e podem mover |
 | Releases | **Immutable Releases** ligado: depois de publicada, nem a tag nem os assets mudam |
 | Environment `release` | Restrito às branches `main` e `release`; guarda os secrets do Docker Hub e os do provider Terraform (`TERRAFORM_GPG_PRIVATE_KEY`, `TERRAFORM_GPG_PASSPHRASE`, `TERRAFORM_MIRROR_TOKEN`) e o token do espelho do Pulumi (`PULUMI_MIRROR_TOKEN`) |
-| Variáveis | `PUBLISH_CRATES`, `NUGET_USER`, `DOCKERHUB_NAMESPACE` (padrão `rafaelpontani`), `TERRAFORM_PROVIDER_REPO`, `PULUMI_PROVIDER_REPO`, `PULUMI_NPM`, `PULUMI_PYPI`, `PULUMI_NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI` |
+| Variáveis | `PUBLISH_CRATES`, `NUGET_USER`, `DOCKERHUB_NAMESPACE` (padrão `rafaelpontani`), `TERRAFORM_PROVIDER_REPO`, `PULUMI_PROVIDER_REPO`, `PULUMI_NPM`, `PULUMI_PYPI`, `PULUMI_NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI`, `CONNECTOR_GO` |
 | crates.io / nuget.org / npm / PyPI | O trusted publisher: repositório `rafaelpontani/taba`, workflow `release.yml`, environment `release` |
 
 ### Provider Terraform

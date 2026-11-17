@@ -659,6 +659,44 @@ jobs:
           packages-dir: dist/pypi
           skip-existing: true
 
+  # The Go connector is a module in a subfolder, so the Go module proxy reads its versions from tags
+  # connectors/go/vX.Y.Z: this job creates that tag on the commit of the release tag and asks the proxy for it, which
+  # also lists it on pkg.go.dev (D231). There is nothing to upload and no account.
+  go-module:
+    name: Go module (connectors/go)
+    needs: [plan, tag]
+    if: vars.CONNECTOR_GO == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Tag connectors/go/v<version> (a tag that exists is kept)
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="connectors/go/v$VERSION"
+          existing="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha 2>/dev/null || true)"
+          if [[ -n $existing ]]; then
+            echo "$tag already exists ($existing)"
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
+            echo "created $tag on $GITHUB_SHA"
+          fi
+      - name: The module proxy serves the version
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://proxy.golang.org/github.com/${GITHUB_REPOSITORY,,}/connectors/go/@v/v$VERSION.info"
+          for _ in $(seq 20); do
+            if info="$(curl -sf "$url")"; then echo "$info"; exit 0; fi
+            sleep 15
+          done
+          echo "the Go module proxy does not serve v$VERSION ($url)" >&2
+          exit 1
+
   # The chart as an OCI artifact on GHCR: helm install oci://ghcr.io/<owner>/charts/taba --version X.Y.Z.
   chart-publish:
     name: Helm chart on GHCR
