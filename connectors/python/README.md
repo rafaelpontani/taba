@@ -36,13 +36,13 @@ async def main():
 asyncio.run(main())
 ```
 
-## Installing (not in a registry yet)
-
-Not in a registry yet (the identifiers are still open). Until then, each [Release](https://github.com/rafaelpontani/taba/releases) has the installable file, with its checksum in `SHA256SUMS` and its provenance (`gh attestation verify <file> -R rafaelpontani/taba`). `<release>` below is the version of the Release; the version in the file name is the connector's own.
+## Installing
 
 ```
-pip install https://github.com/rafaelpontani/taba/releases/download/v<release>/taba_client-0.1.0-py3-none-any.whl
+pip install taba-client
 ```
+
+The package has the version of the Taba release it came with and is published from the release workflow of this repository with PyPI Trusted Publishing. A release candidate is published in the PEP 440 form (`0.3.19rc1`), which `pip` only installs when asked (`pip install --pre taba-client`). Each [Release](https://github.com/rafaelpontani/taba/releases) also has the same wheel, `taba_client-<release>-py3-none-any.whl`, with its checksum in `SHA256SUMS` and its provenance (`gh attestation verify <file> -R rafaelpontani/taba`).
 
 Straight from the source, with no Release (a branch, a tag or a commit after the `@`):
 

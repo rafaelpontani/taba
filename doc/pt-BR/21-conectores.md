@@ -3,7 +3,7 @@ título: Conectores
 resumo: As bibliotecas de cliente do Taba — o contrato comum (as nove operações, repetição, erros, corpo), o estado real de cada linguagem (Rust, C#, Java, Python, Node.js, Go, PHP e Ruby prontos; duas planejadas), como usar e como escrever um novo.
 tipo: referência
 status: parcial
-verificado-em: 2026-11-07 @ 4fbb808
+verificado-em: 2026-11-17 @ 08edeca
 fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/go, connectors/php, connectors/ruby, .github/scripts/package-connectors.sh, connectors/omb, connectors/contract, examples/csharp-console]
 ---
 
@@ -303,13 +303,13 @@ Enquanto um conector não chega ao seu registro (PRB-079), o pacote dele é um *
 | Conector | Arquivo da [Release](https://github.com/rafaelpontani/taba/releases) | Instalação |
 |---|---|---|
 | Node.js | `taba-client-<v>.tgz` (também no npm) | `npm install taba-client` |
-| Python | `taba_client-<v>-py3-none-any.whl` | `pip install <URL do arquivo>` |
+| Python | `taba_client-<v>-py3-none-any.whl` (também no PyPI) | `pip install taba-client` |
 | Ruby | `taba-client-<v>.gem` | baixar e `gem install ./taba-client-<v>.gem` |
 | Java | `taba-client-<v>.jar` | `mvn install:install-file`, ou o jar no classpath |
 | PHP | `taba-client-php-<v>.zip` | um repositório `package` do Composer com o `dist.url` apontando para o arquivo, ou descompactar e `require src/autoload.php` |
 | Go | sem arquivo | `go get github.com/rafaelpontani/taba/connectors/go@release` (o caminho do módulo é o repositório) |
 
-`<v>` é a versão do **conector** (os conectores têm versão própria, D70.2), não a da Release, exceto o Node.js, publicado no npm como `taba-client` com a versão da Release (D229). Sem uma Release, alguns também se instalam do código-fonte: Python (`pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"`), Ruby (Bundler, `glob: 'connectors/ruby/*.gemspec'`) e pnpm (`#path:/connectors/node`); o npm e o Composer não leem uma pasta de um repositório. Os comandos exatos estão no README de cada conector.
+`<v>` é a versão do **conector** (os conectores têm versão própria, D70.2), não a da Release, exceto o Node.js e o Python, publicados no npm e no PyPI como `taba-client` com a versão da Release (D229, D230; no PyPI na forma da PEP 440, uma candidata é `0.3.9rc1`). Sem uma Release, alguns também se instalam do código-fonte: Python (`pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"`), Ruby (Bundler, `glob: 'connectors/ruby/*.gemspec'`) e pnpm (`#path:/connectors/node`); o npm e o Composer não leem uma pasta de um repositório. Os comandos exatos estão no README de cada conector.
 
 ## Os adiados: versão-base e publicação
 
