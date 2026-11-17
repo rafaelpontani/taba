@@ -53,6 +53,10 @@ sed -i -e "s|^version: .*|version: $version|" -e "s|^appVersion: .*|appVersion: 
 # The Node.js connector (taba-client on npm) goes out with the release version too, like the C# and Rust ones.
 sed -i "0,/\"version\": \"[^\"]*\"/s//\"version\": \"$version\"/" connectors/node/package.json
 
+# The Python connector (taba-client on PyPI) too, in the PEP 440 form: 0.3.9-rc.2 is 0.3.9rc2 (D230).
+pyversion="$(echo "$version" | sed -E 's/-rc\./rc/')"
+sed -i "s|^VERSION = \"[^\"]*\"|VERSION = \"$pyversion\"|" connectors/python/taba/_version.py
+
 for csproj in connectors/csharp/Taba.Client*/*.csproj; do
   if grep -q '<Version>' "$csproj"; then
     sed -i "s|<Version>[^<]*</Version>|<Version>$version</Version>|" "$csproj"

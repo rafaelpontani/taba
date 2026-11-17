@@ -10,7 +10,7 @@
 #   PHP      taba-client-php-<v>.zip              Composer "package" repository, or unzip and require src/autoload.php
 #
 # The version of each file is the one in the connector's own manifest (the connectors version on their own, D70.2),
-# except Node.js, whose package.json release.yml sets to the release version first (set-version.sh, D229);
+# except Node.js and Python, which release.yml sets to the release version first (set-version.sh, D229, D230);
 # this script rewrites nothing. Go has no file: its module path is the repository (connectors/go/README.md). Each package is
 # built in the container of a current runtime, from a copy of the folder, so the working tree is left untouched.
 # Used by release.yml (job connector-packages) and by ci.yml (so a broken package is found on the pull request).
