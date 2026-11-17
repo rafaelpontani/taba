@@ -1,5 +1,5 @@
 {
-    "name": "@rafaelpontani/pulumi-taba",
+    "name": "pulumi-taba",
     "version": "${VERSION}",
     "description": "Queues, distributors and access tokens of the Taba messaging system.",
     "keywords": [
@@ -10,7 +10,7 @@
         "category/infrastructure"
     ],
     "homepage": "https://github.com/rafaelpontani/taba",
-    "repository": "https://github.com/rafaelpontani/pulumi-taba",
+    "repository": {"type": "git", "url": "git+https://github.com/rafaelpontani/taba.git", "directory": "connectors/pulumi/sdk/nodejs"},
     "license": "Apache-2.0",
     "scripts": {
         "build": "tsc"

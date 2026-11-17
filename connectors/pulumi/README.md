@@ -8,7 +8,7 @@ The full guide (installation by language, configuration, every resource, `create
 
 | Language | Package | Install |
 |---|---|---|
-| TypeScript / JavaScript | [`@rafaelpontani/pulumi-taba`](https://www.npmjs.com/package/@rafaelpontani/pulumi-taba) | `npm install @rafaelpontani/pulumi-taba` |
+| TypeScript / JavaScript | [`pulumi-taba`](https://www.npmjs.com/package/pulumi-taba) | `npm install pulumi-taba` |
 | Python | [`pulumi-taba`](https://pypi.org/project/pulumi-taba/) | `pip install pulumi-taba` |
 | .NET | [`Taba.Pulumi`](https://www.nuget.org/packages/Taba.Pulumi) | `dotnet add package Taba.Pulumi` |
 | Go | `github.com/rafaelpontani/pulumi-taba/sdk/go/taba` | `go get github.com/rafaelpontani/pulumi-taba/sdk` |
@@ -32,7 +32,7 @@ A queue, a distributor that copies each publication to the queues starting with 
 **TypeScript**
 
 ```typescript
-import * as taba from "@rafaelpontani/pulumi-taba";
+import * as taba from "pulumi-taba";
 
 const orders = new taba.Queue("orders", { name: "orders", ttl: 86400, maxDeliveries: 5 });
 

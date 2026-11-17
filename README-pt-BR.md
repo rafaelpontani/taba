@@ -354,7 +354,7 @@ resource "taba_token" "orders_app" {
 }
 ```
 
-**Provider Pulumi.** O [`connectors/pulumi`](connectors/pulumi/README.md) é o mesmo provider para o Pulumi, com SDKs para TypeScript/JavaScript, Python, .NET e Go (`@rafaelpontani/pulumi-taba`, `pulumi-taba`, `Taba.Pulumi` e um módulo Go): filas, distribuidores e tokens de acesso como código, com `preview`, detecção de desvio, import e o mesmo `forceDestroy` e `createOrUpdate`. É empacotado em cada [Release](https://github.com/rafaelpontani/taba/releases) e espera a configuração dos registries de pacotes dele ([o guia](doc/pt-BR/41-pulumi.md)).
+**Provider Pulumi.** O [`connectors/pulumi`](connectors/pulumi/README.md) é o mesmo provider para o Pulumi, com SDKs para TypeScript/JavaScript, Python, .NET e Go (`pulumi-taba`, `pulumi-taba`, `Taba.Pulumi` e um módulo Go): filas, distribuidores e tokens de acesso como código, com `preview`, detecção de desvio, import e o mesmo `forceDestroy` e `createOrUpdate`. É empacotado em cada [Release](https://github.com/rafaelpontani/taba/releases) e espera a configuração dos registries de pacotes dele ([o guia](doc/pt-BR/41-pulumi.md)).
 
 As outras linguagens (C e C++ ficam adiados, sem data) usam o próprio cliente HTTP. O desenho está no [guia dos conectores](doc/pt-BR/21-conectores.md).
 

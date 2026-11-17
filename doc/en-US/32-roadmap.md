@@ -57,7 +57,7 @@ Decisions that must be closed: **D68** (base versions of the languages still to 
 
 | Item | Detail |
 |---|---|
-| Packages 🟡 | nuget.org (`Taba.*`) and crates.io (`taba-client`, `taba-cli`) automated in `release.yml` by Trusted Publishing, turned on by the `PUBLISH_CRATES` and `NUGET_USER` variables ([27-ci-cd.md](27-ci-cd.md#publishing-and-metadata)); the registries of the other languages are missing (PRB-079); meanwhile their files are attached to the Release (D70.3). **They cannot be deleted** |
+| Packages 🟡 | nuget.org (`Taba.*`), crates.io (`taba-client`, `taba-cli`) and npm (`taba-client`, D229) automated in `release.yml` by Trusted Publishing, turned on by the `PUBLISH_CRATES`, `NUGET_USER` and `CONNECTOR_NPM` variables ([27-ci-cd.md](27-ci-cd.md#publishing-and-metadata)); the registries of the other languages are missing (PRB-079); meanwhile their files are attached to the Release (D70.3). **They cannot be deleted** |
 | Images ✅ | Docker Hub and GHCR, with the same digest on every tag ([27-ci-cd.md](27-ci-cd.md#docker-tags-and-floating-tags)) |
 | Public repository ⬜ | Today private; the definitive publication is the owner's decision |
 

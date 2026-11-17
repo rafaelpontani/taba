@@ -302,14 +302,14 @@ Until a connector reaches its registry (PRB-079), its package is a **file attach
 
 | Connector | File of the [Release](https://github.com/rafaelpontani/taba/releases) | Install |
 |---|---|---|
-| Node.js | `taba-client-<v>.tgz` | `npm install <URL of the file>` |
+| Node.js | `taba-client-<v>.tgz` (also on npm) | `npm install taba-client` |
 | Python | `taba_client-<v>-py3-none-any.whl` | `pip install <URL of the file>` |
 | Ruby | `taba-client-<v>.gem` | download, then `gem install ./taba-client-<v>.gem` |
 | Java | `taba-client-<v>.jar` | `mvn install:install-file`, or the jar on the classpath |
 | PHP | `taba-client-php-<v>.zip` | a Composer `package` repository whose `dist.url` is the file, or unzip and `require src/autoload.php` |
 | Go | no file | `go get github.com/rafaelpontani/taba/connectors/go@release` (the module path is the repository) |
 
-`<v>` is the version of the **connector** (the connectors version on their own, D70.2), not the Release's. Without a Release, some can also be installed from the source: Python (`pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"`), Ruby (Bundler, `glob: 'connectors/ruby/*.gemspec'`) and pnpm (`#path:/connectors/node`); npm and Composer cannot read a folder of a repository. The exact commands are in the README of each connector.
+`<v>` is the version of the **connector** (the connectors version on their own, D70.2), not the Release's, except Node.js, which is published on npm as `taba-client` with the Release's version (D229). Without a Release, some can also be installed from the source: Python (`pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"`), Ruby (Bundler, `glob: 'connectors/ruby/*.gemspec'`) and pnpm (`#path:/connectors/node`); npm and Composer cannot read a folder of a repository. The exact commands are in the README of each connector.
 
 ## The deferred ones: base version and publication
 

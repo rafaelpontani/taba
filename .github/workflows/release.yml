@@ -208,8 +208,8 @@ jobs:
           path: dist/*.tgz
           retention-days: 1
 
-  # The installable file of each connector that is not in a registry yet (Node.js, Python, Ruby, Java, PHP), attached
-  # to the Release by release-assets. The same script runs on pull requests (ci.yml), so a broken package is found there.
+  # The installable file of each connector that is not in a registry yet (Python, Ruby, Java, PHP) and of the Node.js one
+  # (also on npm, job npm), attached to the Release by release-assets. The same script runs on pull requests (ci.yml), so a broken package is found there.
   connector-packages:
     name: Connector packages
     needs: plan
@@ -221,6 +221,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The Node.js connector takes the release version (npm job below); the others keep their own (D70.2).
+      - env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: .github/scripts/set-version.sh "$VERSION"
       - run: bash .github/scripts/package-connectors.sh dist
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -595,6 +599,42 @@ jobs:
           dotnet nuget push "nupkg/*.nupkg" --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json --skip-duplicate
 
+  # The Node.js connector (taba-client) on npm, with the release version (set-version.sh in connector-packages), by
+  # Trusted Publishing: the trusted publisher of the package is this repository, release.yml, environment release, with
+  # `npm publish` allowed (D229). A candidate goes to the `next` dist-tag. Outside `finalize`: npm reviews a new version
+  # for a while before serving it, and that wait must not hold the Release back.
+  npm:
+    name: npm (taba-client)
+    needs: [plan, tag]
+    if: vars.CONNECTOR_NPM == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: connector-packages
+          path: dist
+      # Trusted Publishing needs npm 11.5.1 or later (Node 24).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Publish (a version that already exists is kept)
+        run: |
+          set -euo pipefail
+          if npm view "taba-client@$VERSION" version >/dev/null 2>&1; then
+            echo "taba-client@$VERSION is already on npm"
+            exit 0
+          fi
+          tag=latest
+          [[ $VERSION == *-rc.* ]] && tag=next
+          npm publish "dist/taba-client-$VERSION.tgz" --access public --tag "$tag"
+
   # The chart as an OCI artifact on GHCR: helm install oci://ghcr.io/<owner>/charts/taba --version X.Y.Z.
   chart-publish:
     name: Helm chart on GHCR
@@ -779,7 +819,7 @@ jobs:
   # destination has its own variable (empty = not published, so a new registry is turned on by itself, after its
   # setup in doc/pt-BR/27-ci-cd.md) and publishes with --skip-duplicate / skip-existing, so a rerun is harmless:
   #   PULUMI_PROVIDER_REPO  the mirror repository (owner/repository, secret PULUMI_MIRROR_TOKEN): tags, plugin archives, Go SDK
-  #   PULUMI_NPM            "true": @rafaelpontani/pulumi-taba on npm (Trusted Publishing; --tag next on a candidate)
+  #   PULUMI_NPM            "true": pulumi-taba on npm (Trusted Publishing; --tag next on a candidate)
   #   PULUMI_PYPI           "true": pulumi-taba on PyPI (Trusted Publishing; a candidate is 0.3.9rc1)
   #   PULUMI_NUGET_USER     the nuget.org account of the Trusted Publishing policy of Taba.Pulumi
   pulumi-verify:
@@ -851,26 +891,26 @@ jobs:
       - name: Publish (a version that already exists is kept)
         run: |
           set -euo pipefail
-          if npm view "@rafaelpontani/pulumi-taba@$VERSION" version >/dev/null 2>&1; then
-            echo "@rafaelpontani/pulumi-taba@$VERSION is already on npm"
+          if npm view "pulumi-taba@$VERSION" version >/dev/null 2>&1; then
+            echo "pulumi-taba@$VERSION is already on npm"
             exit 0
           fi
           tag=latest
           [[ $VERSION == *-rc.* ]] && tag=next
-          npm publish "dist/pulumi/rafaelpontani-pulumi-taba-$VERSION.tgz" --access public --tag "$tag"
+          npm publish "dist/pulumi/pulumi-taba-$VERSION.tgz" --access public --tag "$tag"
       # pulumi-verify already ran a Pulumi program on this .tgz; here npm must serve exactly that file (the same
       # sha512 as the one built), which needs no unpinned `npm install` (OpenSSF Scorecard, Pinned-Dependencies).
       - name: npm serves the package that was verified
         run: |
           set -euo pipefail
           for _ in 1 2 3 4 5 6; do
-            got="$(npm view "@rafaelpontani/pulumi-taba@$VERSION" version 2>/dev/null || true)"
+            got="$(npm view "pulumi-taba@$VERSION" version 2>/dev/null || true)"
             [ "$got" = "$VERSION" ] && break
             sleep 20
           done
-          [ "$got" = "$VERSION" ] || { echo "npm does not list @rafaelpontani/pulumi-taba@$VERSION" >&2; exit 1; }
-          want="sha512-$(openssl dgst -sha512 -binary "dist/pulumi/rafaelpontani-pulumi-taba-$VERSION.tgz" | base64 -w0)"
-          served="$(npm view "@rafaelpontani/pulumi-taba@$VERSION" dist.integrity)"
+          [ "$got" = "$VERSION" ] || { echo "npm does not list pulumi-taba@$VERSION" >&2; exit 1; }
+          want="sha512-$(openssl dgst -sha512 -binary "dist/pulumi/pulumi-taba-$VERSION.tgz" | base64 -w0)"
+          served="$(npm view "pulumi-taba@$VERSION" dist.integrity)"
           [ "$served" = "$want" ] || { echo "npm serves $served, the verified package is $want" >&2; exit 1; }
           echo "npm serves the verified package ($want)"
 
