@@ -3,7 +3,7 @@ título: Provider Pulumi
 resumo: "O provider do Taba para o Pulumi (`taba`), em `connectors/pulumi`: o provider Terraform ligado ao TypeScript/JavaScript, Python, .NET e Go; os pacotes e como o plugin é instalado, a configuração do provider, os recursos e os nomes deles nos SDKs, por que nada recebe nome automático, `preview`, desvio e `import`, o `forceDestroy`, o `createOrUpdate` opcional, como funcionam a substituição e a rotação de um token no Pulumi, `protect` e `retainOnDelete`, o segredo do token no estado, como os SDKs são gerados e testados e como são publicados."
 tipo: guia
 status: parcial
-verificado-em: 2026-11-11 @ fef5dda
+verificado-em: 2026-11-17 @ 86bafdf
 fontes: [connectors/pulumi/provider/resources.go, connectors/pulumi/provider/docs_edits.go, connectors/pulumi/provider/resources_test.go, connectors/pulumi/provider/cmd/pulumi-resource-taba/main.go, connectors/pulumi/provider/cmd/pulumi-tfgen-taba/main.go, connectors/pulumi/provider/cmd/pulumi-resource-taba/schema.json, connectors/pulumi/scripts/generate.sh, connectors/pulumi/scripts/test.sh, connectors/pulumi/scripts/package.sh, connectors/pulumi/scripts/readme.sh, connectors/pulumi/README.md, connectors/pulumi/scripts/verify-release.sh, connectors/pulumi/scripts/mirror.sh, connectors/pulumi/examples/scenarios.sh, connectors/terraform/shim/shim.go, .github/workflows/release.yml, .github/workflows/build-connector-pulumi.yml]
 ---
 
@@ -13,7 +13,7 @@ fontes: [connectors/pulumi/provider/resources.go, connectors/pulumi/provider/doc
 
 O provider gerencia como código, num programa Pulumi, o que o [provider Terraform e OpenTofu](40-terraform.md) gerencia: **filas, distribuidores e tokens de acesso**, com `preview`, detecção de desvio, `import` e remoção controlada. É **o mesmo provider**, ligado ao Pulumi pelo [pulumi-terraform-bridge](https://github.com/pulumi/pulumi-terraform-bridge): o `connectors/pulumi` embute o provider Terraform (`connectors/terraform/shim`), mapeia os recursos dele para tokens do Pulumi e gera os SDKs de **TypeScript/JavaScript, Python, .NET e Go**. Existe um só código para o comportamento e um só conjunto de testes dele; um comportamento errado no Pulumi está errado no Terraform, e é corrigido e testado lá (D212).
 
-**Estado.** O provider está pronto e testado localmente: unitários, SDKs gerados em dia, cenários de aceitação em TypeScript e Python contra um nó real e os arquivos do release instalados como um usuário os recebe. A pipeline o empacota a cada versão; **nada foi publicado ainda**: o repositório espelho e os pacotes do npm, do PyPI e do NuGet esperam a configuração do mantenedor ([Publicação](#publicação)). O Java ainda não é gerado ([31-pendencias.md](31-pendencias.md)).
+**Estado.** O provider está pronto e testado localmente: unitários, SDKs gerados em dia, cenários de aceitação em TypeScript e Python contra um nó real e os arquivos do release instalados como um usuário os recebe. A pipeline o empacota a cada versão; o pacote npm `pulumi-taba` é publicado a cada versão (Trusted Publishing); o repositório espelho e os pacotes do PyPI e do NuGet esperam a configuração do mantenedor ([Publicação](#publicação)). O Java ainda não é gerado ([31-pendencias.md](31-pendencias.md)).
 
 O mesmo programa em cada linguagem: uma fila, um distribuidor que copia cada publicação para as filas que começam com `orders` ou `billing` e um token que publica e consome só os tópicos cujo nome começa com `orders`.
 
@@ -258,7 +258,7 @@ O `release.yml` empacota o provider a cada versão (`scripts/package.sh`: seis a
 | Destino | Variável | O quê |
 |---|---|---|
 | Espelho `rafaelpontani/pulumi-taba` (D213) | `PULUMI_PROVIDER_REPO` e o segredo `PULUMI_MIRROR_TOKEN` | `scripts/mirror.sh`: o SDK Go (`sdk/`), o schema, os exemplos e o README na `main`, as tags `v<versão>` e `sdk/v<versão>` (o módulo Go está em `sdk/`, então o Go lê as versões das tags `sdk/`) e uma Release com os arquivos, que é o que `pulumi plugin install --server github://...` baixa; o que a API do GitHub responde com 5xx é tentado de novo (até 5 vezes) e uma Release criada só em parte é completada |
-| npm | `PULUMI_NPM=true` | Trusted Publishing; `--tag next` num candidato; depois instala o pacote do npm e confere |
+| npm | `PULUMI_NPM=true` | Trusted Publishing; `--tag next` num candidato; depois confere que o npm serve o arquivo verificado (mesmo `sha512`) |
 | PyPI | `PULUMI_PYPI=true` | Trusted Publishing; `skip-existing` |
 | nuget.org | `PULUMI_NUGET_USER` | Trusted Publishing (`NuGet/login`); `--skip-duplicate` |
 
