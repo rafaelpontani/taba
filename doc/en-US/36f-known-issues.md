@@ -3,8 +3,8 @@ title: "Known issues: fixed"
 summary: "The intermittent tests and known issues already fixed, kept as history and for when one comes back: each with its cause, fix, verification and the history of occurrences and attempts. The open ones are in 36a."
 type: reference
 status: partial
-verified-on: 2026-11-10 @ d6e1d66
-sources: [crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+verified-on: 2026-11-17 @ 8a5aa3a
+sources: [connectors/gateway-contract/drivers/run.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Known issues: fixed
@@ -15,6 +15,7 @@ This file holds the sections of the issues already **fixed**, as history and for
 
 | Code | Issue | Status | Found on | Fixed on |
 |---|---|---|---|---|
+| KI-035 | [Java drivers of the gateway contract that share the whole Maven folder](#ki-035-java-drivers-of-the-gateway-contract-that-share-the-whole-maven-folder) | Fixed | 2026-11-17 | 2026-11-17 |
 | KI-033 | [A pending register on the secondary checked before it arrived](#ki-033-a-pending-register-on-the-secondary-checked-before-it-arrived) | Fixed | 2026-11-10 | 2026-11-10 |
 | KI-032 | [A delivery checked on the copies before they learned of it](#ki-032-a-delivery-checked-on-the-copies-before-they-learned-of-it) | Fixed | 2026-11-10 | 2026-11-10 |
 | KI-031 | [An exclusion whose two phases are not counted on both nodes](#ki-031-an-exclusion-whose-two-phases-are-not-counted-on-both-nodes) | Fixed | 2026-11-10 | 2026-11-10 |
@@ -47,6 +48,22 @@ This file holds the sections of the issues already **fixed**, as history and for
 | KI-003 | [Rejoining after a symmetric partition](#ki-003-rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | KI-002 | [A healthy channel that does not come back](#ki-002-a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | KI-001 | [Lock-order inversion when choosing replicas](#ki-001-lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## KI-035: Java drivers of the gateway contract that share the whole Maven folder
+
+**Status:** Fixed · **Found on:** 2026-11-17 · **Fixed on:** 2026-11-17
+
+- **Test:** the gateway contract tests (`connectors/gateway-contract/run.sh`) on a Taba node, driver `java-v2` (the three Java drivers start in parallel).
+- **Symptom:** `the driver did not finish (no SUMMARY)`, and its log ends with `cp: cannot create regular file '/root/.m2/./settings-docker.xml': File exists`; the other drivers pass every line.
+- **Cause (confirmed):** the three Java drivers mounted the same Docker volume (`gwm2`) over the whole `/root/.m2`. The entrypoint of the `maven` image copies `settings-docker.xml` into `/root/.m2` every time a container starts; when two containers start at the same moment, the second `cp` finds the file the first one is creating and fails, and the container stops before the driver runs.
+- **Fix:** only the repository goes in the shared volume (`-v gwm2:/root/.m2/repository` in `drivers/run.sh`): each container has its own `/root/.m2`, where the entrypoint writes, and the downloaded dependencies are still shared.
+- **Verification:** three `maven` containers started together, 15 rounds with a new volume each: with the volume on `/root/.m2`, 2 of 45 failed with `File exists`; with it on `/root/.m2/repository`, none of 45.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-17 | Failed in the CI of the pull request of the npm wait (gateway contract on a Taba node, `java-v2`); reproduced with parallel `maven` containers and fixed in the driver script. |
 
 ## KI-033: A pending register on the secondary checked before it arrived
 
