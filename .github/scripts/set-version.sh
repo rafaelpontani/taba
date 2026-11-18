@@ -4,7 +4,7 @@
 #   .github/scripts/set-version.sh 0.1.0-rc.2
 #
 # Adjusts the server Cargo.toml and Cargo.lock, the Rust connectors' Cargo.toml and Cargo.lock,
-# the <Version> of the C# connector packages and the version of the Node.js connector's package.json.
+# the <Version> of the C# connector packages and the version of the Node.js, Python and Ruby connectors.
 
 set -euo pipefail
 
@@ -56,6 +56,11 @@ sed -i "0,/\"version\": \"[^\"]*\"/s//\"version\": \"$version\"/" connectors/nod
 # The Python connector (taba-client on PyPI) too, in the PEP 440 form: 0.3.9-rc.2 is 0.3.9rc2 (D230).
 pyversion="$(echo "$version" | sed -E 's/-rc\./rc/')"
 sed -i "s|^VERSION = \"[^\"]*\"|VERSION = \"$pyversion\"|" connectors/python/taba/_version.py
+
+# The Ruby connector (taba-client on RubyGems) too, in the RubyGems form: a letter makes a pre-release, and
+# 0.3.9-rc.2 is 0.3.9.rc2 (D232).
+gemversion="$(echo "$version" | sed -E 's/-rc\./.rc/')"
+sed -i "s|^  VERSION = '[^']*'.freeze|  VERSION = '$gemversion'.freeze|" connectors/ruby/lib/taba/version.rb
 
 for csproj in connectors/csharp/Taba.Client*/*.csproj; do
   if grep -q '<Version>' "$csproj"; then

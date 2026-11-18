@@ -57,7 +57,7 @@ Decisions that must be closed: **D68** (base versions of the languages still to 
 
 | Item | Detail |
 |---|---|
-| Packages 🟡 | nuget.org (`Taba.*`), crates.io (`taba-client`, `taba-cli`) npm (`taba-client`, D229) and PyPI (`taba-client`, D230) automated in `release.yml` by Trusted Publishing, and the Go module by a tag `connectors/go/vX.Y.Z` (D231), turned on by the `PUBLISH_CRATES`, `NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI` and `CONNECTOR_GO` variables ([27-ci-cd.md](27-ci-cd.md#publishing-and-metadata)); the registries of the other languages are missing (PRB-079); meanwhile their files are attached to the Release (D70.3). **They cannot be deleted** |
+| Packages 🟡 | nuget.org (`Taba.*`), crates.io (`taba-client`, `taba-cli`) npm (`taba-client`, D229), PyPI (`taba-client`, D230) and RubyGems (`taba-client`, D232) automated in `release.yml` by Trusted Publishing, and the Go module by a tag `connectors/go/vX.Y.Z` (D231), turned on by the `PUBLISH_CRATES`, `NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI`, `CONNECTOR_RUBYGEMS` and `CONNECTOR_GO` variables ([27-ci-cd.md](27-ci-cd.md#publishing-and-metadata)); the registries of the other languages are missing (PRB-079); meanwhile their files are attached to the Release (D70.3). **They cannot be deleted** |
 | Images ✅ | Docker Hub and GHCR, with the same digest on every tag ([27-ci-cd.md](27-ci-cd.md#docker-tags-and-floating-tags)) |
 | Public repository ⬜ | Today private; the definitive publication is the owner's decision |
 
