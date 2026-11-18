@@ -25,14 +25,13 @@ end
 # client.subscribe('orders', cancel: token) { |message| puts message.json }
 ```
 
-## Installing (not in a registry yet)
-
-Not in a registry yet (the identifiers are still open). Until then, each [Release](https://github.com/rafaelpontani/taba/releases) has the installable file, with its checksum in `SHA256SUMS` and its provenance (`gh attestation verify <file> -R rafaelpontani/taba`). `<release>` below is the version of the Release; the version in the file name is the connector's own.
+## Installing
 
 ```
-curl -LO https://github.com/rafaelpontani/taba/releases/download/v<release>/taba-client-0.1.0.gem
-gem install ./taba-client-0.1.0.gem
+gem install taba-client
 ```
+
+Or, with Bundler, `gem 'taba-client'`. The gem has the version of the Taba release it came with and is published from the release workflow of this repository with RubyGems Trusted Publishing. A release candidate is published in the RubyGems pre-release form (`0.3.19.rc1`), which `gem` only installs when asked (`gem install --pre taba-client`). Each [Release](https://github.com/rafaelpontani/taba/releases) also has the same gem, `taba-client-<release>.gem`, with its checksum in `SHA256SUMS` and its provenance (`gh attestation verify <file> -R rafaelpontani/taba`).
 
 With Bundler, straight from the source (a branch, a tag or a commit):
 

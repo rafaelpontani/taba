@@ -221,7 +221,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The Node.js connector takes the release version (npm job below); the others keep their own (D70.2).
+      # The Node.js, Python and Ruby connectors take the release version (npm, pypi and rubygems jobs below); the others
+      # keep their own (D70.2).
       - env:
           VERSION: ${{ needs.plan.outputs.version }}
         run: .github/scripts/set-version.sh "$VERSION"
@@ -658,6 +659,57 @@ jobs:
         with:
           packages-dir: dist/pypi
           skip-existing: true
+
+  # taba-client (the Ruby connector) on RubyGems, with the release version in the RubyGems form (a candidate is
+  # 0.3.9.rc1, which gem only installs with --pre). Trusted Publishing: the OIDC token of the job is exchanged for an
+  # API key of 15 minutes (D232). The exchange is done here with curl, not with rubygems/configure-rubygems-credentials,
+  # because the first push of a new gem from a pending publisher must name the account that will own it (`owner`, the
+  # numeric id of the account in RUBYGEMS_OWNER), and the action has no such input; once the gem exists, the variable
+  # can stay or go.
+  rubygems:
+    name: RubyGems (taba-client)
+    needs: [plan, tag]
+    if: vars.CONNECTOR_RUBYGEMS == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      RUBYGEMS_OWNER: ${{ vars.RUBYGEMS_OWNER }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: connector-packages
+          path: dist
+      - name: Push the gem (a version already on RubyGems is kept)
+        shell: bash
+        run: |
+          set -euo pipefail
+          gemversion="$(echo "$VERSION" | sed -E 's/-rc\./.rc/')"
+          gem="dist/taba-client-$gemversion.gem"
+          [ -f "$gem" ] || { echo "missing $gem" >&2; ls dist >&2; exit 1; }
+          # RubyGems refuses a version pushed again, so a re-run skips it.
+          versions="$(curl -sf https://rubygems.org/api/v1/versions/taba-client.json || echo '[]')"
+          if jq -e --arg v "$gemversion" 'any(.[]; .number == $v)' <<<"$versions" >/dev/null; then
+            echo "taba-client $gemversion is already on RubyGems"
+            exit 0
+          fi
+          jwt="$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=rubygems.org" | jq -r .value)"
+          request="$(jq -n --arg jwt "$jwt" --arg owner "$RUBYGEMS_OWNER" \
+            '{jwt: $jwt} + (if $owner == "" then {} else {owner: $owner} end)')"
+          response="$(curl -sS -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json' \
+            -d "$request" https://rubygems.org/api/v1/oidc/trusted_publisher/exchange_token)"
+          status="$(tail -n1 <<<"$response")"
+          body="$(sed '$d' <<<"$response")"
+          if [ "$status" != 201 ]; then
+            echo "the token exchange answered $status: $body" >&2
+            exit 1
+          fi
+          key="$(jq -r .rubygems_api_key <<<"$body")"
+          echo "::add-mask::$key"
+          GEM_HOST_API_KEY="$key" gem push "$gem"
 
   # The Go connector is a module in a subfolder, so the Go module proxy reads its versions from tags
   # connectors/go/vX.Y.Z: this job creates that tag on the commit of the release tag and asks the proxy for it, which
