@@ -23,7 +23,7 @@ sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, con
 | **Node.js** (`taba-client`) | `connectors/node/` | ✅ **Ready** (unit tests and the contract tests) | ✅ [npm](https://www.npmjs.com/package/taba-client) (D229) |
 | **Go** (`taba`) | `connectors/go/` | ✅ **Ready** (unit tests and the contract tests) | ✅ [pkg.go.dev](https://pkg.go.dev/github.com/rafaelpontani/taba/connectors/go) (tags `connectors/go/vX.Y.Z`, D231) |
 | **PHP** (`taba/client`) | `connectors/php/` | ✅ **Ready** (unit tests and the contract tests; no automatic renewal of the invisibility, D68.3) | ⬜ Not published (D70.1, D70.2) |
-| **Ruby** (`taba-client`) | `connectors/ruby/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
+| **Ruby** (`taba-client`) | `connectors/ruby/` | ✅ **Ready** (unit tests and the contract tests) | ✅ [RubyGems](https://rubygems.org/gems/taba-client) (D232) |
 | **OpenMessaging Benchmark driver** (on top of Java) | `connectors/omb/` | ✅ **Ready** (unit and integration tests against a node) | ⬜ Not published (a tool of the repository) |
 | **Terraform and OpenTofu provider** (on top of Go) | `connectors/terraform/` | ✅ **Ready**: queues, distributors, tokens, `create_or_update`; unit tests and acceptance with Terraform and OpenTofu ([40-terraform.md](40-terraform.md)) | 🟡 Packaged in the Release; the registries wait for the mirror repository (D211) |
 | **Pulumi provider** (the Terraform provider bridged) | `connectors/pulumi/` | ✅ **Ready**: queues, distributors, tokens, `createOrUpdate`; SDKs for TypeScript, Python, .NET and Go; unit tests and acceptance with TypeScript and Python ([41-pulumi.md](41-pulumi.md)) | 🟡 Packaged in the Release; the mirror repository and the npm, PyPI and NuGet packages wait for the maintainer's setup (D213) |
@@ -294,7 +294,7 @@ client.consume_with('pedidos', wait_time: 20) { |context| puts context.message.b
 
 Tests: `cd connectors/ruby && ruby -Ilib -Itest -e 'Dir["test/*_test.rb"].each { |f| require File.expand_path(f) }'` (minitest and a local TCP server).
 
-> **Go, PHP and Ruby are not a copy of the C# one either** (D68.3): each uses its language's own forms, and the three run the contract tests against a real Taba, on Go 1.7, PHP 5.6 and Ruby 2.1. None is published (PRB-079).
+> **Go, PHP and Ruby are not a copy of the C# one either** (D68.3): each uses its language's own forms, and the three run the contract tests against a real Taba, on Go 1.7, PHP 5.6 and Ruby 2.1. Go is published at the module proxy (D231) and Ruby on RubyGems (D232); PHP is not published yet (PRB-079).
 
 ## Using the connectors before they are published
 
@@ -304,12 +304,12 @@ Until a connector reaches its registry (PRB-079), its package is a **file attach
 |---|---|---|
 | Node.js | `taba-client-<v>.tgz` (also on npm) | `npm install taba-client` |
 | Python | `taba_client-<v>-py3-none-any.whl` (also on PyPI) | `pip install taba-client` |
-| Ruby | `taba-client-<v>.gem` | download, then `gem install ./taba-client-<v>.gem` |
+| Ruby | `taba-client-<v>.gem` (also on RubyGems) | `gem install taba-client` |
 | Java | `taba-client-<v>.jar` | `mvn install:install-file`, or the jar on the classpath |
 | PHP | `taba-client-php-<v>.zip` | a Composer `package` repository whose `dist.url` is the file, or unzip and `require src/autoload.php` |
 | Go | no file | `go get github.com/rafaelpontani/taba/connectors/go@latest` (the module path is the repository; each release tags `connectors/go/v<release>`, D231) |
 
-`<v>` is the version of the **connector** (the connectors version on their own, D70.2), not the Release's, except Node.js and Python, which are published on npm and PyPI as `taba-client` with the Release's version (D229, D230; on PyPI in the PEP 440 form, a candidate is `0.3.9rc1`). Without a Release, some can also be installed from the source: Python (`pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"`), Ruby (Bundler, `glob: 'connectors/ruby/*.gemspec'`) and pnpm (`#path:/connectors/node`); npm and Composer cannot read a folder of a repository. The exact commands are in the README of each connector.
+`<v>` is the version of the **connector** (the connectors version on their own, D70.2), not the Release's, except Node.js, Python and Ruby, which are published on npm, PyPI and RubyGems as `taba-client` with the Release's version (D229, D230, D232; on PyPI in the PEP 440 form, a candidate is `0.3.9rc1`, and on RubyGems `0.3.9.rc1`). Without a Release, some can also be installed from the source: Python (`pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"`), Ruby (Bundler, `glob: 'connectors/ruby/*.gemspec'`) and pnpm (`#path:/connectors/node`); npm and Composer cannot read a folder of a repository. The exact commands are in the README of each connector.
 
 ## The deferred ones: base version and publication
 
