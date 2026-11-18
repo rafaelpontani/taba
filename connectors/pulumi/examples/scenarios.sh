@@ -71,7 +71,7 @@ expect_api 200 GET "/topics/$prefix-events"
 [ "$(out queueName)" = "$orders" ] || fail "output queueName"
 [ "$(out tokenSecret)" = "[secret]" ] || fail "the token must be a secret in the outputs, got: $(out tokenSecret)"
 [ -n "$(pulumi stack output tokenSecret --show-secrets --non-interactive)" ] || fail "the token secret is empty"
-pulumi stack output queueNames --non-interactive | grep -q "$orders" || fail "getTopics did not list $orders"
+grep -q "$orders" <<<"$(pulumi stack output queueNames --non-interactive)" || fail "getTopics did not list $orders"
 
 step "In-place update: maxDeliveries 5 -> 7"
 pulumi config set maxDeliveries 7 >/dev/null

@@ -636,6 +636,67 @@ jobs:
           # "./": without it npm reads "dist/<file>" as the GitHub shorthand <user>/<repository>.
           npm publish "./dist/taba-client-$VERSION.tgz" --access public --tag "$tag"
 
+  # taba-client (the Python connector) on PyPI, with the release version in the PEP 440 form (a candidate is 0.3.9rc1,
+  # which pip only installs with --pre). Trusted Publishing: a pending publisher on PyPI for rafaelpontani/taba,
+  # release.yml and the release environment (D230).
+  pypi:
+    name: PyPI (taba-client)
+    needs: [plan, tag]
+    if: vars.CONNECTOR_PYPI == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: connector-packages
+          path: dist
+      # Only the wheel of the Python connector goes to PyPI.
+      - run: mkdir dist/pypi && cp dist/taba_client-*.whl dist/pypi/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          packages-dir: dist/pypi
+          skip-existing: true
+
+  # The Go connector is a module in a subfolder, so the Go module proxy reads its versions from tags
+  # connectors/go/vX.Y.Z: this job creates that tag on the commit of the release tag and asks the proxy for it, which
+  # also lists it on pkg.go.dev (D231). There is nothing to upload and no account.
+  go-module:
+    name: Go module (connectors/go)
+    needs: [plan, tag]
+    if: vars.CONNECTOR_GO == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Tag connectors/go/v<version> (a tag that exists is kept)
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="connectors/go/v$VERSION"
+          # The exit code says whether the tag exists: on a 404, gh api also prints the JSON of the error to stdout.
+          if existing="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha 2>/dev/null)"; then
+            echo "$tag already exists ($existing)"
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
+            echo "created $tag on $GITHUB_SHA"
+          fi
+      - name: The module proxy serves the version
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://proxy.golang.org/github.com/${GITHUB_REPOSITORY,,}/connectors/go/@v/v$VERSION.info"
+          for _ in $(seq 20); do
+            if info="$(curl -sf "$url")"; then echo "$info"; exit 0; fi
+            sleep 15
+          done
+          echo "the Go module proxy does not serve v$VERSION ($url)" >&2
+          exit 1
+
   # The chart as an OCI artifact on GHCR: helm install oci://ghcr.io/<owner>/charts/taba --version X.Y.Z.
   chart-publish:
     name: Helm chart on GHCR

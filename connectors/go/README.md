@@ -37,7 +37,7 @@ _, err = client.ConsumeWith(ctx, "orders", &taba.ConsumeOptions{WaitTime: taba.I
 
 ## Installing
 
-Go reads the module straight from the repository, so there is nothing else to download: `go get github.com/rafaelpontani/taba/connectors/go@release` (a branch, or a commit; with Go 1.7, which has no modules, the plain `go get` above). A fixed version needs a tag `connectors/go/vX.Y.Z`, which is not created yet because the connector is not published (the identifiers are still open).
+Go reads the module straight from the repository, so there is nothing else to download: `go get github.com/rafaelpontani/taba/connectors/go@latest`. Each Taba release tags the module with its version (`connectors/go/vX.Y.Z`, listed on [pkg.go.dev](https://pkg.go.dev/github.com/rafaelpontani/taba/connectors/go)), so `@v0.3.19` asks for one; a release candidate is `@v0.3.19-rc.1`, which `@latest` never picks. A branch or a commit also works (`@release`); with Go 1.7, which has no modules, the plain `go get` above.
 
 ## Declaring a topic
 

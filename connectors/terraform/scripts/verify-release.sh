@@ -97,7 +97,10 @@ for cli in $TF_CLIS; do
       -e CHECKPOINT_DISABLE=1 -e TABA_URL="$TABA_URL" -e TABA_TOKEN="$TABA_TOKEN" alpine:3.20 "$path" "$@"
   }
   run init -input=false -no-color >/dev/null
-  run version -json | grep -q "\"registry.[a-z.]*/rafaelpontani/taba\": \"$version\"" \
+  # The output is read whole first: with pipefail, grep -q stops at the first match and the CLI, still writing, ends
+  # with "broken pipe", which failed the check with the right version installed (KI-036).
+  installed="$(run version -json)"
+  grep -q "\"registry.[a-z.]*/rafaelpontani/taba\": \"$version\"" <<<"$installed" \
     || contract_die "$cli did not install rafaelpontani/taba $version"
   run apply -input=false -no-color -auto-approve | grep -E '^Apply complete'
   run plan -input=false -no-color -detailed-exitcode >/dev/null || contract_die "$cli: the plan after the apply is not empty"
