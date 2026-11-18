@@ -3,7 +3,7 @@ título: CI/CD e releases
 resumo: Como o repositório é validado e publicado — os workflows do GitHub Actions, a ordem do release (nada público antes de tudo verde), o versionamento automático (semantic-release, candidatas e finais), as tags flutuantes por digest, a publicação em Docker Hub, GHCR, crates.io e nuget.org, e como qualquer pessoa verifica que um artefato saiu deste pipeline.
 tipo: referência
 status: estável
-verificado-em: 2026-11-17 @ f30a4f9
+verificado-em: 2026-11-18 @ e1319be
 fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/scripts/package-connectors.sh, .github/scripts/pinned-deps.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md, .clusterfuzzlite, crates/taba-node/fuzz]
 ---
 
@@ -60,7 +60,7 @@ feature/*  ── PR ──▶ ci.yml: build + testes (nada é publicado, nenhum
 | `scorecard.yml` | `ossf/scorecard-action`; o resultado vai para a aba Security e para o badge do README |
 | `vulnerabilities.yml` | `.github/scripts/vulnerabilities.sh` todo dia na `main` e na `release`: um aviso publicado depois do merge falha a execução (o GitHub avisa) antes do próximo scan do Scorecard |
 | `fuzzing.yml` | ClusterFuzzLite (`.clusterfuzzlite/`): compila os alvos de `crates/taba-node/fuzz` com AddressSanitizer e faz fuzzing neles; `code-change` nos pull requests, `batch` todo dia na `main` ([abaixo](#fuzzing)) |
-| `codeql.yml` | CodeQL para `rust`, `csharp` e `actions`, todos com `build-mode: none` (independente das toolchains dos builds) |
+| `codeql.yml` | CodeQL para `rust`, `csharp` e `actions`, todos com `build-mode: none` (independente das toolchains dos builds); o código de teste (`tests.rs`, `tests/`, `testing/`) fica de fora por `.github/codeql/codeql-config.yml`, porque as mensagens de panic imprimem tokens falsos que a consulta `cleartext-logging` aponta como segredos |
 
 A entrada `version` dos builds é **vazia** quando não há release; com versão, o `set-version.sh` a grava nos arquivos **só dentro do build, sem commitar**. Todo build exporta `TABA_GIT_SHA`: `taba --version` e `taba-cli --version` mostram o commit.
 
@@ -305,6 +305,6 @@ Um segundo script, `node doc/pt-BR/scripts/verificar-idiomas.mjs`, confere que a
 
 ## Fontes e provas
 
-- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,contract-connectors,contract-gateway,release,scorecard,codeql,vulnerabilities,fuzzing}.yml`, `.clusterfuzzlite/`, `crates/taba-node/fuzz/`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/scripts/package-connectors.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
+- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,contract-connectors,contract-gateway,release,scorecard,codeql,vulnerabilities,fuzzing}.yml`, `.github/codeql/codeql-config.yml`, `.clusterfuzzlite/`, `crates/taba-node/fuzz/`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/scripts/package-connectors.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
 - Decisões: D159 a D163, D226 a D228 ([30-decisoes.md](30-decisoes.md)).
 - Casos de uso: não há casos `UC-` de pipeline; a validação é `docker/validate.sh` ([25-testes.md](25-testes.md)).

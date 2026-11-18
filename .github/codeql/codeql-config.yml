@@ -1,0 +1,7 @@
+# CodeQL configuration (codeql.yml). Test code is not analyzed: its panic and assert messages print fake test
+# data (tokens, profiles), which the cleartext-logging query reports as secrets, and it is not compiled into the
+# binaries or the packages.
+paths-ignore:
+  - "**/tests.rs"
+  - "**/tests/**"
+  - "**/testing/**"
