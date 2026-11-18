@@ -35,7 +35,7 @@ That is why Taba is measured [against brokers of the same class](doc/en-US/38-be
 | **Durability** | Each message is confirmed by a **quorum** of nodes (3 copies by default) and backed up **continuously to S3** (AWS, SeaweedFS, MinIO, Ceph...) |
 | **Deployment** | One Docker image (58 MB), Docker Compose, or the **Helm chart** at `oci://ghcr.io/rafaelpontani/charts/taba` |
 | **Operation** | `taba-cli`, a command line with a **full-screen terminal UI** (cluster health, topics, queue charts), plus Prometheus and OpenTelemetry metrics |
-| **Clients** | Plain HTTP from any language; ready connectors for **Java, C#/.NET, Python, PHP, Ruby, Node.js, Go and Rust** (Rust on crates.io, C# on nuget.org), all with no dependencies, plus a driver for the [OpenMessaging Benchmark](connectors/omb/README.md). Applications that use the **AWS SDK (SQS and SNS)** connect with no code change ([gateway](#use-the-aws-sdk-without-changing-your-code)) |
+| **Clients** | Plain HTTP from any language; ready connectors for **Java, C#/.NET, Python, PHP, Ruby, Node.js, Go and Rust** (published on crates.io, nuget.org, npm, PyPI, RubyGems and the Go module proxy: [official packages](#official-packages)), all with no dependencies, plus a driver for the [OpenMessaging Benchmark](connectors/omb/README.md). Applications that use the **AWS SDK (SQS and SNS)** connect with no code change ([gateway](#use-the-aws-sdk-without-changing-your-code)) |
 | **License** | Server AGPLv3, connectors Apache-2.0 |
 
 ## Why Taba
@@ -138,7 +138,7 @@ Systems of the same class, the message brokers ([why streaming platforms are not
 
 **Can my application that uses Amazon SQS or SNS use Taba?** Yes, with the gateway of the node: you change the endpoint of the SDK and keep the code ([how, with examples in six languages](#use-the-aws-sdk-without-changing-your-code)). It covers SQS (standard and FIFO) and SNS topics that publish to those queues; what is not covered is listed there.
 
-**Is it in production?** Yes. Every version is published to Docker Hub, GHCR, crates.io, nuget.org and GitHub Releases, signed and with provenance ([Verifying a release](#verifying-a-release)).
+**Is it in production?** Yes. Every version is published to Docker Hub, GHCR, crates.io, nuget.org, npm, PyPI, RubyGems, the Go module proxy, the Terraform and OpenTofu registries and GitHub Releases ([official packages](#official-packages)), signed and with provenance ([Verifying a release](#verifying-a-release)).
 
 ## Limits
 
@@ -354,7 +354,7 @@ resource "taba_token" "orders_app" {
 }
 ```
 
-**Pulumi provider.** [`connectors/pulumi`](connectors/pulumi/README.md) is the same provider for Pulumi, with SDKs for TypeScript/JavaScript, Python, .NET and Go (`pulumi-taba`, `pulumi-taba`, `Taba.Pulumi` and a Go module): queues, distributors and access tokens as code, with `preview`, drift detection, import and the same `forceDestroy` and `createOrUpdate`. It is packaged with each [Release](https://github.com/rafaelpontani/taba/releases) and waits for the setup of its package registries ([the guide](doc/en-US/41-pulumi.md)).
+**Pulumi provider.** [`connectors/pulumi`](connectors/pulumi/README.md) is the same provider for Pulumi, with SDKs for TypeScript/JavaScript, Python, .NET and Go (`pulumi-taba`, `pulumi-taba`, `Taba.Pulumi` and a Go module): queues, distributors and access tokens as code, with `preview`, drift detection, import and the same `forceDestroy` and `createOrUpdate`. It is published on npm, PyPI, nuget.org and the Go module proxy and packaged with each [Release](https://github.com/rafaelpontani/taba/releases) ([the guide](doc/en-US/41-pulumi.md)).
 
 Other languages (C and C++ are deferred, with no date) use their own HTTP client. The design is in [the connectors guide](doc/en-US/21-connectors.md).
 
@@ -501,6 +501,29 @@ taba-cli consume orders --wait 5 --ack
 ![Spread, redundant topic](doc/diagrams/img/en-US/spread-topic.svg)
 
 *A topic spread across the cluster and replicated: if a node goes down, the village stays up.*
+
+## Official packages
+
+Every Taba version is published by the [release workflow](doc/en-US/27-ci-cd.md#publishing-and-metadata) of this repository, with the same version number everywhere; these are the only official names. A release candidate (`-rc.N`) is published as a pre-release, which the package managers only install when asked.
+
+| What | Package | Where | Install |
+|---|---|---|---|
+| Server (image) | `rafaelpontani/taba` | [Docker Hub](https://hub.docker.com/r/rafaelpontani/taba), GHCR (`ghcr.io/rafaelpontani/taba`) | `docker pull rafaelpontani/taba` |
+| `taba-cli` (image) | `rafaelpontani/taba-cli` | [Docker Hub](https://hub.docker.com/r/rafaelpontani/taba-cli), GHCR (`ghcr.io/rafaelpontani/taba-cli`) | `docker pull rafaelpontani/taba-cli` |
+| `taba-cli` (binary) | `taba-cli` | [crates.io](https://crates.io/crates/taba-cli), [GitHub Releases](https://github.com/rafaelpontani/taba/releases) | `cargo install taba-cli` |
+| Helm chart | `taba` | GHCR (`oci://ghcr.io/rafaelpontani/charts/taba`) | `helm install taba oci://ghcr.io/rafaelpontani/charts/taba` |
+| Rust connector | `taba-client` | [crates.io](https://crates.io/crates/taba-client) | `cargo add taba-client` |
+| C# connector | `Taba.Client`, `Taba.Client.Abstractions`, `Taba.Client.Extensions.DependencyInjection` | [nuget.org](https://www.nuget.org/packages/Taba.Client) | `dotnet add package Taba.Client` |
+| Node.js connector | `taba-client` | [npm](https://www.npmjs.com/package/taba-client) | `npm install taba-client` |
+| Python connector | `taba-client` (import `taba`) | [PyPI](https://pypi.org/project/taba-client/) | `pip install taba-client` |
+| Ruby connector | `taba-client` (require `taba`) | [RubyGems](https://rubygems.org/gems/taba-client) | `gem install taba-client` |
+| Go connector | `github.com/rafaelpontani/taba/connectors/go` | [Go module proxy](https://pkg.go.dev/github.com/rafaelpontani/taba/connectors/go) | `go get github.com/rafaelpontani/taba/connectors/go` |
+| Java connector | `io.github.rafaelpontani:taba-client` | Not on Maven Central yet: the jar is attached to each [Release](https://github.com/rafaelpontani/taba/releases) | [README](connectors/java/README.md) |
+| PHP connector | `taba/client` | Not on Packagist yet: the package is attached to each [Release](https://github.com/rafaelpontani/taba/releases) | [README](connectors/php/README.md) |
+| Terraform / OpenTofu provider | `rafaelpontani/taba` | [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba), [OpenTofu Registry](https://search.opentofu.org/provider/rafaelpontani/taba) | `source = "rafaelpontani/taba"` |
+| Pulumi provider | `pulumi-taba` (npm and PyPI), `Taba.Pulumi` (.NET), `github.com/rafaelpontani/pulumi-taba/sdk` (Go) | [npm](https://www.npmjs.com/package/pulumi-taba), [PyPI](https://pypi.org/project/pulumi-taba/), [nuget.org](https://www.nuget.org/packages/Taba.Pulumi), [Go module proxy](https://pkg.go.dev/github.com/rafaelpontani/pulumi-taba/sdk) | `npm install pulumi-taba` ([README](connectors/pulumi/README.md)) |
+
+Each [GitHub Release](https://github.com/rafaelpontani/taba/releases) also carries the binaries and the files of every package, with their checksums and provenance ([Verifying a release](#verifying-a-release)).
 
 ## Verifying a release
 
