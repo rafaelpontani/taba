@@ -53,7 +53,7 @@ tracing-opentelemetry = { version = "0.34", default-features = false }
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
 x509-parser = { version = "0.18.1", features = ["verify"] }
 uuid = { version = "1.27.0", features = ["v7"] }
-rand = "0.9"
+rand = "0.10"
 bytes = "1"
 tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
 futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
