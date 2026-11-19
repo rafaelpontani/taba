@@ -4,7 +4,7 @@ The Java client of [Taba](https://github.com/rafaelpontani/taba): the nine opera
 
 > Other languages: [Português (Brasil)](https://github.com/rafaelpontani/taba/blob/main/doc/pt-BR/21-conectores.md) · [all languages](https://github.com/rafaelpontani/taba/blob/main/doc/README.md)
 
-- **Java 11 or later.** Maven coordinates `io.github.rafaelpontani:taba-client` (provisional until the organization and package identifiers are decided).
+- **Java 11 or later.** On [Maven Central](https://central.sonatype.com/artifact/io.github.rafaelpontani/taba-client) as `io.github.rafaelpontani:taba-client`, with the version of the Taba release.
 - Safe for concurrent use: one `TabaClient` serves several threads.
 
 ```java
@@ -31,19 +31,21 @@ try (TabaClient client = new TabaClient(config)) {
 }
 ```
 
-## Installing (not in a registry yet)
+## Installing
 
-Not in a registry yet (the identifiers are still open). Until then, each [Release](https://github.com/rafaelpontani/taba/releases) has the installable file, with its checksum in `SHA256SUMS` and its provenance (`gh attestation verify <file> -R rafaelpontani/taba`). `<release>` below is the version of the Release; the version in the file name is the connector's own. The jar has no dependencies.
+Maven (`<version>` is the version of a Taba release, such as `0.3.22`; a candidate is `0.3.22-rc.1`):
 
-With Maven, install the jar in your local repository once and then use the coordinates above:
-
+```xml
+<dependency>
+  <groupId>io.github.rafaelpontani</groupId>
+  <artifactId>taba-client</artifactId>
+  <version><version></version>
+</dependency>
 ```
-curl -LO https://github.com/rafaelpontani/taba/releases/download/v<release>/taba-client-0.1.0.jar
-mvn install:install-file -Dfile=taba-client-0.1.0.jar -DgroupId=io.github.rafaelpontani \
-    -DartifactId=taba-client -Dversion=0.1.0 -Dpackaging=jar
-```
 
-With Gradle: `implementation files('libs/taba-client-0.1.0.jar')`. From the source: `cd connectors/java && mvn install`.
+Gradle: `implementation 'io.github.rafaelpontani:taba-client:<version>'`. The jar has no dependencies.
+
+Every file on Maven Central is signed with GPG. Each [Release](https://github.com/rafaelpontani/taba/releases) also has the jar (`taba-client-<version>.jar`), with its checksum in `SHA256SUMS` and its provenance (`gh attestation verify <file> -R rafaelpontani/taba`), to put on the classpath. From the source: `cd connectors/java && mvn install`.
 
 ## JSON
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the installable file of each connector that is not in a registry yet (PRB-079), to attach to the Release:
 #
-#   .github/scripts/package-connectors.sh <output-folder>
+#   .github/scripts/package-connectors.sh <output-folder> [<maven-folder>]
 #
 #   Node.js  taba-client-<v>.tgz                  npm install ./taba-client-<v>.tgz
 #   Python   taba_client-<v>-py3-none-any.whl     pip install taba_client-<v>-py3-none-any.whl
@@ -10,14 +10,19 @@
 #   PHP      taba-client-php-<v>.zip              Composer "package" repository, or unzip and require src/autoload.php
 #
 # The version of each file is the one in the connector's own manifest (the connectors version on their own, D70.2),
-# except Node.js, Python and Ruby, which release.yml sets to the release version first (set-version.sh, D229, D230, D232);
-# this script rewrites nothing. Go has no file: its module path is the repository (connectors/go/README.md). Each package is
+# except Node.js, Python, Ruby and Java, which release.yml sets to the release version first (set-version.sh, D229, D230,
+# D232, D242); this script rewrites nothing. Go has no file: its module path is the repository (connectors/go/README.md). Each package is
 # built in the container of a current runtime, from a copy of the folder, so the working tree is left untouched.
 # Used by release.yml (job connector-packages) and by ci.yml (so a broken package is found on the pull request).
+#
+# With <maven-folder>, the files Maven Central needs also go there, unsigned: the jar, the sources and javadoc jars and
+# the pom (taba-client-<v>.pom). The maven-central job of release.yml signs them and uploads the bundle (D242). They stay
+# out of <output-folder>, which is attached to the Release as it is.
 
 set -euo pipefail
 
-out="${1:?usage: package-connectors.sh <output-folder>}"
+out="${1:?usage: package-connectors.sh <output-folder> [<maven-folder>]}"
+maven="${2:-}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
@@ -29,11 +34,13 @@ src_root="$(host "$root")"
 out_host="$(host "$out")"
 
 # build <image> <connector folder> <command run in a copy of the folder at /build; files to ship go to /out>
+#       [<more docker run options>...]
 build() {
   local image="$1" folder="$2" script="$3"
+  shift 3
   echo "==> $folder ($image)"
   docker run --rm \
-    -v "$src_root/connectors/$folder:/src:ro" -v "$out_host:/out" \
+    -v "$src_root/connectors/$folder:/src:ro" -v "$out_host:/out" "$@" \
     -e HOME=/tmp -e npm_config_cache=/tmp/npm -e MAVEN_CONFIG=/tmp/m2 \
     "$image" sh -ec "mkdir /build && cp -R /src/. /build && cd /build && $script"
 }
@@ -44,8 +51,23 @@ build python:3.12-slim python 'pip wheel --quiet --no-deps --wheel-dir /out .'
 
 build ruby:3.3 ruby 'gem build --quiet taba-client.gemspec && mv taba-client-*.gem /out/'
 
+# Java: the jar goes to the Release; with <maven-folder> (mounted at /maven), the jar, the sources and javadoc jars and
+# the pom go there too. The container writes them itself: on Linux its files belong to root, so the host could not move
+# or delete them afterwards.
+maven_mount=()
+if [ -n "$maven" ]; then
+  mkdir -p "$maven"
+  maven_mount=(-v "$(host "$maven"):/maven")
+fi
+# shellcheck disable=SC2016 # expanded by the shell of the container
 build maven:3.9-eclipse-temurin-11 java \
-  'mvn -q -B -Dmaven.test.skip=true -Dmaven.repo.local=/tmp/m2 package && cp target/taba-client-*.jar /out/ && rm -f /out/*-sources.jar /out/*-javadoc.jar'
+  'mvn -q -B -Dmaven.test.skip=true -Dmaven.repo.local=/tmp/m2 package
+   v="$(ls target/taba-client-*-sources.jar | sed "s|.*/taba-client-||; s|-sources.jar$||")"
+   cp "target/taba-client-$v.jar" /out/
+   if [ -d /maven ]; then
+     cp target/taba-client-*.jar /maven/
+     cp pom.xml "/maven/taba-client-$v.pom"
+   fi' "${maven_mount[@]}"
 
 # PHP: composer.json, README and src/ at the root of the zip, which is what a Composer "package" repository expects.
 version="$(sed -n "s/.*const VERSION = '\([^']*\)'.*/\1/p" "$root/connectors/php/src/Client.php" | head -n 1)"

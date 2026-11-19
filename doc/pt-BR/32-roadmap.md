@@ -3,7 +3,7 @@ título: Roadmap
 resumo: O que já está pronto (a versão 0.1) e o que vem a seguir, em marcos — versionamento do contrato de cliente, demais conectores, publicação, Kubernetes, operação — com as pendências que cada marco fecha.
 tipo: referência
 status: parcial
-verificado-em: 2026-11-17 @ 396b1cf
+verificado-em: 2026-11-18 @ 351d6d5
 fontes: [connectors/README.md, doc/pt-BR/30-decisoes.md, doc/pt-BR/31-pendencias.md]
 ---
 
@@ -45,7 +45,7 @@ Em fases ([21-conectores.md](21-conectores.md)); as fases 2, 3 e 4 **não depend
 
 | Fase | Linguagens | Observação |
 |---|---|---|
-| 1 — Referência | **Python** (a mais legível) e **Java** (a base mais antiga) ✅ | Estressam o desenho nas duas pontas. Prontos (D68.2) com os testes de contrato (D183); falta a publicação (PRB-079) |
+| 1 — Referência | **Python** (a mais legível) e **Java** (a base mais antiga) ✅ | Estressam o desenho nas duas pontas. Prontos (D68.2) com os testes de contrato (D183); publicados no PyPI (D230) e no Maven Central (D242) |
 | 2 — Núcleo C | **C** (`libtaba`) e **C++** (cabeçalho C++03 sobre a `libtaba`) ⏸ | Adiado, sem data (D68.4); veja "Fora do escopo (por enquanto)" |
 | 3 — Plataformas | **Node.js** ✅ e **Go** ✅ | Node.js pronto (D68.2); Go pronto (D68.3) |
 | 4 — Restantes | **PHP** ✅ e **Ruby** ✅; no **Rust**, a forma `async` | PHP e Ruby prontos (D68.3); falta a publicação (PRB-079) |
@@ -57,7 +57,7 @@ Decisões que precisam estar fechadas: **D68** (versões-base das linguagens ain
 
 | Item | Detalhe |
 |---|---|
-| Pacotes 🟡 | nuget.org (`Taba.*`), crates.io (`taba-client`, `taba-cli`) npm (`taba-client`, D229), PyPI (`taba-client`, D230) e RubyGems (`taba-client`, D232) automatizados no `release.yml` por Trusted Publishing, e o módulo Go por uma tag `connectors/go/vX.Y.Z` (D231), ligados pelas variáveis `PUBLISH_CRATES`, `NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI`, `CONNECTOR_RUBYGEMS` e `CONNECTOR_GO` ([27-ci-cd.md](27-ci-cd.md#publicação-e-metadados)); faltam os registros das outras linguagens (PRB-079); enquanto isso os arquivos delas são anexados à Release (D70.3). **Não podem ser apagados** |
+| Pacotes 🟡 | nuget.org (`Taba.*`), crates.io (`taba-client`, `taba-cli`) npm (`taba-client`, D229), PyPI (`taba-client`, D230) e RubyGems (`taba-client`, D232) automatizados no `release.yml` por Trusted Publishing, o Maven Central (`io.github.rafaelpontani:taba-client`, D242) por um token e uma assinatura GPG, e o módulo Go por uma tag `connectors/go/vX.Y.Z` (D231), ligados pelas variáveis `PUBLISH_CRATES`, `NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI`, `CONNECTOR_RUBYGEMS`, `CONNECTOR_MAVEN` e `CONNECTOR_GO` ([27-ci-cd.md](27-ci-cd.md#publicação-e-metadados)); falta o Packagist (PHP, PRB-079); enquanto isso os arquivos são anexados à Release (D70.3). **Não podem ser apagados** |
 | Imagens ✅ | Docker Hub e GHCR, com o mesmo digest em todas as tags ([27-ci-cd.md](27-ci-cd.md#tags-docker-e-tags-flutuantes)) |
 | Repositório público ⬜ | Hoje privado; a publicação definitiva é uma decisão do dono |
 

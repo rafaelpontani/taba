@@ -3,7 +3,7 @@ title: Connectors
 summary: Taba's client libraries — the common contract (the nine operations, retry, errors, body), the real state of each language (Rust, C#, Java, Python, Node.js, Go, PHP and Ruby ready; two planned), how to use and how to write a new one.
 type: reference
 status: partial
-verified-on: 2026-11-17 @ 396b1cf
+verified-on: 2026-11-18 @ 351d6d5
 sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/go, connectors/php, connectors/ruby, .github/scripts/package-connectors.sh, connectors/omb, connectors/contract, examples/csharp-console]
 ---
 
@@ -18,7 +18,7 @@ sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, con
 | **Rust** (`taba-client`) | `connectors/rust/client/` | ✅ **Synchronous ready.** The `async` form is missing | ✅ [crates.io](https://crates.io/crates/taba-client) |
 | **`taba-cli`** (on top of Rust) | `connectors/rust/cli/` | ✅ Ready ([20-cli.md](20-cli.md)) | ✅ [crates.io](https://crates.io/crates/taba-cli), binaries and Docker image |
 | **C#** (`Taba.Client`) | `connectors/csharp/` | ✅ **Ready**: unit, integration against Compose and the contract tests | ✅ [nuget.org](https://www.nuget.org/packages/Taba.Client) |
-| **Java** (`taba-client`) | `connectors/java/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
+| **Java** (`io.github.rafaelpontani:taba-client`) | `connectors/java/` | ✅ **Ready** (unit tests and the contract tests) | ✅ [Maven Central](https://central.sonatype.com/artifact/io.github.rafaelpontani/taba-client) (D242) |
 | **Python** (`taba-client`) | `connectors/python/` | ✅ **Ready** (unit tests and the contract tests) | ✅ [PyPI](https://pypi.org/project/taba-client/) (D230) |
 | **Node.js** (`taba-client`) | `connectors/node/` | ✅ **Ready** (unit tests and the contract tests) | ✅ [npm](https://www.npmjs.com/package/taba-client) (D229) |
 | **Go** (`taba`) | `connectors/go/` | ✅ **Ready** (unit tests and the contract tests) | ✅ [pkg.go.dev](https://pkg.go.dev/github.com/rafaelpontani/taba/connectors/go) (tags `connectors/go/vX.Y.Z`, D231) |
@@ -238,7 +238,7 @@ with Client("http://localhost:8080", token="...") as client:
 
 Tests: `cd connectors/python && python -m unittest discover -s tests -t .` (the standard `unittest` and a local HTTP server); CI runs Python 3.9 and 3.13.
 
-> **Java, Node.js and Python are not a copy of the C# one.** The contract (nine operations, retry, errors, body) is the same; the forms are each language's own, recorded in D68.2. All three run the contract tests against a real Taba ([contract tests](#the-contract-tests), D183), and none is published (PRB-079).
+> **Java, Node.js and Python are not a copy of the C# one.** The contract (nine operations, retry, errors, body) is the same; the forms are each language's own, recorded in D68.2. All three run the contract tests against a real Taba ([contract tests](#the-contract-tests), D183), and all three are published: Java on Maven Central (D242), Node.js on npm (D229) and Python on PyPI (D230).
 
 ## Go (`github.com/rafaelpontani/taba/connectors/go`, `package taba`)
 
@@ -305,11 +305,11 @@ Until a connector reaches its registry (PRB-079), its package is a **file attach
 | Node.js | `taba-client-<v>.tgz` (also on npm) | `npm install taba-client` |
 | Python | `taba_client-<v>-py3-none-any.whl` (also on PyPI) | `pip install taba-client` |
 | Ruby | `taba-client-<v>.gem` (also on RubyGems) | `gem install taba-client` |
-| Java | `taba-client-<v>.jar` | `mvn install:install-file`, or the jar on the classpath |
+| Java | `taba-client-<v>.jar` (also on Maven Central) | the dependency `io.github.rafaelpontani:taba-client` (Maven or Gradle), or the jar on the classpath |
 | PHP | `taba-client-php-<v>.zip` | a Composer `package` repository whose `dist.url` is the file, or unzip and `require src/autoload.php` |
 | Go | no file | `go get github.com/rafaelpontani/taba/connectors/go@latest` (the module path is the repository; each release tags `connectors/go/v<release>`, D231) |
 
-`<v>` is the version of the **connector** (the connectors version on their own, D70.2), not the Release's, except Node.js, Python and Ruby, which are published on npm, PyPI and RubyGems as `taba-client` with the Release's version (D229, D230, D232; on PyPI in the PEP 440 form, a candidate is `0.3.9rc1`, and on RubyGems `0.3.9.rc1`). Without a Release, some can also be installed from the source: Python (`pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"`), Ruby (Bundler, `glob: 'connectors/ruby/*.gemspec'`) and pnpm (`#path:/connectors/node`); npm and Composer cannot read a folder of a repository. The exact commands are in the README of each connector.
+`<v>` is the version of the **connector** (the connectors version on their own, D70.2), not the Release's, except Node.js, Python, Ruby and Java, which are published on npm, PyPI, RubyGems and Maven Central as `taba-client` with the Release's version (D229, D230, D232, D242; on PyPI in the PEP 440 form, a candidate is `0.3.9rc1`, on RubyGems `0.3.9.rc1`, and on Maven Central `0.3.9-rc.1`, as it is). Without a Release, some can also be installed from the source: Python (`pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"`), Ruby (Bundler, `glob: 'connectors/ruby/*.gemspec'`) and pnpm (`#path:/connectors/node`); npm and Composer cannot read a folder of a repository. The exact commands are in the README of each connector.
 
 ## The deferred ones: base version and publication
 

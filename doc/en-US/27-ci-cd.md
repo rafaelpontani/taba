@@ -3,7 +3,7 @@ title: CI/CD and releases
 summary: How the repository is validated and published — the GitHub Actions workflows, the order of the release (nothing public before everything is green), automatic versioning (semantic-release, candidates and finals), floating tags by digest, publishing to Docker Hub, GHCR, crates.io and nuget.org, and how anyone verifies that an artifact came out of this pipeline.
 type: reference
 status: stable
-verified-on: 2026-11-18 @ e1319be
+verified-on: 2026-11-18 @ 351d6d5
 sources: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/scripts/package-connectors.sh, .github/scripts/pinned-deps.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md, .clusterfuzzlite, crates/taba-node/fuzz]
 ---
 
@@ -78,7 +78,7 @@ Principle: **nothing public before everything is green, and everything public po
 | 4 | `images` | Builds `taba` and `taba-cli` (the two targets of `Dockerfile.ci`) for `linux/amd64` and `linux/arm64`, **compiling nothing**, with SLSA provenance (`mode=max`), SBOM and OCI labels (`revision` = commit). Pushes **only by digest, without a tag**, to Docker Hub and GHCR; attests (`attest-build-provenance`) and signs (cosign keyless) each digest |
 | 5 | `tag` | (needs `connector-packages`, `terraform-provider` and `pulumi-provider` too, because the tag cannot be undone) Only now semantic-release creates the **tag** on `github.sha` and the **GitHub Release as a draft**. Fails if the version is not the planned one or if the tag does not point to the commit |
 | 6 | `release-assets` | Binaries (with the architecture in the name), `.nupkg`, `.snupkg`, the chart `.tgz`, the files of `connector-packages` , of `terraform-provider` and of `pulumi-provider` and `SHA256SUMS`, all attested, on the draft, plus `taba-<version>.intoto.jsonl` (the provenance bundle as a Release file, which the OpenSSF Scorecard recognizes) |
-| 7 | `crates`, `nuget`, `npm`, `pypi`, `rubygems`, `go-module`, `chart-publish` | crates.io, nuget.org, npm, PyPI and RubyGems (`taba-client`) by **Trusted Publishing** (OIDC); the Go module by a tag; the chart at `oci://ghcr.io/rafaelpontani/charts`, attested and signed |
+| 7 | `crates`, `nuget`, `npm`, `pypi`, `rubygems`, `maven-central`, `go-module`, `chart-publish` | crates.io, nuget.org, npm, PyPI and RubyGems (`taba-client`) by **Trusted Publishing** (OIDC); Maven Central by a token of the Central Portal and a GPG signature; the Go module by a tag; the chart at `oci://ghcr.io/rafaelpontani/charts`, attested and signed |
 | 8 | `finalize` | The Release leaves draft: `--prerelease` on candidates, `--latest` only on the highest final |
 | 9 | `floating` | Creates the Docker tags (exact and floating) with `docker buildx imagetools create` **pointing to the digest** (no rebuild) and moves the floating git tags |
 | 10 | `verify` | Checks from the outside: every git tag points to the commit; every Docker tag, on both registries, is the same digest, with the right `revision` label; `cosign verify` and `gh attestation verify` pass; the Release `SHA256SUMS` matches |
@@ -147,6 +147,7 @@ Only the **fixed** tag (`vX.Y.Z`, `vX.Y.Z-rc.N`) is immutable. The floating ones
 | npm | `taba-client` (the Node.js connector, with the release version; a candidate goes to the `next` dist-tag) | Trusted Publishing (`npm publish` over OIDC, D229) | Variable `CONNECTOR_NPM=true` |
 | PyPI | `taba-client` (the Python connector, with the release version in the PEP 440 form; a candidate is `0.3.9rc1`, which `pip` only installs with `--pre`) | Trusted Publishing (`pypa/gh-action-pypi-publish`, `skip-existing`, D230) | Variable `CONNECTOR_PYPI=true` |
 | RubyGems | `taba-client` (the Ruby connector, with the release version in the RubyGems form; a candidate is `0.3.9.rc1`, which `gem` only installs with `--pre`) | Trusted Publishing: the job exchanges its OIDC token for an API key of 15 minutes with `curl` and runs `gem push`; a version already on RubyGems is skipped (D232) | Variable `CONNECTOR_RUBYGEMS=true`; `RUBYGEMS_OWNER` (the numeric id of the account) for the first push from a pending publisher |
+| Maven Central | `io.github.rafaelpontani:taba-client` (the Java connector, with the release version as it is: Maven sorts `0.3.9-rc.1` before `0.3.9`) | No Trusted Publishing: a user token of the Central Portal (secrets `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`) and a GPG key of its own (`MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE`). The job signs the jar, the sources and javadoc jars and the pom, adds `.md5` and `.sha1`, uploads the bundle to the Portal API (`publishingType=AUTOMATIC`) and waits for the validation; a version already on Maven Central is skipped (D242) | Variable `CONNECTOR_MAVEN=true` |
 | Go module proxy | `github.com/rafaelpontani/taba/connectors/go` (the Go connector): the tag `connectors/go/v<version>` on the release commit, then the proxy is asked for it, which lists it on pkg.go.dev | Nothing to upload: the job creates the tag with the `GITHUB_TOKEN` (D231) | Variable `CONNECTOR_GO=true` |
 | Terraform Registry, OpenTofu Registry | `rafaelpontani/taba` (provider) | The mirror repository `rafaelpontani/terraform-provider-taba` (D211): `TERRAFORM_MIRROR_TOKEN` pushes, the registries read its signed Releases | Variable `TERRAFORM_PROVIDER_REPO` |
 | npm, PyPI, nuget.org, Pulumi plugin | `pulumi-taba`, `pulumi-taba`, `Taba.Pulumi`; the plugin archives and the Go SDK in the mirror `rafaelpontani/pulumi-taba` (D212, D213) | Trusted Publishing on npm, PyPI and nuget.org; `PULUMI_MIRROR_TOKEN` pushes to the mirror | Variables `PULUMI_NPM`, `PULUMI_PYPI`, `PULUMI_NUGET_USER`, `PULUMI_PROVIDER_REPO` (each turns on its own destination) |
@@ -230,9 +231,10 @@ The same build as CI, in Docker: `docker build -t taba-cflite -f .clusterfuzzlit
 | Branch rulesets (`main`, `release`) | PR required, the `ci.yml` checks, no force-push, no deletion |
 | Tag ruleset (`v*.*.*`) | Only GitHub Actions creates; nobody updates or deletes. The floating ones (`v0`, `v0.1`, `v0.1-rc`) do not match the pattern and can move |
 | Releases | **Immutable Releases** on: once published, neither the tag nor the assets change |
-| `release` environment | Restricted to the `main` and `release` branches; holds the Docker Hub secrets and those of the Terraform provider (`TERRAFORM_GPG_PRIVATE_KEY`, `TERRAFORM_GPG_PASSPHRASE`, `TERRAFORM_MIRROR_TOKEN`) and the token of the Pulumi mirror (`PULUMI_MIRROR_TOKEN`) |
-| Variables | `PUBLISH_CRATES`, `NUGET_USER`, `DOCKERHUB_NAMESPACE` (default `rafaelpontani`), `TERRAFORM_PROVIDER_REPO`, `PULUMI_PROVIDER_REPO`, `PULUMI_NPM`, `PULUMI_PYPI`, `PULUMI_NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI`, `CONNECTOR_RUBYGEMS`, `RUBYGEMS_OWNER`, `CONNECTOR_GO` |
+| `release` environment | Restricted to the `main` and `release` branches; holds the Docker Hub secrets and those of the Terraform provider (`TERRAFORM_GPG_PRIVATE_KEY`, `TERRAFORM_GPG_PASSPHRASE`, `TERRAFORM_MIRROR_TOKEN`) the token of the Pulumi mirror (`PULUMI_MIRROR_TOKEN`) and those of Maven Central (`MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE`) |
+| Variables | `PUBLISH_CRATES`, `NUGET_USER`, `DOCKERHUB_NAMESPACE` (default `rafaelpontani`), `TERRAFORM_PROVIDER_REPO`, `PULUMI_PROVIDER_REPO`, `PULUMI_NPM`, `PULUMI_PYPI`, `PULUMI_NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI`, `CONNECTOR_RUBYGEMS`, `RUBYGEMS_OWNER`, `CONNECTOR_MAVEN`, `CONNECTOR_GO` |
 | crates.io / nuget.org / npm / PyPI / RubyGems | The trusted publisher: repository `rafaelpontani/taba`, workflow `release.yml`, environment `release` |
+| Maven Central | The account of the [Central Portal](https://central.sonatype.com) signed in with GitHub, which verifies the namespace `io.github.rafaelpontani` by itself; a user token (View Account → Generate User Token); a GPG key (RSA 4096, signing only) whose public key is on `keyserver.ubuntu.com` and `keys.openpgp.org` |
 
 ### Terraform provider
 
@@ -282,7 +284,7 @@ The mirror token expires: renew it before the date, or the job fails at `mirror.
 
 - 🟡 **Integration job**: the connectors' contract tests (`contract-connectors.yml`) and the gateway's (`contract-gateway.yml`) **do run in CI**, on pull requests to `release`. `connectors/csharp/scripts/integration.sh` and `docker/validate.sh` **do not run in CI**. They exist and work by hand; run `validate.sh` with the `rc` image before the `release → main` PR.
 - ⬜ The chart's e2e cases (`deploy/helm/tests/run.sh 01 05 …`, with kind) run by hand.
-- ⬜ Publishing of the other connectors in their registries (only Rust and C# are automated; the list is in PRB-079). Meanwhile their files go to the Release (job `connector-packages`).
+- ⬜ Publishing of the PHP connector at Packagist (Rust, C#, Node.js, Python, Ruby, Java and Go are automated; PRB-079). Meanwhile its file goes to the Release (job `connector-packages`).
 - ⬜ Automatic verification of the **documentation** in CI: see `doc/pt-BR/scripts/verificar.mjs` below.
 
 ## Automatic verification of this documentation

@@ -20,9 +20,18 @@
     </license>
   </licenses>
 
+  <!-- Maven Central requires developers, scm, a sources jar and a javadoc jar (D242). -->
+  <developers>
+    <developer>
+      <name>Taba</name>
+      <url>https://github.com/rafaelpontani/taba</url>
+    </developer>
+  </developers>
+
   <scm>
     <url>https://github.com/rafaelpontani/taba</url>
     <connection>scm:git:https://github.com/rafaelpontani/taba.git</connection>
+    <developerConnection>scm:git:https://github.com/rafaelpontani/taba.git</developerConnection>
   </scm>
 
   <properties>
@@ -46,6 +55,36 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.10.1</version>
+        <configuration>
+          <doclint>all,-missing</doclint>
+          <quiet>true</quiet>
+        </configuration>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

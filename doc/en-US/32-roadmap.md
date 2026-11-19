@@ -3,7 +3,7 @@ title: Roadmap
 summary: What is already ready (version 0.1) and what comes next, in milestones — versioning of the client contract, other connectors, publishing, Kubernetes, operation — with the pending items each milestone closes.
 type: reference
 status: partial
-verified-on: 2026-11-17 @ 396b1cf
+verified-on: 2026-11-18 @ 351d6d5
 sources: [connectors/README.md, doc/en-US/30-decisions.md, doc/en-US/31-pending-items.md]
 ---
 
@@ -45,7 +45,7 @@ In phases ([21-connectors.md](21-connectors.md)); phases 2, 3 and 4 **do not dep
 
 | Phase | Languages | Note |
 |---|---|---|
-| 1 — Reference | **Python** (the most readable) and **Java** (the oldest base) ✅ | Stress the design at both ends. Ready (D68.2) with the contract tests (D183); publishing missing (PRB-079) |
+| 1 — Reference | **Python** (the most readable) and **Java** (the oldest base) ✅ | Stress the design at both ends. Ready (D68.2) with the contract tests (D183); published on PyPI (D230) and Maven Central (D242) |
 | 2 — C core | **C** (`libtaba`) and **C++** (C++03 header over `libtaba`) ⏸ | Deferred with no date (D68.4); see "Out of scope (for now)" |
 | 3 — Platforms | **Node.js** ✅ and **Go** ✅ | Node.js ready (D68.2); Go ready (D68.3) |
 | 4 — Remaining | **PHP** ✅ and **Ruby** ✅; in **Rust**, the `async` form | PHP and Ruby ready (D68.3); publishing missing (PRB-079) |
@@ -57,7 +57,7 @@ Decisions that must be closed: **D68** (base versions of the languages still to 
 
 | Item | Detail |
 |---|---|
-| Packages 🟡 | nuget.org (`Taba.*`), crates.io (`taba-client`, `taba-cli`) npm (`taba-client`, D229), PyPI (`taba-client`, D230) and RubyGems (`taba-client`, D232) automated in `release.yml` by Trusted Publishing, and the Go module by a tag `connectors/go/vX.Y.Z` (D231), turned on by the `PUBLISH_CRATES`, `NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI`, `CONNECTOR_RUBYGEMS` and `CONNECTOR_GO` variables ([27-ci-cd.md](27-ci-cd.md#publishing-and-metadata)); the registries of the other languages are missing (PRB-079); meanwhile their files are attached to the Release (D70.3). **They cannot be deleted** |
+| Packages 🟡 | nuget.org (`Taba.*`), crates.io (`taba-client`, `taba-cli`) npm (`taba-client`, D229), PyPI (`taba-client`, D230) and RubyGems (`taba-client`, D232) automated in `release.yml` by Trusted Publishing, Maven Central (`io.github.rafaelpontani:taba-client`, D242) by a token and a GPG signature, and the Go module by a tag `connectors/go/vX.Y.Z` (D231), turned on by the `PUBLISH_CRATES`, `NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI`, `CONNECTOR_RUBYGEMS`, `CONNECTOR_MAVEN` and `CONNECTOR_GO` variables ([27-ci-cd.md](27-ci-cd.md#publishing-and-metadata)); Packagist (PHP) is missing (PRB-079); meanwhile the files are attached to the Release (D70.3). **They cannot be deleted** |
 | Images ✅ | Docker Hub and GHCR, with the same digest on every tag ([27-ci-cd.md](27-ci-cd.md#docker-tags-and-floating-tags)) |
 | Public repository ⬜ | Today private; the definitive publication is the owner's decision |
 
