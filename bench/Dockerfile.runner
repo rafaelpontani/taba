@@ -2,7 +2,7 @@
 # e o driver do Taba (connectors/omb) dentro. Contexto: a raiz do repositório.
 #   docker build -f bench/Dockerfile.runner --build-arg OMB_COMMIT=$(cat connectors/omb/OMB_VERSION) -t taba-bench-runner:local .
 # As imagens de base vão fixadas por digest (a tag fica para leitura); o Dependabot (docker, /bench) as mantém em dia.
-FROM maven:3.9-eclipse-temurin-11@sha256:7bb84a451705605a47d24eb844d4d9ab03e33e131a507db76aafe25db3907f64 AS build
+FROM maven:3.9-eclipse-temurin-26@sha256:b2c1ad85954592f9928e84327c65201f308ad9b5d8ed7d5b823717c97bf23fbb AS build
 ARG OMB_COMMIT
 WORKDIR /src
 RUN (command -v git >/dev/null || (apt-get update -qq && apt-get install -y -qq git)) \
@@ -16,7 +16,7 @@ COPY connectors/omb /repo/connectors/omb
 RUN mvn -q -B -f /repo/connectors/java/pom.xml install -DskipTests \
  && mvn -q -B -f /repo/connectors/omb/pom.xml package -DskipTests
 
-FROM eclipse-temurin:11-jre@sha256:e7c39ce338dc9757a4d8f6b034764d9051897bd8cbfa50adb0429f83afd0c105
+FROM eclipse-temurin:24-jre@sha256:8cb2387a28af84cf0db0948d9c67d4480192f4e567027a3963f145d218e8b4f2
 COPY --from=build /src/omb/package/target/openmessaging-benchmark-0.0.1-SNAPSHOT-bin.tar.gz /tmp/omb.tgz
 RUN mkdir /opt/omb && tar -xzf /tmp/omb.tgz -C /opt/omb --strip-components=1 && rm /tmp/omb.tgz
 COPY --from=build /repo/connectors/omb/target/*-all.jar /opt/omb/lib/

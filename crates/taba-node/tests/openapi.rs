@@ -45,7 +45,7 @@ fn check(spec: &Value, method: &Method, template: &str, status: u16, body: &Valu
     };
     let errors: Vec<String> = validator(spec, schema)
         .iter_errors(body)
-        .map(|e| format!("{e} (at {})", e.instance_path))
+        .map(|e| format!("{e} (at {})", e.instance_path()))
         .collect();
     assert!(
         errors.is_empty(),

@@ -3,7 +3,7 @@ título: Conectores
 resumo: As bibliotecas de cliente do Taba — o contrato comum (as nove operações, repetição, erros, corpo), o estado real de cada linguagem (Rust, C#, Java, Python, Node.js, Go, PHP e Ruby prontos; duas planejadas), como usar e como escrever um novo.
 tipo: referência
 status: parcial
-verificado-em: 2026-11-17 @ 396b1cf
+verificado-em: 2026-11-18 @ 351d6d5
 fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/go, connectors/php, connectors/ruby, .github/scripts/package-connectors.sh, connectors/omb, connectors/contract, examples/csharp-console]
 ---
 
@@ -18,15 +18,15 @@ fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, conn
 | **Rust** (`taba-client`) | `connectors/rust/client/` | ✅ **Síncrono pronto.** A forma `async` falta | ✅ [crates.io](https://crates.io/crates/taba-client) |
 | **`taba-cli`** (sobre o Rust) | `connectors/rust/cli/` | ✅ Pronto ([20-cli.md](20-cli.md)) | ✅ [crates.io](https://crates.io/crates/taba-cli), binários e imagem Docker |
 | **C#** (`Taba.Client`) | `connectors/csharp/` | ✅ **Pronto**: unitários, integração contra o Compose e os testes de contrato | ✅ [nuget.org](https://www.nuget.org/packages/Taba.Client) |
-| **Java** (`taba-client`) | `connectors/java/` | ✅ **Pronto** (unitários e os testes de contrato) | ⬜ Não publicado (D70.1) |
+| **Java** (`io.github.rafaelpontani:taba-client`) | `connectors/java/` | ✅ **Pronto** (unitários e os testes de contrato) | ✅ [Maven Central](https://central.sonatype.com/artifact/io.github.rafaelpontani/taba-client) (D242) |
 | **Python** (`taba-client`) | `connectors/python/` | ✅ **Pronto** (unitários e os testes de contrato) | ✅ [PyPI](https://pypi.org/project/taba-client/) (D230) |
 | **Node.js** (`taba-client`) | `connectors/node/` | ✅ **Pronto** (unitários e os testes de contrato) | ✅ [npm](https://www.npmjs.com/package/taba-client) (D229) |
 | **Go** (`taba`) | `connectors/go/` | ✅ **Pronto** (unitários e os testes de contrato) | ✅ [pkg.go.dev](https://pkg.go.dev/github.com/rafaelpontani/taba/connectors/go) (tags `connectors/go/vX.Y.Z`, D231) |
 | **PHP** (`taba/client`) | `connectors/php/` | ✅ **Pronto** (unitários e os testes de contrato; sem renovação automática da invisibilidade, D68.3) | ⬜ Não publicado (D70.1, D70.2) |
 | **Ruby** (`taba-client`) | `connectors/ruby/` | ✅ **Pronto** (unitários e os testes de contrato) | ✅ [RubyGems](https://rubygems.org/gems/taba-client) (D232) |
-| **Driver do OpenMessaging Benchmark** (sobre o Java) | `connectors/omb/` | ✅ **Pronto** (testes unitários e de integração contra um nó) | ⬜ Não publicado (ferramenta do repositório) |
-| **Provider Terraform e OpenTofu** (sobre o Go) | `connectors/terraform/` | ✅ **Pronto**: filas, distribuidores, tokens, `create_or_update`; testes unitários e de aceitação com Terraform e OpenTofu ([40-terraform.md](40-terraform.md)) | 🟡 Empacotado na Release; os registries esperam o repositório espelho (D211) |
-| **Provider Pulumi** (o provider Terraform ligado ao Pulumi) | `connectors/pulumi/` | ✅ **Pronto**: filas, distribuidores, tokens, `createOrUpdate`; SDKs para TypeScript, Python, .NET e Go; testes unitários e de aceitação com TypeScript e Python ([41-pulumi.md](41-pulumi.md)) | 🟡 Empacotado na Release; o repositório espelho e os pacotes do npm, PyPI e NuGet esperam a configuração do mantenedor (D213) |
+| **Driver do OpenMessaging Benchmark** (sobre o Java) | `connectors/omb/` | ✅ **Pronto** (testes unitários e de integração contra um nó) | ✅ `omb-driver-taba-<v>-all.jar` anexado a cada [Release](https://github.com/rafaelpontani/taba/releases) (D243) |
+| **Provider Terraform e OpenTofu** (sobre o Go) | `connectors/terraform/` | ✅ **Pronto**: filas, distribuidores, tokens, `create_or_update`; testes unitários e de aceitação com Terraform e OpenTofu ([40-terraform.md](40-terraform.md)) | ✅ [Terraform Registry](https://registry.terraform.io/providers/rafaelpontani/taba) e [OpenTofu Registry](https://search.opentofu.org/provider/rafaelpontani/taba) como `rafaelpontani/taba`, pelo repositório espelho (D211) |
+| **Provider Pulumi** (o provider Terraform ligado ao Pulumi) | `connectors/pulumi/` | ✅ **Pronto**: filas, distribuidores, tokens, `createOrUpdate`; SDKs para TypeScript, Python, .NET e Go; testes unitários e de aceitação com TypeScript e Python ([41-pulumi.md](41-pulumi.md)) | ✅ [npm](https://www.npmjs.com/package/pulumi-taba), [PyPI](https://pypi.org/project/pulumi-taba/), [nuget.org](https://www.nuget.org/packages/Taba.Pulumi), Go module proxy e o plugin no espelho [`rafaelpontani/pulumi-taba`](https://github.com/rafaelpontani/pulumi-taba/releases) (D212, D213) |
 | C, C++ | — | ⏸ **Adiados**, sem data (D68.4): as pastas não existem | — |
 
 > A meta de **dez linguagens** é plano, não realidade: hoje **8 de 10** existem, e as outras duas (C e C++) estão adiadas (D68.4). O [roadmap](32-roadmap.md) tem a ordem. Como a API é HTTP, as demais linguagens usam o cliente HTTP delas até o conector sair.
@@ -195,7 +195,7 @@ Testes: `cd connectors/java && mvn test` (JUnit 5 e o `com.sun.net.httpserver` d
 
 ## Driver do OpenMessaging Benchmark (`connectors/omb`)
 
-- Um driver para o [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) (OMB) escrito sobre o conector Java, em **Java 11**; é uma ferramenta para medir o Taba com os mesmos workloads que o OMB roda contra Kafka, NATS ou RabbitMQ, e não entra em nenhum pacote. O commit do OMB contra o qual é construído está em `connectors/omb/OMB_VERSION` (o último que ainda compila em Java 11).
+- Um driver para o [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) (OMB) escrito sobre o conector Java, em **Java 11**; é uma ferramenta para medir o Taba com os mesmos workloads que o OMB roda contra Kafka, NATS ou RabbitMQ, e não é uma biblioteca: não está no Maven Central (o `driver-api` do OMB de que depende também não está), e o jar `-all` dele, com o conector Java dentro, vai anexado a cada [Release](https://github.com/rafaelpontani/taba/releases) (`omb-driver-taba-<versão>-all.jar`, D243). O commit do OMB contra o qual é construído está em `connectors/omb/OMB_VERSION` (o último que ainda compila em Java 11).
 - **Mapa:** um tópico do OMB é um **distribuidor** do Taba com o nome do tópico e o prefixo `<tópico>-`; cada assinatura é uma **fila** `<tópico>-<assinatura>` criada (volátil, com o maior `idleTimeout`, como rede de segurança) antes da primeira publicação e apagada quando o driver fecha. Os consumidores de uma assinatura disputam as mensagens dela. O número de partições do OMB não cria nada no Taba.
 - **Chave e ordem:** a chave da mensagem do OMB é o `groupId`. `ordering: none` (padrão) usa fila comum; `ordering: per-key` usa fila FIFO, e a mensagem sem chave recebe `p0`..`p<partições-1>` em rodízio.
 - **Lotes:** o produtor guarda as mensagens num buffer e as manda num `POST …/messages/batch` quando `producer.batchSize` (100) enchem ou `producer.lingerMs` (1 ms) passa, a mesma ideia do `linger.ms` do produtor do Kafka; a hora de uma mensagem é tomada quando ela entra no buffer, então a espera conta na latência dela. Como no Kafka, o linger só manda um lote parcial quando há uma requisição livre: com todas em voo o lote continua enchendo (senão um produtor saturado manda lotes cada vez menores, cada um custando uma requisição, e a taxa cai em espiral: medido, 600 mensagens por segundo contra um nó que recebe 45 mil). `producer.inFlight` (1000) conta requisições; o `bench/run.sh` usa 64, e o consumidor lê 500 por `GET`. O consumidor confirma o que um `GET` entregou num `POST …/messages/ack` (`consumer.ackBatch`, `true`). `consumer.pollers` (1) threads fazem o long polling da mesma fila ao mesmo tempo, cada uma com o seu `GET`, a ideia da busca em segundo plano do consumidor do Kafka: enquanto uma espera a resposta, outra já está pedindo; o `bench/run.sh` usa 16 (com 4, os quatro `GET`s em voo, e não o nó, seguravam um nó em cerca de 20 mil mensagens por segundo com núcleos sobrando, e o controlador de taxa do OMB tomava o resto como backlog). `batchSize: 1` e `ackBatch: false` voltam a uma requisição por mensagem.
@@ -238,7 +238,7 @@ with Client("http://localhost:8080", token="...") as client:
 
 Testes: `cd connectors/python && python -m unittest discover -s tests -t .` (o `unittest` padrão e um servidor HTTP local); o CI roda Python 3.9 e 3.13.
 
-> **Java, Node.js e Python não são cópia do C#.** O contrato (nove operações, repetição, erros, corpo) é o mesmo; as formas são as de cada linguagem, registradas em D68.2. Os três rodam os testes de contrato contra um Taba real ([testes de contrato](#os-testes-de-contrato), D183), e nenhum está publicado (PRB-079).
+> **Java, Node.js e Python não são cópia do C#.** O contrato (nove operações, repetição, erros, corpo) é o mesmo; as formas são as de cada linguagem, registradas em D68.2. Os três rodam os testes de contrato contra um Taba real ([testes de contrato](#os-testes-de-contrato), D183), e os três estão publicados: o Java no Maven Central (D242), o Node.js no npm (D229) e o Python no PyPI (D230).
 
 ## Go (`github.com/rafaelpontani/taba/connectors/go`, `package taba`)
 
@@ -305,11 +305,11 @@ Enquanto um conector não chega ao seu registro (PRB-079), o pacote dele é um *
 | Node.js | `taba-client-<v>.tgz` (também no npm) | `npm install taba-client` |
 | Python | `taba_client-<v>-py3-none-any.whl` (também no PyPI) | `pip install taba-client` |
 | Ruby | `taba-client-<v>.gem` (também no RubyGems) | `gem install taba-client` |
-| Java | `taba-client-<v>.jar` | `mvn install:install-file`, ou o jar no classpath |
+| Java | `taba-client-<v>.jar` (também no Maven Central) | a dependência `io.github.rafaelpontani:taba-client` (Maven ou Gradle), ou o jar no classpath |
 | PHP | `taba-client-php-<v>.zip` | um repositório `package` do Composer com o `dist.url` apontando para o arquivo, ou descompactar e `require src/autoload.php` |
 | Go | sem arquivo | `go get github.com/rafaelpontani/taba/connectors/go@latest` (o caminho do módulo é o repositório; cada release cria a tag `connectors/go/v<release>`, D231) |
 
-`<v>` é a versão do **conector** (os conectores têm versão própria, D70.2), não a da Release, exceto o Node.js, o Python e o Ruby, publicados no npm, no PyPI e no RubyGems como `taba-client` com a versão da Release (D229, D230, D232; no PyPI na forma da PEP 440, uma candidata é `0.3.9rc1`, e no RubyGems `0.3.9.rc1`). Sem uma Release, alguns também se instalam do código-fonte: Python (`pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"`), Ruby (Bundler, `glob: 'connectors/ruby/*.gemspec'`) e pnpm (`#path:/connectors/node`); o npm e o Composer não leem uma pasta de um repositório. Os comandos exatos estão no README de cada conector.
+`<v>` é a versão do **conector** (os conectores têm versão própria, D70.2), não a da Release, exceto o Node.js, o Python, o Ruby e o Java, publicados no npm, no PyPI, no RubyGems e no Maven Central como `taba-client` com a versão da Release (D229, D230, D232, D242; no PyPI na forma da PEP 440, uma candidata é `0.3.9rc1`, no RubyGems `0.3.9.rc1` e no Maven Central `0.3.9-rc.1`, como está). Sem uma Release, alguns também se instalam do código-fonte: Python (`pip install "git+https://github.com/rafaelpontani/taba.git@release#subdirectory=connectors/python"`), Ruby (Bundler, `glob: 'connectors/ruby/*.gemspec'`) e pnpm (`#path:/connectors/node`); o npm e o Composer não leem uma pasta de um repositório. Os comandos exatos estão no README de cada conector.
 
 ## Os adiados: versão-base e publicação
 

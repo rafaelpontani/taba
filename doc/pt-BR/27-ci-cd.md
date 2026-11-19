@@ -3,7 +3,7 @@ título: CI/CD e releases
 resumo: Como o repositório é validado e publicado — os workflows do GitHub Actions, a ordem do release (nada público antes de tudo verde), o versionamento automático (semantic-release, candidatas e finais), as tags flutuantes por digest, a publicação em Docker Hub, GHCR, crates.io e nuget.org, e como qualquer pessoa verifica que um artefato saiu deste pipeline.
 tipo: referência
 status: estável
-verificado-em: 2026-11-17 @ f30a4f9
+verificado-em: 2026-11-18 @ 351d6d5
 fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/scripts/package-connectors.sh, .github/scripts/pinned-deps.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md, .clusterfuzzlite, crates/taba-node/fuzz]
 ---
 
@@ -60,7 +60,7 @@ feature/*  ── PR ──▶ ci.yml: build + testes (nada é publicado, nenhum
 | `scorecard.yml` | `ossf/scorecard-action`; o resultado vai para a aba Security e para o badge do README |
 | `vulnerabilities.yml` | `.github/scripts/vulnerabilities.sh` todo dia na `main` e na `release`: um aviso publicado depois do merge falha a execução (o GitHub avisa) antes do próximo scan do Scorecard |
 | `fuzzing.yml` | ClusterFuzzLite (`.clusterfuzzlite/`): compila os alvos de `crates/taba-node/fuzz` com AddressSanitizer e faz fuzzing neles; `code-change` nos pull requests, `batch` todo dia na `main` ([abaixo](#fuzzing)) |
-| `codeql.yml` | CodeQL para `rust`, `csharp` e `actions`, todos com `build-mode: none` (independente das toolchains dos builds) |
+| `codeql.yml` | CodeQL para `rust`, `csharp` e `actions`, todos com `build-mode: none` (independente das toolchains dos builds); o código de teste (`tests.rs`, `tests/`, `testing/`) fica de fora por `.github/codeql/codeql-config.yml`, porque as mensagens de panic imprimem tokens falsos que a consulta `cleartext-logging` aponta como segredos |
 
 A entrada `version` dos builds é **vazia** quando não há release; com versão, o `set-version.sh` a grava nos arquivos **só dentro do build, sem commitar**. Todo build exporta `TABA_GIT_SHA`: `taba --version` e `taba-cli --version` mostram o commit.
 
@@ -78,7 +78,7 @@ Princípio: **nada público antes de tudo estar verde, e tudo o que é público 
 | 4 | `images` | Monta `taba` e `taba-cli` (os dois *targets* do `Dockerfile.ci`) para `linux/amd64` e `linux/arm64`, **sem compilar nada**, com proveniência SLSA (`mode=max`), SBOM e labels OCI (`revision` = commit). Envia **só por digest, sem tag**, para Docker Hub e GHCR; atesta (`attest-build-provenance`) e assina (cosign keyless) cada digest |
 | 5 | `tag` | (espera também o `connector-packages`, o `terraform-provider` e o `pulumi-provider`, porque a tag não se desfaz) Só agora o semantic-release cria a **tag** em `github.sha` e a **GitHub Release como rascunho**. Falha se a versão não é a do plano ou se a tag não aponta para o commit |
 | 6 | `release-assets` | Binários (com a arquitetura no nome), `.nupkg`, `.snupkg`, o `.tgz` do chart, os arquivos do `connector-packages` , do `terraform-provider` e do `pulumi-provider` e o `SHA256SUMS`, todos atestados, no rascunho, mais o `taba-<versão>.intoto.jsonl` (o bundle da proveniência como arquivo da Release, que o OpenSSF Scorecard reconhece) |
-| 7 | `crates`, `nuget`, `npm`, `pypi`, `rubygems`, `go-module`, `chart-publish` | crates.io, nuget.org, npm, PyPI e RubyGems (`taba-client`) por **Trusted Publishing** (OIDC); o módulo Go por uma tag; o chart em `oci://ghcr.io/rafaelpontani/charts`, atestado e assinado |
+| 7 | `crates`, `nuget`, `npm`, `pypi`, `rubygems`, `maven-central`, `go-module`, `chart-publish` | crates.io, nuget.org, npm, PyPI e RubyGems (`taba-client`) por **Trusted Publishing** (OIDC); o Maven Central por um token do Central Portal e uma assinatura GPG; o módulo Go por uma tag; o chart em `oci://ghcr.io/rafaelpontani/charts`, atestado e assinado |
 | 8 | `finalize` | A Release sai do rascunho: `--prerelease` nas candidatas, `--latest` só na maior final |
 | 9 | `floating` | Cria as tags Docker (exata e flutuantes) com `docker buildx imagetools create` **apontando para o digest** (sem reconstruir) e move as tags flutuantes do git |
 | 10 | `verify` | Confere de fora: cada tag git aponta para o commit; cada tag Docker, nos dois registros, é o mesmo digest, com o label `revision` certo; `cosign verify` e `gh attestation verify` passam; o `SHA256SUMS` da Release confere |
@@ -141,12 +141,13 @@ Só a tag **fixa** (`vX.Y.Z`, `vX.Y.Z-rc.N`) é imutável. As flutuantes são po
 |---|---|---|---|
 | Docker Hub | `rafaelpontani/taba`, `rafaelpontani/taba-cli` | Secrets `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` | Sempre |
 | GHCR | `ghcr.io/rafaelpontani/taba`, `taba-cli` e `charts/taba` | `GITHUB_TOKEN` (`packages: write`) | Sempre |
-| GitHub Release | Binários, pacotes (inclusive os arquivos dos conectores sem registro, D70.3), chart, `SHA256SUMS` | `GITHUB_TOKEN` | Sempre |
+| GitHub Release | Binários, pacotes (inclusive os arquivos dos conectores sem registro, D70.3, e o jar do driver do OMB, D243), chart, `SHA256SUMS` | `GITHUB_TOKEN` | Sempre |
 | crates.io | `taba-client`, depois `taba-cli` | Trusted Publishing (`rust-lang/crates-io-auth-action`); o primeiro publish de cada crate usa o secret `CARGO_REGISTRY_TOKEN` | Variável `PUBLISH_CRATES=true` |
 | nuget.org | `Taba.Client`, `.Abstractions`, `.Extensions.DependencyInjection` (+ `.snupkg`) | Trusted Publishing (`NuGet/login`) | Variável `NUGET_USER` (a conta dona da política) |
 | npm | `taba-client` (o conector Node.js, com a versão da release; uma candidata vai para a dist-tag `next`) | Trusted Publishing (`npm publish` por OIDC, D229) | Variável `CONNECTOR_NPM=true` |
 | PyPI | `taba-client` (o conector Python, com a versão da release na forma da PEP 440; uma candidata é `0.3.9rc1`, que o `pip` só instala com `--pre`) | Trusted Publishing (`pypa/gh-action-pypi-publish`, `skip-existing`, D230) | Variável `CONNECTOR_PYPI=true` |
 | RubyGems | `taba-client` (o conector Ruby, com a versão da release na forma do RubyGems; uma candidata é `0.3.9.rc1`, que o `gem` só instala com `--pre`) | Trusted Publishing: o job troca o seu token OIDC por uma chave de API de 15 minutos com `curl` e roda `gem push`; uma versão que já está no RubyGems é pulada (D232) | Variável `CONNECTOR_RUBYGEMS=true`; `RUBYGEMS_OWNER` (o id numérico da conta) para a primeira publicação a partir de um publisher pendente |
+| Maven Central | `io.github.rafaelpontani:taba-client` (o conector Java, com a versão da release como está: o Maven ordena `0.3.9-rc.1` antes de `0.3.9`) | Sem Trusted Publishing: um token de usuário do Central Portal (secrets `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`) e uma chave GPG própria (`MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE`). O job assina o jar, os jars de fontes e de javadoc e o pom, acrescenta `.md5` e `.sha1`, envia o bundle à API do Portal (`publishingType=AUTOMATIC`) e espera a validação; uma versão que já está no Maven Central é pulada (D242) | Variável `CONNECTOR_MAVEN=true` |
 | Proxy de módulos do Go | `github.com/rafaelpontani/taba/connectors/go` (o conector Go): a tag `connectors/go/v<versão>` no commit da release, depois o proxy é consultado, o que a lista no pkg.go.dev | Nada a enviar: o job cria a tag com o `GITHUB_TOKEN` (D231) | Variável `CONNECTOR_GO=true` |
 | Terraform Registry, OpenTofu Registry | `rafaelpontani/taba` (provider) | O repositório espelho `rafaelpontani/terraform-provider-taba` (D211): `TERRAFORM_MIRROR_TOKEN` empurra, os registries leem as Releases assinadas dele | Variável `TERRAFORM_PROVIDER_REPO` |
 | npm, PyPI, nuget.org, plugin do Pulumi | `pulumi-taba`, `pulumi-taba`, `Taba.Pulumi`; os arquivos do plugin e o SDK Go no espelho `rafaelpontani/pulumi-taba` (D212, D213) | Trusted Publishing no npm, no PyPI e no nuget.org; `PULUMI_MIRROR_TOKEN` empurra para o espelho | Variáveis `PULUMI_NPM`, `PULUMI_PYPI`, `PULUMI_NUGET_USER`, `PULUMI_PROVIDER_REPO` (cada uma liga o seu destino) |
@@ -230,9 +231,10 @@ O mesmo build do CI, em Docker: `docker build -t taba-cflite -f .clusterfuzzlite
 | Rulesets de branch (`main`, `release`) | PR obrigatório, os checks do `ci.yml`, sem force-push, sem apagar |
 | Ruleset de tag (`v*.*.*`) | Só o GitHub Actions cria; ninguém atualiza nem apaga. As flutuantes (`v0`, `v0.1`, `v0.1-rc`) não casam com o padrão e podem mover |
 | Releases | **Immutable Releases** ligado: depois de publicada, nem a tag nem os assets mudam |
-| Environment `release` | Restrito às branches `main` e `release`; guarda os secrets do Docker Hub e os do provider Terraform (`TERRAFORM_GPG_PRIVATE_KEY`, `TERRAFORM_GPG_PASSPHRASE`, `TERRAFORM_MIRROR_TOKEN`) e o token do espelho do Pulumi (`PULUMI_MIRROR_TOKEN`) |
-| Variáveis | `PUBLISH_CRATES`, `NUGET_USER`, `DOCKERHUB_NAMESPACE` (padrão `rafaelpontani`), `TERRAFORM_PROVIDER_REPO`, `PULUMI_PROVIDER_REPO`, `PULUMI_NPM`, `PULUMI_PYPI`, `PULUMI_NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI`, `CONNECTOR_RUBYGEMS`, `RUBYGEMS_OWNER`, `CONNECTOR_GO` |
+| Environment `release` | Restrito às branches `main` e `release`; guarda os secrets do Docker Hub e os do provider Terraform (`TERRAFORM_GPG_PRIVATE_KEY`, `TERRAFORM_GPG_PASSPHRASE`, `TERRAFORM_MIRROR_TOKEN`) o token do espelho do Pulumi (`PULUMI_MIRROR_TOKEN`) e os do Maven Central (`MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE`) |
+| Variáveis | `PUBLISH_CRATES`, `NUGET_USER`, `DOCKERHUB_NAMESPACE` (padrão `rafaelpontani`), `TERRAFORM_PROVIDER_REPO`, `PULUMI_PROVIDER_REPO`, `PULUMI_NPM`, `PULUMI_PYPI`, `PULUMI_NUGET_USER`, `CONNECTOR_NPM`, `CONNECTOR_PYPI`, `CONNECTOR_RUBYGEMS`, `RUBYGEMS_OWNER`, `CONNECTOR_MAVEN`, `CONNECTOR_GO` |
 | crates.io / nuget.org / npm / PyPI / RubyGems | O trusted publisher: repositório `rafaelpontani/taba`, workflow `release.yml`, environment `release` |
+| Maven Central | A conta do [Central Portal](https://central.sonatype.com) com login pelo GitHub, que verifica sozinha o namespace `io.github.rafaelpontani`; um token de usuário (View Account → Generate User Token); uma chave GPG (RSA 4096, só assinatura) cuja chave pública está no `keyserver.ubuntu.com` e no `keys.openpgp.org` |
 
 ### Provider Terraform
 
@@ -259,7 +261,7 @@ O token vence: renove-o antes da data, ou o job falha no `mirror.sh` depois de t
 
 ### Provider Pulumi
 
-O provider é empacotado a cada versão e publicado pelo espelho e pelos três registries de pacotes (D212, D213, [41-pulumi.md](41-pulumi.md#publicação)). **Nada disso está configurado ainda**: até o mantenedor criar o que está abaixo e definir as variáveis, os jobs `pulumi-*` de publicação não rodam e os arquivos ficam só na Release. Cada destino é independente, e a variável dele é o último passo (liga o job). Os passos vêm da documentação dos registries e ainda não foram executados: a primeira release que ligar um destino é o teste, e esta seção é corrigida com o que acontecer.
+O provider é empacotado a cada versão e publicado pelo espelho e pelos três registries de pacotes (D212, D213, [41-pulumi.md](41-pulumi.md#publicação)). **Tudo isso está configurado e roda a cada versão**: o espelho desde a v0.3.9, o nuget.org desde a 0.3.11, o npm desde a 0.3.17 e o PyPI desde a 0.3.18. Os passos abaixo são o que o mantenedor criou uma vez, guardados para refazer (um repositório novo, um token vencido). Cada destino é independente, e a variável dele é o último passo (liga o job); sem ela, o job não roda e os arquivos ficam só na Release.
 
 1. **O repositório espelho:** público, `rafaelpontani/pulumi-taba`, criado vazio. O primeiro `mirror.sh` empurra a `main`; dali em diante ele troca a árvore a cada versão e cria as tags `vX.Y.Z` e `sdk/vX.Y.Z` e a Release.
 2. **O token do espelho:** um token de acesso pessoal fine-grained com o dono `rafaelpontani`, **Only select repositories** = `pulumi-taba`, a permissão **Contents: Read and write** e uma data de expiração; nada em `rafaelpontani/taba` (o `GITHUB_TOKEN` de um workflow não escreve em outro repositório). Um token que só lê clona mas recebe `403` no push; um valor errado recebe `401` no clone. Defina-o sem o valor passar pelo histórico nem pela tela:
@@ -282,7 +284,7 @@ O token do espelho expira: renove-o antes da data, ou o job falha no `mirror.sh`
 
 - 🟡 **Job de integração**: os testes de contrato dos conectores (`contract-connectors.yml`) e os do gateway (`contract-gateway.yml`) **rodam no CI**, em pull requests para `release`. `connectors/csharp/scripts/integration.sh` e `docker/validate.sh` **não rodam no CI**. Existem e funcionam à mão; rode o `validate.sh` com a imagem `rc` antes do PR `release → main`.
 - ⬜ Os casos e2e do chart (`deploy/helm/tests/run.sh 01 05 …`, com kind) rodam à mão.
-- ⬜ Publicação dos outros conectores nos seus registros (só Rust e C# estão automatizados; a lista está na PRB-079). Enquanto isso os arquivos deles vão para a Release (job `connector-packages`).
+- ⬜ Publicação do conector PHP no Packagist (Rust, C#, Node.js, Python, Ruby, Java e Go estão automatizados; PRB-079). Enquanto isso o arquivo dele vai para a Release (job `connector-packages`).
 - ⬜ Verificação automática da **documentação** no CI: ver `doc/pt-BR/scripts/verificar.mjs` abaixo.
 
 ## Verificação automática desta documentação
@@ -305,6 +307,6 @@ Um segundo script, `node doc/pt-BR/scripts/verificar-idiomas.mjs`, confere que a
 
 ## Fontes e provas
 
-- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,contract-connectors,contract-gateway,release,scorecard,codeql,vulnerabilities,fuzzing}.yml`, `.clusterfuzzlite/`, `crates/taba-node/fuzz/`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/scripts/package-connectors.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
+- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,contract-connectors,contract-gateway,release,scorecard,codeql,vulnerabilities,fuzzing}.yml`, `.github/codeql/codeql-config.yml`, `.clusterfuzzlite/`, `crates/taba-node/fuzz/`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/scripts/package-connectors.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
 - Decisões: D159 a D163, D226 a D228 ([30-decisoes.md](30-decisoes.md)).
 - Casos de uso: não há casos `UC-` de pipeline; a validação é `docker/validate.sh` ([25-testes.md](25-testes.md)).

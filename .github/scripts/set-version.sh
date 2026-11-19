@@ -4,7 +4,8 @@
 #   .github/scripts/set-version.sh 0.1.0-rc.2
 #
 # Adjusts the server Cargo.toml and Cargo.lock, the Rust connectors' Cargo.toml and Cargo.lock,
-# the <Version> of the C# connector packages and the version of the Node.js, Python and Ruby connectors.
+# the <Version> of the C# connector packages, the version of the Node.js, Python, Ruby and Java connectors and of
+# the OpenMessaging Benchmark driver.
 
 set -euo pipefail
 
@@ -61,6 +62,17 @@ sed -i "s|^VERSION = \"[^\"]*\"|VERSION = \"$pyversion\"|" connectors/python/tab
 # 0.3.9-rc.2 is 0.3.9.rc2 (D232).
 gemversion="$(echo "$version" | sed -E 's/-rc\./.rc/')"
 sed -i "s|^  VERSION = '[^']*'.freeze|  VERSION = '$gemversion'.freeze|" connectors/ruby/lib/taba/version.rb
+
+# The Java connector (io.github.rafaelpontani:taba-client on Maven Central) too, as it is: Maven sorts 0.3.9-rc.2 before
+# 0.3.9 (D242). The <version> right after the project's <artifactId>, and the VERSION of the User-Agent.
+sed -i "/^  <artifactId>taba-client<\/artifactId>/{n;s|<version>[^<]*</version>|<version>$version</version>|}" \
+  connectors/java/pom.xml
+sed -i "s|public static final String VERSION = \"[^\"]*\";|public static final String VERSION = \"$version\";|" \
+  connectors/java/src/main/java/io/github/rafaelpontani/taba/TabaClient.java
+# The OpenMessaging Benchmark driver (its -all jar goes to the Release, D243): its own version and the version of the
+# Java connector it is built on, which must be the one above.
+sed -i -e "/^  <artifactId>omb-driver-taba<\/artifactId>/{n;s|<version>[^<]*</version>|<version>$version</version>|}" \
+  -e "s|<taba.version>[^<]*</taba.version>|<taba.version>$version</taba.version>|" connectors/omb/pom.xml
 
 for csproj in connectors/csharp/Taba.Client*/*.csproj; do
   if grep -q '<Version>' "$csproj"; then

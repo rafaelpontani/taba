@@ -3,7 +3,7 @@ title: Pending items
 summary: Everything that remains open in the project — design questions (D…), problems of logic, risk or limit (PRB-…) and the known limits, each with its evidence.
 type: reference
 status: partial
-verified-on: 2026-11-17 @ 396b1cf
+verified-on: 2026-11-18 @ 351d6d5
 sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 ---
 
@@ -33,7 +33,7 @@ Found while writing the Java, Python, Node.js, Go, PHP and Ruby connectors ([21-
 
 | Code | Effect | Proposal |
 |---|---|---|
-| **PRB-079** | **Two connectors are not published in their registries, and their publishing jobs do not exist.** Automated today: **C#** at nuget.org, **Rust** at crates.io, **Node.js** at npm, **Python** at PyPI, **Ruby** at RubyGems and **Go** at the module proxy (`release.yml`, D229, D230, D231, D232). Not automated, with the registry D70 planned: **Java** at Maven Central; **PHP** at Packagist (it needs a mirror repository with the `composer.json` at the root, D70.2); **C** and **C++** at the GitHub Releases, deferred with the connectors (D68.4). The OMB driver is a tool of the repository and is not published. Meanwhile the files of Node.js, Python, Ruby, Java and PHP are attached to every Release (D70.3). (The integration part of this problem is solved: the contract tests, D183) | The publishing jobs, one registry at a time, once D70.1 and D70.2 are decided; the registry packages, repositories and names are the owner's to create |
+| **PRB-079** | **The PHP connector is not published in its registry, and its publishing job does not exist.** Automated today: **C#** at nuget.org, **Rust** at crates.io, **Node.js** at npm, **Python** at PyPI, **Ruby** at RubyGems, **Java** at Maven Central and **Go** at the module proxy (`release.yml`, D229, D230, D231, D232, D242). Not automated, with the registry D70 planned: **PHP** at Packagist (it needs a mirror repository with the `composer.json` at the root, D70.2); **C** and **C++** at the GitHub Releases, deferred with the connectors (D68.4). The OMB driver is not published in a registry, because the OMB `driver-api` is not on Maven Central; its jar is attached to every Release (D243). Meanwhile the files of Node.js, Python, Ruby, Java and PHP are attached to every Release (D70.3). (The integration part of this problem is solved: the contract tests, D183) | The Packagist job once D70.2 is decided for PHP; the mirror repository and the package are the owner's to create |
 | **PRB-080** | **The Python `asyncio` client runs the synchronous transport in worker threads** (`asyncio.to_thread`), because the standard library has no asynchronous HTTP client and the connector has no dependencies. A cancelled task closes the connection in flight, but each concurrent call still takes a thread | Measure with many concurrent long pollings; if it matters, an own HTTP/1.1 over `asyncio` streams, as the Rust connector has over `TcpStream` |
 | **PRB-081** | **Node.js and Python repeat a call that failed on a pooled connection the server had closed (`ECONNRESET` before any byte of the answer), like a refused connection.** If the node had already applied the call and closed the connection before answering, a non-FIFO publication could be delivered twice. The .NET and Java HTTP clients do the same inside the library | Measure how often it happens; if it matters, send `Connection: close` on publications that carry no `deduplicationId`, or repeat only idempotent verbs |
 | **PRB-101** | **The PHP connector cannot renew the invisibility while a handler runs.** PHP runs one thread, so `consumeWith` takes the message for `visibilityTimeout` (120 s by default) and a handler that runs longer gives it back to the queue, to be delivered twice. The other connectors renew it every third of the time on a second thread. The contract line of the `slow` handler is a `SKIP` for PHP | Today: size the `visibilityTimeout` or call `$context->changeVisibility()` from the handler (documented in the PHP README). If it matters: an optional renewal driven by `pcntl_alarm` with `pcntl_async_signals` (PHP 7.1+, not on Windows) |
@@ -161,8 +161,8 @@ Can be answered **now**, in any order: they do not depend on another question or
 - **State:** `[~]` partial · **Type:** design question
 
 **Publishing the connectors.** Already decided: the place of each one (the rule "most popular and free"). Missing:
-  - **D70.1.** The **organization name** and the package identifiers in each registry: Maven *groupId* (which requires a domain or a verified organization), NuGet, PyPI, Packagist, RubyGems, npm, crates.io and the Go module path (which is the repository's).
-  - **D70.2.** Does **PHP** (Packagist requires `composer.json` at the root) come from a **read-only mirror** by `git subtree split`? And are the connector versions **independent** of the server's, as proposed (own SemVer, declaring the contract version)? (Decided for the connectors in a registry: C#, Rust, Node.js, Python, Ruby and Go take the release version, D229, D230, D231, D232.)
+  - **D70.1.** The **organization name** and the package identifiers in each registry: Maven *groupId* (which requires a domain or a verified organization), NuGet, PyPI, Packagist, RubyGems, npm, crates.io and the Go module path (which is the repository's). (Decided for Maven: `io.github.rafaelpontani`, verified by the GitHub account, D242.)
+  - **D70.2.** Does **PHP** (Packagist requires `composer.json` at the root) come from a **read-only mirror** by `git subtree split`? And are the connector versions **independent** of the server's, as proposed (own SemVer, declaring the contract version)? (Decided for the connectors in a registry: C#, Rust, Node.js, Python, Ruby, Java and Go take the release version, D229, D230, D231, D232, D242.)
 
 ### D75
 
@@ -378,7 +378,7 @@ Can be answered **now**, in any order: they do not depend on another question or
 
 - **State:** `[ ]` open · **Type:** design question
 
-**The Java SDK of the Pulumi provider.** The bridge generates it, but Maven Central needs a Central Portal account, a verified namespace (`io.github.rafaelpontani`) and a GPG key of its own, and nothing else in the project publishes to Maven. Question: is Java worth it before someone asks for it? The proposal is to wait for the first request, then add `java` to `generate.sh` and `package.sh`, a publishing job with its variable and the setup in [27-ci-cd.md](27-ci-cd.md#pulumi-provider).
+**The Java SDK of the Pulumi provider.** The bridge generates it. The Central Portal account, the verified namespace (`io.github.rafaelpontani`) and a signing key already exist, because the Java connector is published there (D242). Question: is Java worth it before someone asks for it? The proposal is to wait for the first request, then add `java` to `generate.sh` and `package.sh`, a publishing job with its variable and the setup in [27-ci-cd.md](27-ci-cd.md#pulumi-provider).
 
 ### D224
 

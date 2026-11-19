@@ -3,7 +3,7 @@ título: Pendências
 resumo: Tudo o que continua em aberto no projeto — dúvidas de design (D…), problemas de lógica, risco ou limite (PRB-…) e os limites conhecidos, cada um com a evidência.
 tipo: referência
 status: parcial
-verificado-em: 2026-11-17 @ 396b1cf
+verificado-em: 2026-11-18 @ 351d6d5
 fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 ---
 
@@ -33,7 +33,7 @@ Achados ao escrever os conectores Java, Python, Node.js, Go, PHP e Ruby ([21-con
 
 | Código | Efeito | Proposta |
 |---|---|---|
-| **PRB-079** | **Dois conectores não estão publicados nos seus registros, e os jobs de publicação deles não existem.** Automatizados hoje: **C#** no nuget.org, **Rust** no crates.io, **Node.js** no npm, **Python** no PyPI, **Ruby** no RubyGems e **Go** no proxy de módulos (`release.yml`, D229, D230, D231, D232). Não automatizados, com o registro que a D70 previu: **Java** no Maven Central; **PHP** no Packagist (precisa de um repositório espelho com o `composer.json` na raiz, D70.2); **C** e **C++** nas Releases do GitHub, adiados junto com os conectores (D68.4). O driver do OMB é uma ferramenta do repositório e não é publicado. Enquanto isso os arquivos do Node.js, Python, Ruby, Java e PHP vão anexados a cada Release (D70.3). (A parte de integração deste problema está resolvida: os testes de contrato, D183) | Os jobs de publicação, um registro por vez, depois que a D70.1 e a D70.2 forem decididas; criar os pacotes, repositórios e nomes nos registros é do dono |
+| **PRB-079** | **O conector PHP não está publicado no seu registro, e o job de publicação dele não existe.** Automatizados hoje: **C#** no nuget.org, **Rust** no crates.io, **Node.js** no npm, **Python** no PyPI, **Ruby** no RubyGems, **Java** no Maven Central e **Go** no proxy de módulos (`release.yml`, D229, D230, D231, D232, D242). Não automatizados, com o registro que a D70 previu: **PHP** no Packagist (precisa de um repositório espelho com o `composer.json` na raiz, D70.2); **C** e **C++** nas Releases do GitHub, adiados junto com os conectores (D68.4). O driver do OMB não é publicado num registro, porque o `driver-api` do OMB não está no Maven Central; o jar dele vai anexado a cada Release (D243). Enquanto isso os arquivos do Node.js, Python, Ruby, Java e PHP vão anexados a cada Release (D70.3). (A parte de integração deste problema está resolvida: os testes de contrato, D183) | O job do Packagist, depois que a D70.2 for decidida para o PHP; criar o repositório espelho e o pacote é do dono |
 | **PRB-080** | **O cliente `asyncio` do Python roda o transporte síncrono em threads de trabalho** (`asyncio.to_thread`), porque a biblioteca-padrão não tem cliente HTTP assíncrono e o conector não tem dependências. Uma tarefa cancelada fecha a conexão em andamento, mas cada chamada concorrente ainda ocupa uma thread | Medir com muitos long pollings concorrentes; se importar, um HTTP/1.1 próprio sobre os *streams* do `asyncio`, como o conector Rust tem sobre o `TcpStream` |
 | **PRB-081** | **Node.js e Python repetem uma chamada que falhou numa conexão do pool que o servidor tinha fechado (`ECONNRESET` antes de qualquer byte da resposta), como uma conexão recusada.** Se o nó já tivesse aplicado a chamada e fechado a conexão antes de responder, uma publicação não-FIFO poderia ser entregue duas vezes. Os clientes HTTP do .NET e do Java fazem o mesmo dentro da biblioteca | Medir a frequência; se importar, enviar `Connection: close` nas publicações sem `deduplicationId`, ou repetir só verbos idempotentes |
 | **PRB-101** | **O conector PHP não renova a invisibilidade enquanto um handler roda.** O PHP roda numa thread só, então `consumeWith` toma a mensagem por `visibilityTimeout` (120 s por padrão) e um handler que demora mais devolve a mensagem à fila, para ser entregue duas vezes. Os outros conectores a renovam a cada um terço do tempo, numa segunda thread. A linha de contrato do handler `slow` é `SKIP` no PHP | Hoje: dimensionar o `visibilityTimeout` ou chamar `$context->changeVisibility()` dentro do handler (documentado no README do PHP). Se importar: uma renovação opcional movida por `pcntl_alarm` com `pcntl_async_signals` (PHP 7.1+, não no Windows) |
@@ -161,8 +161,8 @@ Podem ser respondidas **agora**, em qualquer ordem: não dependem de outra pergu
 - **Estado:** `[~]` parcial · **Tipo:** dúvida de design
 
 **Publicação dos conectores.** Já decidido: o lugar de cada um (a regra "mais popular e gratuito"). Falta:
-  - **D70.1.** O **nome da organização** e os identificadores de pacote em cada registro: Maven *groupId* (que exige um domínio ou uma organização verificada), NuGet, PyPI, Packagist, RubyGems, npm, crates.io e o caminho do módulo Go (que é o do repositório).
-  - **D70.2.** O **PHP** (Packagist exige o `composer.json` na raiz) sai de um **espelho somente leitura** por `git subtree split`? E as versões dos conectores são **independentes** da do servidor, como proposto (SemVer próprio, declarando a versão do contrato)? (Decidido para os conectores que estão num registro: C#, Rust, Node.js, Python, Ruby e Go levam a versão da release, D229, D230, D231, D232.)
+  - **D70.1.** O **nome da organização** e os identificadores de pacote em cada registro: Maven *groupId* (que exige um domínio ou uma organização verificada), NuGet, PyPI, Packagist, RubyGems, npm, crates.io e o caminho do módulo Go (que é o do repositório). (Decidido para o Maven: `io.github.rafaelpontani`, verificado pela conta do GitHub, D242.)
+  - **D70.2.** O **PHP** (Packagist exige o `composer.json` na raiz) sai de um **espelho somente leitura** por `git subtree split`? E as versões dos conectores são **independentes** da do servidor, como proposto (SemVer próprio, declarando a versão do contrato)? (Decidido para os conectores que estão num registro: C#, Rust, Node.js, Python, Ruby, Java e Go levam a versão da release, D229, D230, D231, D232, D242.)
 
 ### D75
 
@@ -378,7 +378,7 @@ Podem ser respondidas **agora**, em qualquer ordem: não dependem de outra pergu
 
 - **Estado:** `[ ]` aberta · **Tipo:** dúvida de design
 
-**O SDK Java do provider Pulumi.** O bridge o gera, mas o Maven Central pede uma conta no Central Portal, um namespace verificado (`io.github.rafaelpontani`) e uma chave GPG própria, e nada mais no projeto publica no Maven. Pergunta: vale fazer o Java antes de alguém pedir? A proposta é esperar o primeiro pedido e então acrescentar `java` ao `generate.sh` e ao `package.sh`, um job de publicação com a variável dele e a configuração em [27-ci-cd.md](27-ci-cd.md#provider-pulumi).
+**O SDK Java do provider Pulumi.** O bridge o gera. A conta no Central Portal, o namespace verificado (`io.github.rafaelpontani`) e uma chave de assinatura já existem, porque o conector Java é publicado lá (D242). Pergunta: vale fazer o Java antes de alguém pedir? A proposta é esperar o primeiro pedido e então acrescentar `java` ao `generate.sh` e ao `package.sh`, um job de publicação com a variável dele e a configuração em [27-ci-cd.md](27-ci-cd.md#provider-pulumi).
 
 ### D224
 
