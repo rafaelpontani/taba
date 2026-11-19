@@ -34,11 +34,13 @@ src_root="$(host "$root")"
 out_host="$(host "$out")"
 
 # build <image> <connector folder> <command run in a copy of the folder at /build; files to ship go to /out>
+#       [<more docker run options>...]
 build() {
   local image="$1" folder="$2" script="$3"
+  shift 3
   echo "==> $folder ($image)"
   docker run --rm \
-    -v "$src_root/connectors/$folder:/src:ro" -v "$out_host:/out" \
+    -v "$src_root/connectors/$folder:/src:ro" -v "$out_host:/out" "$@" \
     -e HOME=/tmp -e npm_config_cache=/tmp/npm -e MAVEN_CONFIG=/tmp/m2 \
     "$image" sh -ec "mkdir /build && cp -R /src/. /build && cd /build && $script"
 }
@@ -49,20 +51,23 @@ build python:3.12-slim python 'pip wheel --quiet --no-deps --wheel-dir /out .'
 
 build ruby:3.3 ruby 'gem build --quiet taba-client.gemspec && mv taba-client-*.gem /out/'
 
-# Java: the jar goes to the Release; the jar, the sources and javadoc jars and the pom go to a staging folder (.maven)
-# and then to <maven-folder>, or are dropped.
+# Java: the jar goes to the Release; with <maven-folder> (mounted at /maven), the jar, the sources and javadoc jars and
+# the pom go there too. The container writes them itself: on Linux its files belong to root, so the host could not move
+# or delete them afterwards.
+maven_mount=()
+if [ -n "$maven" ]; then
+  mkdir -p "$maven"
+  maven_mount=(-v "$(host "$maven"):/maven")
+fi
+# shellcheck disable=SC2016 # expanded by the shell of the container
 build maven:3.9-eclipse-temurin-11 java \
   'mvn -q -B -Dmaven.test.skip=true -Dmaven.repo.local=/tmp/m2 package
    v="$(ls target/taba-client-*-sources.jar | sed "s|.*/taba-client-||; s|-sources.jar$||")"
-   mkdir -p /out/.maven
-   cp target/taba-client-*.jar /out/.maven/
-   cp pom.xml "/out/.maven/taba-client-$v.pom"
-   cp "target/taba-client-$v.jar" /out/'
-if [ -n "$maven" ]; then
-  mkdir -p "$maven"
-  mv "$out"/.maven/* "$maven"/
-fi
-rm -rf "$out/.maven"
+   cp "target/taba-client-$v.jar" /out/
+   if [ -d /maven ]; then
+     cp target/taba-client-*.jar /maven/
+     cp pom.xml "/maven/taba-client-$v.pom"
+   fi' "${maven_mount[@]}"
 
 # PHP: composer.json, README and src/ at the root of the zip, which is what a Composer "package" repository expects.
 version="$(sed -n "s/.*const VERSION = '\([^']*\)'.*/\1/p" "$root/connectors/php/src/Client.php" | head -n 1)"
