@@ -227,6 +227,15 @@ jobs:
           VERSION: ${{ needs.plan.outputs.version }}
         run: .github/scripts/set-version.sh "$VERSION"
       - run: bash .github/scripts/package-connectors.sh dist maven
+      # The OpenMessaging Benchmark driver, with the Java connector inside: its -all jar goes to the Release only. It is
+      # not on Maven Central because the OMB driver-api it depends on is not there either (D243).
+      - name: OMB driver (omb-driver-taba-<version>-all.jar)
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          connectors/omb/build.sh
+          cp "connectors/omb/target/omb-driver-taba-$VERSION-all.jar" dist/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: connector-packages

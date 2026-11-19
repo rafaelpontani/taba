@@ -141,7 +141,7 @@ Só a tag **fixa** (`vX.Y.Z`, `vX.Y.Z-rc.N`) é imutável. As flutuantes são po
 |---|---|---|---|
 | Docker Hub | `rafaelpontani/taba`, `rafaelpontani/taba-cli` | Secrets `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` | Sempre |
 | GHCR | `ghcr.io/rafaelpontani/taba`, `taba-cli` e `charts/taba` | `GITHUB_TOKEN` (`packages: write`) | Sempre |
-| GitHub Release | Binários, pacotes (inclusive os arquivos dos conectores sem registro, D70.3), chart, `SHA256SUMS` | `GITHUB_TOKEN` | Sempre |
+| GitHub Release | Binários, pacotes (inclusive os arquivos dos conectores sem registro, D70.3, e o jar do driver do OMB, D243), chart, `SHA256SUMS` | `GITHUB_TOKEN` | Sempre |
 | crates.io | `taba-client`, depois `taba-cli` | Trusted Publishing (`rust-lang/crates-io-auth-action`); o primeiro publish de cada crate usa o secret `CARGO_REGISTRY_TOKEN` | Variável `PUBLISH_CRATES=true` |
 | nuget.org | `Taba.Client`, `.Abstractions`, `.Extensions.DependencyInjection` (+ `.snupkg`) | Trusted Publishing (`NuGet/login`) | Variável `NUGET_USER` (a conta dona da política) |
 | npm | `taba-client` (o conector Node.js, com a versão da release; uma candidata vai para a dist-tag `next`) | Trusted Publishing (`npm publish` por OIDC, D229) | Variável `CONNECTOR_NPM=true` |
@@ -261,7 +261,7 @@ O token vence: renove-o antes da data, ou o job falha no `mirror.sh` depois de t
 
 ### Provider Pulumi
 
-O provider é empacotado a cada versão e publicado pelo espelho e pelos três registries de pacotes (D212, D213, [41-pulumi.md](41-pulumi.md#publicação)). **Nada disso está configurado ainda**: até o mantenedor criar o que está abaixo e definir as variáveis, os jobs `pulumi-*` de publicação não rodam e os arquivos ficam só na Release. Cada destino é independente, e a variável dele é o último passo (liga o job). Os passos vêm da documentação dos registries e ainda não foram executados: a primeira release que ligar um destino é o teste, e esta seção é corrigida com o que acontecer.
+O provider é empacotado a cada versão e publicado pelo espelho e pelos três registries de pacotes (D212, D213, [41-pulumi.md](41-pulumi.md#publicação)). **Tudo isso está configurado e roda a cada versão**: o espelho desde a v0.3.9, o nuget.org desde a 0.3.11, o npm desde a 0.3.17 e o PyPI desde a 0.3.18. Os passos abaixo são o que o mantenedor criou uma vez, guardados para refazer (um repositório novo, um token vencido). Cada destino é independente, e a variável dele é o último passo (liga o job); sem ela, o job não roda e os arquivos ficam só na Release.
 
 1. **O repositório espelho:** público, `rafaelpontani/pulumi-taba`, criado vazio. O primeiro `mirror.sh` empurra a `main`; dali em diante ele troca a árvore a cada versão e cria as tags `vX.Y.Z` e `sdk/vX.Y.Z` e a Release.
 2. **O token do espelho:** um token de acesso pessoal fine-grained com o dono `rafaelpontani`, **Only select repositories** = `pulumi-taba`, a permissão **Contents: Read and write** e uma data de expiração; nada em `rafaelpontani/taba` (o `GITHUB_TOKEN` de um workflow não escreve em outro repositório). Um token que só lê clona mas recebe `403` no push; um valor errado recebe `401` no clone. Defina-o sem o valor passar pelo histórico nem pela tela:
