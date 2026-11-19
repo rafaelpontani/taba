@@ -18,3 +18,8 @@ connectors/omb/test.sh    # one Taba node in Docker, then the unit and the integ
 
 Both run in a container (`maven:3.9-eclipse-temurin-11`), so only Docker is needed. To use the driver in an OMB
 checkout, copy `target/omb-driver-taba-<version>-all.jar` to its `lib/` and `driver-taba.yaml` to its `driver-taba/` folder.
+
+The jar is also attached to every [Release](https://github.com/rafaelpontani/taba/releases)
+(`omb-driver-taba-<version>-all.jar`, with the Taba release version, listed in `SHA256SUMS` and attested:
+`gh attestation verify <file> -R rafaelpontani/taba`), so the build is not needed to use it. It is not on Maven Central,
+because the OMB `driver-api` it depends on is not there either.

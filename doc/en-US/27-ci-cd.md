@@ -141,7 +141,7 @@ Only the **fixed** tag (`vX.Y.Z`, `vX.Y.Z-rc.N`) is immutable. The floating ones
 |---|---|---|---|
 | Docker Hub | `rafaelpontani/taba`, `rafaelpontani/taba-cli` | Secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` | Always |
 | GHCR | `ghcr.io/rafaelpontani/taba`, `taba-cli` and `charts/taba` | `GITHUB_TOKEN` (`packages: write`) | Always |
-| GitHub Release | Binaries, packages (including the files of the connectors without a registry, D70.3), chart, `SHA256SUMS` | `GITHUB_TOKEN` | Always |
+| GitHub Release | Binaries, packages (including the files of the connectors without a registry, D70.3, and the jar of the OMB driver, D243), chart, `SHA256SUMS` | `GITHUB_TOKEN` | Always |
 | crates.io | `taba-client`, then `taba-cli` | Trusted Publishing (`rust-lang/crates-io-auth-action`); the first publish of each crate uses the `CARGO_REGISTRY_TOKEN` secret | Variable `PUBLISH_CRATES=true` |
 | nuget.org | `Taba.Client`, `.Abstractions`, `.Extensions.DependencyInjection` (+ `.snupkg`) | Trusted Publishing (`NuGet/login`) | Variable `NUGET_USER` (the account that owns the policy) |
 | npm | `taba-client` (the Node.js connector, with the release version; a candidate goes to the `next` dist-tag) | Trusted Publishing (`npm publish` over OIDC, D229) | Variable `CONNECTOR_NPM=true` |
@@ -261,7 +261,7 @@ The token expires: renew it before the date, or the job fails at `mirror.sh` aft
 
 ### Pulumi provider
 
-The provider is packaged with every version and published through the mirror and the three package registries (D212, D213, [41-pulumi.md](41-pulumi.md#publication)). **Nothing of this is set up yet**: until the maintainer creates what is below and sets the variables, the `pulumi-*` publishing jobs do not run and the files are only in the Release. Each destination is independent, and its variable is the last step of it (it turns the job on). The steps come from the documentation of the registries and have not been run yet: the first release that turns a destination on is the test, and this section is corrected with what happens.
+The provider is packaged with every version and published through the mirror and the three package registries (D212, D213, [41-pulumi.md](41-pulumi.md#publication)). **All of it is set up and runs with every version**: the mirror since v0.3.9, nuget.org since 0.3.11, npm since 0.3.17 and PyPI since 0.3.18. The steps below are what the maintainer created once, kept to redo them (a new repository, an expired token). Each destination is independent, and its variable is the last step of it (it turns the job on); without it, the job does not run and the files are only in the Release.
 
 1. **The mirror repository:** public, `rafaelpontani/pulumi-taba`, created empty. The first `mirror.sh` pushes `main`; after that it replaces its tree on each version, and creates the tags `vX.Y.Z` and `sdk/vX.Y.Z` and the Release.
 2. **The mirror token:** a fine-grained personal access token with the owner `rafaelpontani`, **Only select repositories** = `pulumi-taba`, the permission **Contents: Read and write** and an expiry date; nothing on `rafaelpontani/taba` (the `GITHUB_TOKEN` of a workflow cannot write to another repository). A token that can only read clones but gets `403` at the push; a wrong value gets `401` at the clone. Set it without the value passing through the history or the screen:
