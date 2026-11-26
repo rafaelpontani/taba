@@ -15,6 +15,7 @@ This file holds the sections of the issues already **fixed**, as history and for
 
 | Code | Issue | Status | Found on | Fixed on |
 |---|---|---|---|---|
+| KI-039 | [A drained node checked for the old message after the synchronization had brought it back](#ki-039-a-drained-node-checked-for-the-old-message-after-the-synchronization-had-brought-it-back) | Fixed | 2026-11-26 | 2026-11-26 |
 | KI-036 | [A grep -q at the end of a pipe that fails a check that passed](#ki-036-a-grep--q-at-the-end-of-a-pipe-that-fails-a-check-that-passed) | Fixed | 2026-11-17 | 2026-11-17 |
 | KI-035 | [Java drivers of the gateway contract that share the whole Maven folder](#ki-035-java-drivers-of-the-gateway-contract-that-share-the-whole-maven-folder) | Fixed | 2026-11-17 | 2026-11-17 |
 | KI-033 | [A pending register on the secondary checked before it arrived](#ki-033-a-pending-register-on-the-secondary-checked-before-it-arrived) | Fixed | 2026-11-10 | 2026-11-10 |
@@ -49,6 +50,22 @@ This file holds the sections of the issues already **fixed**, as history and for
 | KI-003 | [Rejoining after a symmetric partition](#ki-003-rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | KI-002 | [A healthy channel that does not come back](#ki-002-a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | KI-001 | [Lock-order inversion when choosing replicas](#ki-001-lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## KI-039: A drained node checked for the old message after the synchronization had brought it back
+
+**Status:** Fixed · **Found on:** 2026-11-26 · **Fixed on:** 2026-11-26
+
+- **Test:** `tests/recovery.rs::a_node_that_left_by_drain_recovers_the_lost_messages_before_it_returns_as_a_new_node` (UC-DRN-018, UC-RTN-001, UC-RTN-003, UC-RTN-013).
+- **Symptom:** `assertion failed: !messages_of(node3).holds(TOPIC, &lost.id)`, in the job `Server (build and tests, amd64)` of pull request #134 (a change of `.gitattributes` and docs only); the other 11 tests of the file passed.
+- **Cause (confirmed):** in the test, not in the server. `rejoin_as_new` clears the local state and redoes the bootstrap with a new ID; with `replication.factor=3` on three nodes the new node owns every block, so its synchronization brings the recovered message back, as it should. The test checked that node 3 no longer held the message as soon as it was in the table, a race with that synchronization: it passed only when it looked before the copy arrived. With the check moved after `wait_joined` (the node active), it failed 1 time in 1.
+- **Fix (2026-11-26, in the test):** the clearing is shown by a second message that only node 3 holds and nobody declared lost (`only_here`): no owner can give it back, so it must be gone after the return. The test then waits for the node to be active and checks that it got `lost` back from its owners.
+- **Verification:** the test alone 30 times and the whole `recovery` binary 30 times (6 processes at once, 5 rounds) on Windows: no failure.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-26 | Failed once in the CI of pull request #134; cause read from `rejoin_as_new` and confirmed by checking after the node is active (fails every time); the test checks a message only the node had; 60 runs with no failure. |
 
 ## KI-036: A grep -q at the end of a pipe that fails a check that passed
 
