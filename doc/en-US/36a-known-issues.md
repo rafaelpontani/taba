@@ -23,7 +23,7 @@ This file holds the sections of the issues that are **open** (`Open` or `Reopene
 - **Next step:** those steps now write their output to a file that is printed when they fail. At the next occurrence, the log of the job shows the error of `go get` or `go mod tidy`.
 - **On Windows (a separate cause, fixed):** the same check failed every time on a Windows clone with `core.autocrlf`, with `unable to convert HCL example for Pulumi entity '#/resources/taba:index/token:Token'` and the example of `Token` gone from the schema and the four SDKs. The docs of the Terraform provider come out with CRLF there, and the regular expression of `connectors/pulumi/provider/docs_edits.go` that removes the `lifecycle` block of the token example only knew `
 `, so the block stayed and the converter dropped the example. The expression now accepts `
-`; test `connectors/pulumi/provider/resources_test.go::TestDocsEditsRemoveTheLifecycleBlockWithAnyLineEnd` (UC-IAC-035), and `test.sh sdks` passed on Windows after it. It does not explain the failure in CI, whose checkout is LF.
+`; test `connectors/pulumi/provider/resources_test.go::TestDocsEditsRemoveTheLifecycleBlockWithAnyLineEnd` (UC-IAC-035), and `test.sh sdks` passed on Windows after it. It does not explain the failure in CI, whose checkout is LF. The root of the Windows failure, CRLF in the checkout, is also gone: `.gitattributes` checks the Go sources and the docs and examples of the Terraform provider out with LF ([PRB-113](30-decisions.md#resolved-problems-prb)).
 - **Do not:** retry the step in a loop without knowing what failed.
 
 **History**
