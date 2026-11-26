@@ -4,7 +4,7 @@ summary: "The intermittent tests and known issues still open (or reopened): each
 type: reference
 status: partial
 verified-on: 2026-11-10 @ d6e1d66
-sources: [connectors/pulumi/scripts/generate.sh, connectors/gateway-contract/drivers/java/build-and-run.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+sources: [connectors/pulumi/scripts/generate.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Known issues: open
@@ -12,24 +12,6 @@ sources: [connectors/pulumi/scripts/generate.sh, connectors/gateway-contract/dri
 > Read first: [25-testing.md](25-testing.md).
 
 This file holds the sections of the issues that are **open** (`Open` or `Reopened`). Their index, where each file is and the pattern of a section are in [36-known-issues.md](36-known-issues.md); the fixed ones are in [36f-known-issues.md](36f-known-issues.md).
-
-## KI-040: The Java drivers of the gateway contract that do not find the Maven dependency plugin
-
-**Status:** Open · **Found on:** 2026-11-26 · **Fixed on:** —
-
-- **Where:** job `gateway-contract` (`contract-gateway.yml`), the Java drivers (`java-v2`, `java-v2old` and the others), step `connectors/gateway-contract/drivers/java/build-and-run.sh`.
-- **Symptom:** every Java driver ended with `the driver did not finish (no SUMMARY)` and, in its log, `[ERROR] No plugin found for prefix 'dependency' in the current project and in the plugin groups [org.apache.maven.plugins, org.codehaus.mojo] available from the repositories [local (/root/.m2/repository), central (https://repo.maven.apache.org/maven2)]`. Seen on pull request #133 on 2026-11-26; the drivers of the other languages passed in the same run, and the job passed when re-run. On #140 the same evening, with the plugin already called by its full coordinates, the job on the emulators failed with `Could not transfer artifact org.apache.maven.plugins:maven-dependency-plugin:pom:3.11.0 from/to central`, and the job of the Java connector (`build-connector-java.yml`, JDK 21) with `Could not transfer artifact org.apache.maven.plugins:maven-source-plugin:pom:3.3.1 from/to central (https://repo.maven.apache.org/maven2): status code: 429, reason phrase: Too Many Requests (429)`.
-- **Cause:** **Maven Central limits the rate of the GitHub runners** (`429 Too Many Requests`). No Maven job of the CI kept its local repository, so every run downloaded every plugin and SDK again, and the Java drivers start together; Maven 3.9 already repeats a request answered with 429 three times, and the limit lasted longer than that. A goal by prefix first reads the metadata of the plugin groups, which is why the first failure said `No plugin found for prefix`: a read answered with 429.
-- **Fix (2026-11-26):** the Maven local repository is cached between runs (`actions/cache` of `${{ runner.temp }}/m2`, key from the hash of the `pom*.xml` files) in every pull-request job that runs Maven: `build-connector-java.yml`, `build-connector-omb.yml`, the OMB steps of `contract-connectors.yml` and both jobs of `contract-gateway.yml`; the variable `TABA_M2_DIR` makes `connectors/gateway-contract/drivers/run.sh` and `connectors/omb/lib.sh` mount that folder ([27-ci-cd.md](27-ci-cd.md#the-workflows-githubworkflows)). The parallel Java drivers share it with the file locks of the resolver (`aether.syncContext.named.factory=file-lock`): without them, two drivers downloading the same artifact into one folder failed with `java.io.IOException: No such file or directory`. The call by full coordinates stays (one request less). While reproducing it on Windows, `build-and-run.sh` came out with CRLF and `sh` broke in the container: `.gitattributes` now checks every `*.sh` out with LF ([PRB-113](30-decisions.md#resolved-problems-prb)).
-- **Next step:** check on the pull request of the fix that a second run restores the cache and Maven downloads nothing from Central; then this section goes to 36f.
-- **Do not:** re-run the job in a loop without reading the log.
-
-**History**
-
-| Date | Event |
-|---|---|
-| 2026-11-26 | Every Java driver failed on pull request #133 with `No plugin found for prefix 'dependency'`; passed when re-run. Not reproduced in 48 local runs. The driver now calls the plugin by its full coordinates. |
-| 2026-11-26 | On #140 the job on the emulators and the Java connector (JDK 21) failed with `Could not transfer artifact` from Central, one of them with `429 Too Many Requests`: the cause is the rate limit of Central. Maven repository cached in the CI, file locks for the parallel drivers, `*.sh` with LF. Locally: the three Java drivers in parallel over an empty Docker volume pass 290/290 lines each. |
 
 ## KI-038: The check of the Pulumi SDKs that stops with no message in CI
 
@@ -114,5 +96,4 @@ What the issues above taught, so the next one is found faster (the checklist for
 - `src/cluster/replication/definitions.rs` (`offer`, `spread`, `relay`, `coordinate`), `src/cluster/service/mod.rs` (`recover_previous_life`, `finish_join`, `activate`) and `tests/cold_start.rs` (UC-RTN-058); the timeline of the lost offer is in the log kept from the hunt of 2026-10-26.
 - The hang of 2026-10-26 was reproduced locally and in a Linux container; the stack, the logs and the run counts are the ones in the history table.
 - The failures were seen in the repository's CI logs; the "found" dates come from the git history and the logs.
-- KI-040: `connectors/gateway-contract/drivers/java/build-and-run.sh` (the Maven call); the log of the job `gateway-contract` on pull request #133.
 - KI-038: `connectors/pulumi/scripts/generate.sh` (the download steps) and `connectors/pulumi/scripts/test.sh` (`sdks`); the log of the job on pull request #131.
