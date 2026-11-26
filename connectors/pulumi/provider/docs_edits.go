@@ -9,8 +9,10 @@ import (
 
 // The documentation of the schema comes from the Terraform docs (connectors/terraform/docs). Two pieces of it talk
 // about Terraform only and are rewritten before the examples are converted: the lifecycle block of the token example
-// (the converter cannot turn it into Pulumi code) and the sentence about rotating a token.
-var lifecycleBlock = regexp.MustCompile(`(?s)\n\n  # Rotation:.*?\n  lifecycle \{.*?\n  \}\n`)
+// (the converter cannot turn it into Pulumi code) and the sentence about rotating a token. The line ends may be CRLF:
+// a Windows clone with core.autocrlf checks the docs out that way, and a block left in made the converter drop the
+// whole example (KI-038).
+var lifecycleBlock = regexp.MustCompile(`(?s)\r?\n\r?\n  # Rotation:.*?\r?\n  lifecycle \{.*?\r?\n  \}\r?\n`)
 
 const (
 	terraformRotation = "To rotate, `terraform apply -replace=<address>`, with `lifecycle { create_before_destroy = true }` so there is no moment without a token."

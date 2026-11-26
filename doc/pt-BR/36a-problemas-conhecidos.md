@@ -4,7 +4,7 @@ resumo: "Os testes intermitentes e problemas conhecidos ainda abertos (ou reaber
 tipo: referência
 status: parcial
 verificado-em: 2026-11-10 @ d6e1d66
-fontes: [crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+fontes: [connectors/pulumi/scripts/generate.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Problemas conhecidos: abertos
@@ -12,6 +12,26 @@ fontes: [crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/clus
 > Leia antes: [25-testes.md](25-testes.md).
 
 Este arquivo guarda as seções dos problemas **abertos** (`Aberto` ou `Reaberto`). O índice deles, onde fica cada arquivo e o padrão de uma seção estão no [36-problemas-conhecidos.md](36-problemas-conhecidos.md); os corrigidos estão no [36f-problemas-conhecidos.md](36f-problemas-conhecidos.md).
+
+## KI-038: A verificação dos SDKs do Pulumi que para sem mensagem no CI
+
+**Status:** Aberto · **Achado em:** 2026-11-26 · **Corrigido em:** —
+
+- **Onde:** job `Pulumi provider (unit tests and generated SDKs)` do `ci.yml`, passo `connectors/pulumi/scripts/test.sh sdks` (que roda o `connectors/pulumi/scripts/generate.sh`).
+- **Sintoma:** o passo termina com `Process completed with exit code 1` uns 70 s depois de `[converter plugin terraform-1.4.0] installing`, sem nenhuma outra linha: nem o `schema.json or an SDK changed` da verificação, nem um erro do `tfgen`. Visto uma vez, no pull request #131 do Dependabot (rusqlite 0.42 → 0.43, que não mexe no provider Pulumi), em 2026-11-23; o mesmo job passou no #130 e no #132 no mesmo dia, e no #131 quando executado de novo em 2026-11-26.
+- **Causa:** não identificada. Os passos do `generate.sh` que baixam módulos Go (`go get` do SDK do Pulumi e dos pisos, `go mod tidy`) mandavam a saída e os erros para `/dev/null`, então uma falha ali (um proxy de módulos que não respondeu, por exemplo) termina o script sem mensagem; é a leitura mais provável, não confirmada.
+- **Próximo passo:** esses passos agora gravam a saída num arquivo que é mostrado quando falham. Na próxima ocorrência, o log do job mostra o erro do `go get` ou do `go mod tidy`.
+- **No Windows (outra causa, corrigida):** a mesma verificação falhava sempre num clone do Windows com `core.autocrlf`, com `unable to convert HCL example for Pulumi entity '#/resources/taba:index/token:Token'` e o exemplo do `Token` sumindo do schema e dos quatro SDKs. A documentação do provider Terraform sai com CRLF ali, e a expressão regular do `connectors/pulumi/provider/docs_edits.go` que tira o bloco `lifecycle` do exemplo do token só conhecia `
+`, então o bloco ficava e o conversor descartava o exemplo. A expressão agora aceita `
+`; teste `connectors/pulumi/provider/resources_test.go::TestDocsEditsRemoveTheLifecycleBlockWithAnyLineEnd` (UC-IAC-035), e o `test.sh sdks` passou no Windows depois dela. Não explica a falha no CI, cujo checkout é LF.
+- **Não fazer:** repetir o passo num laço sem saber o que falhou.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-23 | Falhou no pull request #131 sem mensagem; passou no #130 e no #132 no mesmo dia. |
+| 2026-11-26 | Passou ao executar de novo no #131. Os passos de download do `generate.sh` agora mostram seus erros. No Windows a verificação falhou duas vezes seguidas com o exemplo do token descartado (CRLF na documentação); a edição da documentação agora aceita CRLF e a verificação passou. |
 
 ## KI-034: Um nó reiniciado na tabela junto com o antigo numa caça sobrecarregada
 
@@ -76,3 +96,4 @@ O que os problemas acima ensinaram, para o próximo ser achado mais rápido (a l
 - `src/cluster/replication/definitions.rs` (`offer`, `spread`, `relay`, `coordinate`), `src/cluster/service/mod.rs` (`recover_previous_life`, `finish_join`, `activate`) e `tests/cold_start.rs` (UC-RTN-058); a linha do tempo da oferta perdida está no log guardado da caçada de 2026-10-26.
 - O travamento de 2026-10-26 foi reproduzido localmente e num container Linux; a pilha, os logs e as contagens de execuções são os da tabela de histórico.
 - As falhas foram vistas nos logs do CI do repositório; as datas de "achado" vêm do histórico do git e dos logs.
+- KI-038: `connectors/pulumi/scripts/generate.sh` (os passos de download) e `connectors/pulumi/scripts/test.sh` (`sdks`); o log do job no pull request #131.

@@ -19,6 +19,9 @@ go.opentelemetry.io/otel/sdk/log@v1.47.0 go.opentelemetry.io/otel/trace@v1.47.0"
 pulumi_go -e PULUMI_VERSION="$PULUMI_VERSION" -e SDK_FLOORS="$SDK_FLOORS" -- '
   set -eu
   trap "chown -R \$(stat -c %u:%g /repo) /repo/connectors/pulumi" EXIT
+  # The steps that download modules are quiet when they pass and print what they said when they fail (KI-038: one of
+  # them failed in CI with no message at all).
+  log=/tmp/pulumi-generate.log
   cmd=provider/cmd/pulumi-resource-taba
   tfgen=/tmp/pulumi-tfgen-taba
   (cd provider && go build -o "$tfgen" ./cmd/pulumi-tfgen-taba)
@@ -41,11 +44,11 @@ pulumi_go -e PULUMI_VERSION="$PULUMI_VERSION" -e SDK_FLOORS="$SDK_FLOORS" -- '
   # go mod init would write its own version (the check of the SDKs then failed on every new Go patch).
   go mod init github.com/rafaelpontani/pulumi-taba/sdk >/dev/null 2>&1
   go mod edit -go="$(sed -n "s/^go //p" ../provider/go.mod | tr -d "\r")"
-  go get "github.com/pulumi/pulumi/sdk/v3@v$PULUMI_VERSION" >/dev/null 2>&1
+  go get "github.com/pulumi/pulumi/sdk/v3@v$PULUMI_VERSION" >"$log" 2>&1 || { cat "$log" >&2; exit 1; }
   # Floors for the indirect modules of the Pulumi SDK that have known vulnerabilities in the versions it asks for
   # (OSV, Scorecard Vulnerabilities). Raise a floor when a new advisory appears; drop it once PULUMI_VERSION asks for
   # a fixed version by itself.
-  go get $SDK_FLOORS >/dev/null 2>&1
-  GOFLAGS="-mod=mod -buildvcs=false" go mod tidy >/dev/null 2>&1
+  go get $SDK_FLOORS >"$log" 2>&1 || { cat "$log" >&2; exit 1; }
+  GOFLAGS="-mod=mod -buildvcs=false" go mod tidy >"$log" 2>&1 || { cat "$log" >&2; exit 1; }
   cd ..; rm -rf sdk/dotnet/bin sdk/dotnet/obj'
 echo "  generated"
