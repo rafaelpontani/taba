@@ -11477,6 +11477,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/pulumi/provider/resources_test.go::TestReplacementOrder`
 
 ---
+
+### UC-IAC-035
+
+**Case:** The Terraform docs are adapted to Pulumi before the examples are converted ([41-pulumi.md](41-pulumi.md#replacement-and-rotation), KI-038)
+**Then:** The `lifecycle` block of the token example and the sentence about `terraform apply -replace` are rewritten with the docs checked out with LF or with CRLF (a Windows clone with `core.autocrlf`), so the converter keeps the example of `Token`
+**Level:** K
+**Tests:**
+  - `connectors/pulumi/provider/resources_test.go::TestDocsEditsRemoveTheLifecycleBlockWithAnyLineEnd`
+
+---
 ## Sources and evidence
 
 - The cases came from `doc/20a`, `20b` and `20c` (the historical catalogue, removed in commit `efeb47a`); the tests, from the `/// UC:` lines of the code. The test `crates/taba-node/tests/uc_coverage.rs` checks the codes.
