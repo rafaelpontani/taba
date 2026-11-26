@@ -4,7 +4,7 @@ resumo: "Os testes intermitentes e problemas conhecidos ainda abertos (ou reaber
 tipo: referência
 status: parcial
 verificado-em: 2026-11-10 @ d6e1d66
-fontes: [connectors/pulumi/scripts/generate.sh, connectors/gateway-contract/drivers/java/build-and-run.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+fontes: [connectors/pulumi/scripts/generate.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Problemas conhecidos: abertos
@@ -12,23 +12,6 @@ fontes: [connectors/pulumi/scripts/generate.sh, connectors/gateway-contract/driv
 > Leia antes: [25-testes.md](25-testes.md).
 
 Este arquivo guarda as seções dos problemas **abertos** (`Aberto` ou `Reaberto`). O índice deles, onde fica cada arquivo e o padrão de uma seção estão no [36-problemas-conhecidos.md](36-problemas-conhecidos.md); os corrigidos estão no [36f-problemas-conhecidos.md](36f-problemas-conhecidos.md).
-
-## KI-040: Os drivers Java do contrato do gateway que não acham o plugin de dependências do Maven
-
-**Situação:** Aberto · **Encontrado em:** 2026-11-26 · **Corrigido em:** —
-
-- **Onde:** job `gateway-contract` (`contract-gateway.yml`), os drivers Java (`java-v2`, `java-v2old` e os outros), passo `connectors/gateway-contract/drivers/java/build-and-run.sh`.
-- **Sintoma:** todos os drivers Java terminaram com `the driver did not finish (no SUMMARY)` e, no log, `[ERROR] No plugin found for prefix 'dependency' in the current project and in the plugin groups [org.apache.maven.plugins, org.codehaus.mojo] available from the repositories [local (/root/.m2/repository), central (https://repo.maven.apache.org/maven2)]`. Visto uma vez, no pull request #133 em 2026-11-26; os drivers das outras linguagens passaram na mesma execução, e o job passou ao ser executado de novo.
-- **Causa:** não confirmada. Um goal chamado por prefixo (`dependency:build-classpath`) faz o Maven ler os metadados dos grupos de plugins no Maven Central para saber qual plugin tem o prefixo; uma leitura que falhou por um instante (o Central não respondeu, ou respondeu com erro) deixa o Maven sem o plugin, e todos os drivers Java começam ao mesmo tempo, então falham juntos. Bate com o que se viu, mas a falha não foi reproduzida: 48 execuções dos drivers, várias ao mesmo tempo, passaram todas.
-- **Mitigação (2026-11-26):** o driver chama o plugin pelas coordenadas completas e pela versão (`org.apache.maven.plugins:maven-dependency-plugin:3.11.0:build-classpath`), então o Maven não lê mais os metadados dos grupos para resolver um prefixo. Ele ainda baixa o plugin e o SDK do Central; um Central que não responde ainda faz o driver falhar, agora com o erro desse download.
-- **Próximo passo:** se voltar com as coordenadas completas, a causa é o próprio download, não o prefixo: ler o erro e decidir entre repetir a resolução ou um cache de `~/.m2` no job.
-- **Não fazer:** executar o job de novo em laço sem ler o log.
-
-**Histórico**
-
-| Data | Evento |
-|---|---|
-| 2026-11-26 | Todos os drivers Java falharam no pull request #133 com `No plugin found for prefix 'dependency'`; passaram ao executar de novo. Não reproduzido em 48 execuções locais. O driver agora chama o plugin pelas coordenadas completas. |
 
 ## KI-038: A verificação dos SDKs do Pulumi que para sem mensagem no CI
 
@@ -113,5 +96,4 @@ O que os problemas acima ensinaram, para o próximo ser achado mais rápido (a l
 - `src/cluster/replication/definitions.rs` (`offer`, `spread`, `relay`, `coordinate`), `src/cluster/service/mod.rs` (`recover_previous_life`, `finish_join`, `activate`) e `tests/cold_start.rs` (UC-RTN-058); a linha do tempo da oferta perdida está no log guardado da caçada de 2026-10-26.
 - O travamento de 2026-10-26 foi reproduzido localmente e num container Linux; a pilha, os logs e as contagens de execuções são os da tabela de histórico.
 - As falhas foram vistas nos logs do CI do repositório; as datas de "achado" vêm do histórico do git e dos logs.
-- KI-040: `connectors/gateway-contract/drivers/java/build-and-run.sh` (a chamada do Maven); o log do job `gateway-contract` no pull request #133.
 - KI-038: `connectors/pulumi/scripts/generate.sh` (os passos de download) e `connectors/pulumi/scripts/test.sh` (`sdks`); o log do job no pull request #131.

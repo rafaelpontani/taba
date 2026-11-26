@@ -32,7 +32,6 @@ Uma seção **nunca é apagada**; ela muda de arquivo, e a linha dela vai junto 
 
 | Código | Problema | Status | Achado em |
 |---|---|---|---|
-| KI-040 | [Os drivers Java do contrato do gateway que não acham o plugin de dependências do Maven](36a-problemas-conhecidos.md#ki-040-os-drivers-java-do-contrato-do-gateway-que-não-acham-o-plugin-de-dependências-do-maven) | Aberto | 2026-11-26 |
 | KI-038 | [A verificação dos SDKs do Pulumi que para sem mensagem no CI](36a-problemas-conhecidos.md#ki-038-a-verificação-dos-sdks-do-pulumi-que-para-sem-mensagem-no-ci) | Aberto | 2026-11-26 |
 | KI-034 | [Um nó reiniciado na tabela junto com o antigo numa caça sobrecarregada](36a-problemas-conhecidos.md#ki-034-um-nó-reiniciado-na-tabela-junto-com-o-antigo-numa-caça-sobrecarregada) | Aberto | 2026-11-10 |
 | KI-005 | [Teste de reinício da FIFO que espera 30 s numa execução combinada](36a-problemas-conhecidos.md#ki-005-teste-de-reinício-da-fifo-que-espera-30-s-numa-execução-combinada) | Aberto | 2026-10-22 |

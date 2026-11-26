@@ -64,6 +64,8 @@ feature/*  ── PR ──▶ ci.yml: build + testes (nada é publicado, nenhum
 
 A entrada `version` dos builds é **vazia** quando não há release; com versão, o `set-version.sh` a grava nos arquivos **só dentro do build, sem commitar**. Todo build exporta `TABA_GIT_SHA`: `taba --version` e `taba-cli --version` mostram o commit.
 
+**O repositório do Maven fica em cache** nos jobs que rodam o Maven nos pull requests: o conector Java (`build-connector-java.yml`, um cache por JDK), o driver do OMB (`build-connector-omb.yml` e os passos do OMB de `contract-connectors.yml`) e os drivers Java do contrato do gateway (os dois jobs de `contract-gateway.yml`). O `actions/cache` guarda `${{ runner.temp }}/m2`, com uma chave do hash dos `pom*.xml` (e do `drivers/run.sh`, onde estão as versões dos SDKs), e a variável `TABA_M2_DIR` faz os scripts montarem essa pasta como repositório local do Maven no lugar dos seus volumes do Docker (sem ela, uma execução local é a mesma de antes). O Maven Central responde `429 Too Many Requests` aos runners do GitHub quando cada job baixa tudo de novo ([KI-040](36f-problemas-conhecidos.md#ki-040-os-drivers-java-do-contrato-do-gateway-que-não-acham-o-plugin-de-dependências-do-maven)). O `release.yml` não usa o cache: o que é publicado é sempre montado de um download limpo.
+
 ## O release (`release.yml`)
 
 Princípio: **nada público antes de tudo estar verde, e tudo o que é público aponta para o mesmo commit** (`github.sha`). `concurrency: release-<ref>` sem cancelamento: um push novo espera o anterior terminar.

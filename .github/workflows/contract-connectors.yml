@@ -31,7 +31,19 @@ jobs:
       - name: Pulumi provider against a node
         run: connectors/pulumi/scripts/test.sh acc
       # O test.sh usa o cache do Maven (driver-api do OMB e o conector Java) que o build.sh preenche.
+      # The Maven repository is kept between runs: Maven Central answers 429 (Too Many Requests) to the GitHub runners
+      # when every job downloads everything again (KI-040).
+      - name: Maven repository cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/m2
+          key: m2-omb-contract-${{ hashFiles('connectors/omb/OMB_VERSION', 'connectors/omb/pom.xml', 'connectors/java/pom.xml') }}
+          restore-keys: m2-omb-contract-
       - name: Build the OpenMessaging Benchmark driver
+        env:
+          TABA_M2_DIR: ${{ runner.temp }}/m2
         run: connectors/omb/build.sh
       - name: OpenMessaging Benchmark driver against a node
+        env:
+          TABA_M2_DIR: ${{ runner.temp }}/m2
         run: connectors/omb/test.sh

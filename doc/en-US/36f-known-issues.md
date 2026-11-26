@@ -4,7 +4,7 @@ summary: "The intermittent tests and known issues already fixed, kept as history
 type: reference
 status: partial
 verified-on: 2026-11-17 @ f30a4f9
-sources: [connectors/terraform/scripts/verify-release.sh, connectors/gateway-contract/drivers/run.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+sources: [connectors/gateway-contract/drivers/java/build-and-run.sh, connectors/terraform/scripts/verify-release.sh, connectors/gateway-contract/drivers/run.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs, .github/workflows/build-connector-java.yml, .github/workflows/contract-gateway.yml, connectors/omb/lib.sh]
 ---
 
 # Known issues: fixed
@@ -15,6 +15,7 @@ This file holds the sections of the issues already **fixed**, as history and for
 
 | Code | Issue | Status | Found on | Fixed on |
 |---|---|---|---|---|
+| KI-040 | [The Java drivers of the gateway contract that do not find the Maven dependency plugin](#ki-040-the-java-drivers-of-the-gateway-contract-that-do-not-find-the-maven-dependency-plugin) | Fixed | 2026-11-26 | 2026-11-26 |
 | KI-039 | [A drained node checked for the old message after the synchronization had brought it back](#ki-039-a-drained-node-checked-for-the-old-message-after-the-synchronization-had-brought-it-back) | Fixed | 2026-11-26 | 2026-11-26 |
 | KI-036 | [A grep -q at the end of a pipe that fails a check that passed](#ki-036-a-grep--q-at-the-end-of-a-pipe-that-fails-a-check-that-passed) | Fixed | 2026-11-17 | 2026-11-17 |
 | KI-035 | [Java drivers of the gateway contract that share the whole Maven folder](#ki-035-java-drivers-of-the-gateway-contract-that-share-the-whole-maven-folder) | Fixed | 2026-11-17 | 2026-11-17 |
@@ -50,6 +51,25 @@ This file holds the sections of the issues already **fixed**, as history and for
 | KI-003 | [Rejoining after a symmetric partition](#ki-003-rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | KI-002 | [A healthy channel that does not come back](#ki-002-a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | KI-001 | [Lock-order inversion when choosing replicas](#ki-001-lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## KI-040: The Java drivers of the gateway contract that do not find the Maven dependency plugin
+
+**Status:** Fixed · **Found on:** 2026-11-26 · **Fixed on:** 2026-11-26
+
+- **Where:** job `gateway-contract` (`contract-gateway.yml`), the Java drivers (`java-v2`, `java-v2old` and the others), step `connectors/gateway-contract/drivers/java/build-and-run.sh`.
+- **Symptom:** every Java driver ended with `the driver did not finish (no SUMMARY)` and, in its log, `[ERROR] No plugin found for prefix 'dependency' in the current project and in the plugin groups [org.apache.maven.plugins, org.codehaus.mojo] available from the repositories [local (/root/.m2/repository), central (https://repo.maven.apache.org/maven2)]`. Seen on pull request #133 on 2026-11-26; the drivers of the other languages passed in the same run, and the job passed when re-run. On #140 the same evening, with the plugin already called by its full coordinates, the job on the emulators failed with `Could not transfer artifact org.apache.maven.plugins:maven-dependency-plugin:pom:3.11.0 from/to central`, and the job of the Java connector (`build-connector-java.yml`, JDK 21) with `Could not transfer artifact org.apache.maven.plugins:maven-source-plugin:pom:3.3.1 from/to central (https://repo.maven.apache.org/maven2): status code: 429, reason phrase: Too Many Requests (429)`.
+- **Cause:** **Maven Central limits the rate of the GitHub runners** (`429 Too Many Requests`). No Maven job of the CI kept its local repository, so every run downloaded every plugin and SDK again, and the Java drivers start together; Maven 3.9 already repeats a request answered with 429 three times, and the limit lasted longer than that. A goal by prefix first reads the metadata of the plugin groups, which is why the first failure said `No plugin found for prefix`: a read answered with 429.
+- **Fix (2026-11-26):** the Maven local repository is cached between runs (`actions/cache` of `${{ runner.temp }}/m2`, key from the hash of the `pom*.xml` files) in every pull-request job that runs Maven: `build-connector-java.yml`, `build-connector-omb.yml`, the OMB steps of `contract-connectors.yml` and both jobs of `contract-gateway.yml`; the variable `TABA_M2_DIR` makes `connectors/gateway-contract/drivers/run.sh` and `connectors/omb/lib.sh` mount that folder ([27-ci-cd.md](27-ci-cd.md#the-workflows-githubworkflows)). The parallel Java drivers share it with the file locks of the resolver (`aether.syncContext.named.factory=file-lock`): without them, two drivers downloading the same artifact into one folder failed with `java.io.IOException: No such file or directory`. The call by full coordinates stays (one request less). While reproducing it on Windows, `build-and-run.sh` came out with CRLF and `sh` broke in the container: `.gitattributes` now checks every `*.sh` out with LF ([PRB-113](30-decisions.md#resolved-problems-prb)).
+- **Verification:** on the pull request of the fix (#141) the first run saved one cache per job and the second run restored it in all six (`Cache restored from key: m2-…` in the Java connector JDK 11 and 21, the OMB build, the contract job and both gateway jobs), all green. If it comes back with the cache restored, the cause is another one: reopen this section.
+- **Do not:** re-run the job in a loop without reading the log.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-26 | Every Java driver failed on pull request #133 with `No plugin found for prefix 'dependency'`; passed when re-run. Not reproduced in 48 local runs. The driver now calls the plugin by its full coordinates. |
+| 2026-11-26 | On #140 the job on the emulators and the Java connector (JDK 21) failed with `Could not transfer artifact` from Central, one of them with `429 Too Many Requests`: the cause is the rate limit of Central. Maven repository cached in the CI, file locks for the parallel drivers, `*.sh` with LF. Locally: the three Java drivers in parallel over an empty Docker volume pass 290/290 lines each. |
+| 2026-11-26 | Fixed: on #141 the second run restored the Maven cache in all six jobs and passed. The same evening the OMB build of #142 (without the cache yet) failed once more with `Could not transfer artifact` from Central. |
 
 ## KI-039: A drained node checked for the old message after the synchronization had brought it back
 
@@ -680,6 +700,7 @@ The lessons learned from all the issues are in [36a-known-issues.md](36a-known-i
 
 ## Sources and evidence
 
+- KI-040: `connectors/gateway-contract/drivers/java/build-and-run.sh` (the Maven call), the Maven cache of the workflows; the log of the job `gateway-contract` on pull request #133.
 - The tests cited and `tests/common/cluster.rs` (`NO_VOTE`, `FAST`, `WAIT`, `TABA_TEST_LOG`).
 - `src/cluster/channel/mod.rs` (`accept`, `receive`, `sync_members`, `drop_all`, `allow_new_vote`), `src/cluster/backup/evict.rs`, `src/cluster/sync/mod.rs` and `tests/channel.rs` (UC-CAN-029).
 - `src/cluster/replication/definitions.rs` (`offer`, `spread`, `relay`, `coordinate`), `src/cluster/service/mod.rs` (`recover_previous_life`, `finish_join`, `activate`) and `tests/cold_start.rs` (UC-RTN-058); the timeline of the lost offer is in the log kept from the hunt of 2026-10-26.
