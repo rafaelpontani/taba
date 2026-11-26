@@ -1,0 +1,36 @@
+# Fills the Maven caches on main (KI-040). A pull request can only restore the caches of its own branch, of its base
+# branch and of the default branch (main), and the jobs that run Maven only run on pull requests: without this, every
+# new pull request started with no cache, downloaded everything from Maven Central and got 429 Too Many Requests.
+# The same reusable workflows run here with the same cache keys. Every week (a cache not used for 7 days is evicted),
+# on a push to main that changes what decides the dependencies, and by hand. Publishes nothing.
+name: Maven cache
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "connectors/java/pom.xml"
+      - "connectors/omb/pom.xml"
+      - "connectors/omb/OMB_VERSION"
+      - "connectors/gateway-contract/drivers/java/pom-*.xml"
+      - "connectors/gateway-contract/drivers/run.sh"
+      - ".github/workflows/maven-cache.yml"
+  schedule:
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  connector-java:
+    name: Java connector
+    uses: ./.github/workflows/build-connector-java.yml
+
+  connector-omb:
+    name: OMB driver
+    uses: ./.github/workflows/build-connector-omb.yml
+
+  gateway-contract:
+    name: Gateway contract tests
+    uses: ./.github/workflows/contract-gateway.yml
