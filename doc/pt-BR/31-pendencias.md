@@ -13,7 +13,7 @@ fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 >
 > **Legenda:** `[ ]` em aberto, sem decisão; `[~]` parcialmente resolvida (o texto traz **só as perguntas que faltam**, cada uma com seu sub-código); **Depende de** = a dúvida só se responde depois de outra.
 >
-> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D225** e **PRB-112**; D217 e PRB-108 estão tomados por planos ainda em desenvolvimento).
+> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D244** e **PRB-113**; D217 e PRB-108 estão tomados por planos ainda em desenvolvimento).
 
 ## Limites conhecidos
 
@@ -385,6 +385,12 @@ Podem ser respondidas **agora**, em qualquer ordem: não dependem de outra pergu
 - **Estado:** `[ ]` aberta · **Tipo:** dúvida de design
 
 **A listagem no Pulumi Registry.** O registry lista um provider por um pull request para o `pulumi/registry` (`community-packages/package-list.json`, com o repositório `rafaelpontani/pulumi-taba` e o schema `provider/cmd/pulumi-resource-taba/schema.json`, que o espelho já tem) e lê as Releases dele; a Pulumi revisa, como o time do OpenTofu fez com o provider Terraform. Ele também pede `docs/_index.md` e `docs/installation-configuration.md` no repositório. Pergunta: quando? A proposta é depois de a primeira versão final ser publicada e conferida, com os dois documentos acrescentados ao espelho então.
+
+### D244
+
+- **Estado:** `[ ]` aberta · **Tipo:** dúvida de design
+
+**Um participante aceita a fase 1 de uma mudança de membros em qualquer versão da sua tabela.** O `register` e o `unregister` levam só a operação e a mudança: o participante confere que a mudança cabe na sua tabela (`Membership::register_as`), não que a sua tabela é a que o coordenador tem. Um participante uma mudança atrás (ficou fora da mudança anterior, ou perdeu o commit dela, e o quadro `membership` dessa mudança ainda não chegou) faz o commit da mudança seguinte sobre a tabela antiga: o mesmo número de versão, outros membros. Quando chega o quadro da mudança que ele perdeu, a versão não está à frente da tabela e o `Membership::learn` o descarta; o quadro da mudança seguinte "não cabe na tabela" e também é descartado. A tabela fica diferente da dos outros até algo a substituir. Um caminho que deixa um participante atrás: a exclusão por voto (`ClusterService::unregister_node`) deixa fora da fase 1 os pares cujo canal o coordenador vê caído, mesmo um que acabou de responder o voto, enquanto o ingresso que vem depois manda a fase 1 a todos os membros por chamada. É a leitura do [KI-034](36a-problemas-conhecidos.md#ki-034-um-nó-reiniciado-na-tabela-junto-com-o-antigo-numa-caça-sobrecarregada), não uma confirmada. Proposta: a fase 1 leva a versão da tabela do coordenador e um participante em outra versão a recusa com `cluster.conflict`, então o coordenador desfaz e tenta de novo depois que o participante alcançou pelo quadro (que espera na fila de saída até o `confirm`). O ponto aberto é a compatibilidade: as estruturas do protocolo do cluster têm `deny_unknown_fields`, então durante uma atualização gradual um nó de uma versão anterior recusa um `register` com o campo novo; o campo só iria aos membros que anunciaram uma versão que o entende (`ClusterService::peer_supports`), e essas versões só são conhecidas depois de uma rodada do upgrade. Alternativas: (a) esse campo, mandado só a quem o entende; (b) sem campo: um participante que descarta um quadro cujo `operationId` nunca aplicou pede a tabela inteira a um par (`list-nodes`) e substitui a sua; (c) a exclusão por voto conta como caídos só os membros que não responderam o voto, o que fecha o caminho acima mas não o caso geral.
 
 ## 2. Bloqueadas por outra decisão ou etapa
 
