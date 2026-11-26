@@ -5,3 +5,10 @@ crates/taba-node/tests/wire/*.hex text eol=lf
 connectors/pulumi/sdk/** text eol=lf
 connectors/pulumi/sdk/**/*.png binary
 connectors/pulumi/provider/cmd/pulumi-resource-taba/*.json text eol=lf
+# Fontes Go: sempre LF, para o `gofmt -l` dos scripts de teste (que rodam num container Linux) passar também num
+# clone do Windows com core.autocrlf (PRB-113).
+*.go text eol=lf
+# Documentação e exemplos do provider Terraform: sempre LF. O `go generate` os compara byte a byte e o provider Pulumi
+# lê a documentação para converter os exemplos; com CRLF o exemplo do token era descartado (PRB-113, KI-038).
+connectors/terraform/docs/** text eol=lf
+connectors/terraform/examples/** text eol=lf
