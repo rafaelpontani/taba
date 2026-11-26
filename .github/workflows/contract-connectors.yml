@@ -38,7 +38,9 @@ jobs:
         with:
           path: ${{ runner.temp }}/m2
           key: m2-omb-contract-${{ hashFiles('connectors/omb/OMB_VERSION', 'connectors/omb/pom.xml', 'connectors/java/pom.xml') }}
-          restore-keys: m2-omb-contract-
+          restore-keys: |
+            m2-omb-contract-
+            m2-omb-build-
       - name: Build the OpenMessaging Benchmark driver
         env:
           TABA_M2_DIR: ${{ runner.temp }}/m2
