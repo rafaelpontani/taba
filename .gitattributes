@@ -12,3 +12,6 @@ connectors/pulumi/provider/cmd/pulumi-resource-taba/*.json text eol=lf
 # lê a documentação para converter os exemplos; com CRLF o exemplo do token era descartado (PRB-113, KI-038).
 connectors/terraform/docs/** text eol=lf
 connectors/terraform/examples/** text eol=lf
+# Scripts de shell: sempre LF. Os testes os executam dentro de containers Linux (`sh /repo/...`), e com CRLF num clone
+# do Windows com core.autocrlf o `sh` lê `$'\r'` no fim de cada linha (PRB-113, KI-040).
+*.sh text eol=lf

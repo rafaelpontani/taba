@@ -32,7 +32,6 @@ A section is **never deleted**; it moves between the two files, and its row move
 
 | Code | Issue | Status | Found on |
 |---|---|---|---|
-| KI-040 | [The Java drivers of the gateway contract that do not find the Maven dependency plugin](36a-known-issues.md#ki-040-the-java-drivers-of-the-gateway-contract-that-do-not-find-the-maven-dependency-plugin) | Open | 2026-11-26 |
 | KI-038 | [The check of the Pulumi SDKs that stops with no message in CI](36a-known-issues.md#ki-038-the-check-of-the-pulumi-sdks-that-stops-with-no-message-in-ci) | Open | 2026-11-26 |
 | KI-034 | [A restarted node in the table together with the old one in an overloaded hunt](36a-known-issues.md#ki-034-a-restarted-node-in-the-table-together-with-the-old-one-in-an-overloaded-hunt) | Open | 2026-11-10 |
 | KI-005 | [A FIFO restart test that waits 30 s in a combined run](36a-known-issues.md#ki-005-a-fifo-restart-test-that-waits-30-s-in-a-combined-run) | Open | 2026-10-22 |

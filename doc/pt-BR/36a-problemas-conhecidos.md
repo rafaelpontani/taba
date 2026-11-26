@@ -4,7 +4,7 @@ resumo: "Os testes intermitentes e problemas conhecidos ainda abertos (ou reaber
 tipo: referência
 status: parcial
 verificado-em: 2026-11-10 @ d6e1d66
-fontes: [connectors/pulumi/scripts/generate.sh, connectors/gateway-contract/drivers/java/build-and-run.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+fontes: [connectors/pulumi/scripts/generate.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Problemas conhecidos: abertos
@@ -12,23 +12,6 @@ fontes: [connectors/pulumi/scripts/generate.sh, connectors/gateway-contract/driv
 > Leia antes: [25-testes.md](25-testes.md).
 
 Este arquivo guarda as seções dos problemas **abertos** (`Aberto` ou `Reaberto`). O índice deles, onde fica cada arquivo e o padrão de uma seção estão no [36-problemas-conhecidos.md](36-problemas-conhecidos.md); os corrigidos estão no [36f-problemas-conhecidos.md](36f-problemas-conhecidos.md).
-
-## KI-040: Os drivers Java do contrato do gateway que não acham o plugin de dependências do Maven
-
-**Situação:** Aberto · **Encontrado em:** 2026-11-26 · **Corrigido em:** —
-
-- **Onde:** job `gateway-contract` (`contract-gateway.yml`), os drivers Java (`java-v2`, `java-v2old` e os outros), passo `connectors/gateway-contract/drivers/java/build-and-run.sh`.
-- **Sintoma:** todos os drivers Java terminaram com `the driver did not finish (no SUMMARY)` e, no log, `[ERROR] No plugin found for prefix 'dependency' in the current project and in the plugin groups [org.apache.maven.plugins, org.codehaus.mojo] available from the repositories [local (/root/.m2/repository), central (https://repo.maven.apache.org/maven2)]`. Visto uma vez, no pull request #133 em 2026-11-26; os drivers das outras linguagens passaram na mesma execução, e o job passou ao ser executado de novo.
-- **Causa:** não confirmada. Um goal chamado por prefixo (`dependency:build-classpath`) faz o Maven ler os metadados dos grupos de plugins no Maven Central para saber qual plugin tem o prefixo; uma leitura que falhou por um instante (o Central não respondeu, ou respondeu com erro) deixa o Maven sem o plugin, e todos os drivers Java começam ao mesmo tempo, então falham juntos. Bate com o que se viu, mas a falha não foi reproduzida: 48 execuções dos drivers, várias ao mesmo tempo, passaram todas.
-- **Mitigação (2026-11-26):** o driver chama o plugin pelas coordenadas completas e pela versão (`org.apache.maven.plugins:maven-dependency-plugin:3.11.0:build-classpath`), então o Maven não lê mais os metadados dos grupos para resolver um prefixo. Ele ainda baixa o plugin e o SDK do Central; um Central que não responde ainda faz o driver falhar, agora com o erro desse download.
-- **Próximo passo:** se voltar com as coordenadas completas, a causa é o próprio download, não o prefixo: ler o erro e decidir entre repetir a resolução ou um cache de `~/.m2` no job.
-- **Não fazer:** executar o job de novo em laço sem ler o log.
-
-**Histórico**
-
-| Data | Evento |
-|---|---|
-| 2026-11-26 | Todos os drivers Java falharam no pull request #133 com `No plugin found for prefix 'dependency'`; passaram ao executar de novo. Não reproduzido em 48 execuções locais. O driver agora chama o plugin pelas coordenadas completas. |
 
 ## KI-038: A verificação dos SDKs do Pulumi que para sem mensagem no CI
 
@@ -56,8 +39,8 @@ Este arquivo guarda as seções dos problemas **abertos** (`Aberto` ou `Reaberto
 
 - **Teste:** `tests/failures.rs::a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins_as_a_new_node` (UC-CNC-002, UC-CNC-007, UC-FRZ-005, UC-CAN-014).
 - **Sintoma:** `the new node's request waited for the end of the vote`: uma tabela teve o nó antigo e o novo juntos por um instante. Uma vez em 80 execuções de `ROUNDS=10 KEEP_GOING=1 docker/hang-hunt.sh failures`, numa rodada em que a suíte completa (`cargo test`) também rodava na mesma máquina (a mesma rodada teve outras falhas e travamentos de sobrecarga). A mesma caça repetida com a máquina livre (80 execuções) não falhou.
-- **Causa:** não identificada. A leitura a conferir: desde a correção do KI-030 o teste retém o `unregister` até o `join` do nó novo chegar a um membro; sob aquela sobrecarga a chamada retida pode esgotar o prazo (5 s, três tentativas), a exclusão falhar (`failed`), a votação terminar sem excluir, e o `join` então passar com o nó antigo ainda na tabela. Se for isso, o servidor deixou um nó no mesmo endereço entrar enquanto o morto ainda era membro, depois de uma exclusão que falhou: a pergunta é se ele deve continuar recusando até uma nova votação excluir o antigo.
-- **Próximo passo:** no log guardado (`target/hunt-failures-loaded/run_7_1.log`), os eventos do cluster deste teste: se a exclusão falhou antes do `join`; depois decidir a regra acima.
+- **Causa:** não confirmada. Leitura do log guardado (2026-11-26, `target/hunt-failures-loaded/run_7_1.log`; o cluster deste teste é o do nó antigo `…72b8…`, reiniciado como `…7352…` na mesma porta do cluster): o voto alcançou o quórum às 36.635, um nó tirou o antigo da tabela às 38.308 (`node out of the cluster reason=Vote`, depois do `unregister` retido), e 3 ms depois o outro abriu **um voto novo contra o mesmo nó antigo** (`yes=1 healthy=2`): para ele o nó antigo ainda era membro. O nó novo se registrou na versão 5 e, 160 ms depois, um nó descartou uma versão 5 com `member change that does not fit the table: ignored`. É a assinatura de uma tabela que aceitou o ingresso como a sua versão 4 com o nó antigo ainda nela, e depois descartou a exclusão (versão 4, não está à frente) e o ingresso (versão 5, o nó já membro). A fase 1 de uma mudança de membros não confere a versão da tabela do participante: [D244](31-pendencias.md#d244). O log não diz qual nó escreve cada linha, então o caminho que deixou o participante atrás não foi confirmado.
+- **Próximo passo:** decidir a [D244](31-pendencias.md#d244); a próxima caça com o nó local nos avisos de `cluster/service` e `cluster/members` (qual nó escreve cada linha) confirmaria o caminho.
 - **Não fazer:** aumentar o prazo da chamada retida.
 
 **Histórico**
@@ -65,6 +48,7 @@ Este arquivo guarda as seções dos problemas **abertos** (`Aberto` ou `Reaberto
 | Data | Evento |
 |---|---|
 | 2026-11-10 | Uma falha numa caça sobrecarregada (a suíte completa rodando ao mesmo tempo); nenhuma na repetição limpa de 80 execuções. |
+| 2026-11-26 | Leitura do log guardado: uma tabela que aceitou o ingresso antes da exclusão e depois descartou os dois quadros (`does not fit the table ... version=5`). Registrado como D244 (fase 1 sem a versão da tabela); o servidor não mudou. |
 
 ## KI-005: Teste de reinício da FIFO que espera 30 s numa execução combinada
 
@@ -113,5 +97,4 @@ O que os problemas acima ensinaram, para o próximo ser achado mais rápido (a l
 - `src/cluster/replication/definitions.rs` (`offer`, `spread`, `relay`, `coordinate`), `src/cluster/service/mod.rs` (`recover_previous_life`, `finish_join`, `activate`) e `tests/cold_start.rs` (UC-RTN-058); a linha do tempo da oferta perdida está no log guardado da caçada de 2026-10-26.
 - O travamento de 2026-10-26 foi reproduzido localmente e num container Linux; a pilha, os logs e as contagens de execuções são os da tabela de histórico.
 - As falhas foram vistas nos logs do CI do repositório; as datas de "achado" vêm do histórico do git e dos logs.
-- KI-040: `connectors/gateway-contract/drivers/java/build-and-run.sh` (a chamada do Maven); o log do job `gateway-contract` no pull request #133.
 - KI-038: `connectors/pulumi/scripts/generate.sh` (os passos de download) e `connectors/pulumi/scripts/test.sh` (`sdks`); o log do job no pull request #131.
