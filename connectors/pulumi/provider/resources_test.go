@@ -163,3 +163,41 @@ func TestReplacementOrder(t *testing.T) {
 		}
 	}
 }
+
+// The lifecycle block of the token example and the Terraform rotation sentence are rewritten before the examples are
+// converted, with the docs checked out with LF or with CRLF (a Windows clone with core.autocrlf).
+// UC: UC-IAC-035
+func TestDocsEditsRemoveTheLifecycleBlockWithAnyLineEnd(t *testing.T) {
+	doc := "```terraform\n" +
+		"resource \"taba_token\" \"orders_app\" {\n" +
+		"  name = \"orders-app\"\n" +
+		"\n" +
+		"  # Rotation: terraform apply -replace=taba_token.orders_app creates the new\n" +
+		"  # token before revoking the old one, so there is no moment without a token.\n" +
+		"  lifecycle {\n" +
+		"    create_before_destroy = true\n" +
+		"  }\n" +
+		"}\n" +
+		"```\n" + terraformRotation + "\n"
+	edits := docsEdits(nil)
+	if len(edits) != 1 {
+		t.Fatalf("expected one docs edit, got %d", len(edits))
+	}
+	for name, text := range map[string]string{"LF": doc, "CRLF": strings.ReplaceAll(doc, "\n", "\r\n")} {
+		out, err := edits[0].Edit("token.md", []byte(text))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		got := string(out)
+		for _, gone := range []string{"lifecycle", "create_before_destroy", "# Rotation:", terraformRotation} {
+			if strings.Contains(got, gone) {
+				t.Errorf("%s: %q is still in the edited docs:\n%s", name, gone, got)
+			}
+		}
+		for _, kept := range []string{`name = "orders-app"`, pulumiRotation} {
+			if !strings.Contains(got, kept) {
+				t.Errorf("%s: %q is missing from the edited docs:\n%s", name, kept, got)
+			}
+		}
+	}
+}

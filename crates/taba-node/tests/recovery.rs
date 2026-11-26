@@ -330,6 +330,11 @@ async fn a_node_that_left_by_drain_recovers_the_lost_messages_before_it_returns_
     }
     let node3 = cluster.node(3);
     hold(node3, &lost);
+    // A message only node 3 has and nobody declared lost: no owner can give it back, so after the return it shows that
+    // the local state was cleared. `lost` cannot show it: with replication.factor=3 the new node owns every block and
+    // its synchronization brings `lost` back (that race made the old check fail sometimes, KI-039).
+    let only_here = record(&cluster, 2, "só aqui");
+    hold(node3, &only_here);
     let old_id = cluster.node_id(3);
     let drain = node3
         .client
@@ -371,7 +376,13 @@ async fn a_node_that_left_by_drain_recovers_the_lost_messages_before_it_returns_
                 .is_some_and(|t| t.members.len() == 3 && t.member(&id).is_some())
     })
     .await;
-    assert!(!messages_of(node3).holds(TOPIC, &lost.id));
+    wait_joined(node3).await;
+    assert!(!messages_of(node3).holds(TOPIC, &only_here.id));
+    eventually(
+        "the new node to get the message back from its owners",
+        || messages_of(node3).holds(TOPIC, &lost.id),
+    )
+    .await;
     assert_eq!(
         total(
             &node3.metrics().await,

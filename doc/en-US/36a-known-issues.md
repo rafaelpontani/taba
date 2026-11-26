@@ -4,7 +4,7 @@ summary: "The intermittent tests and known issues still open (or reopened): each
 type: reference
 status: partial
 verified-on: 2026-11-10 @ d6e1d66
-sources: [crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+sources: [connectors/pulumi/scripts/generate.sh, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/recovery/restoration.rs, crates/taba-node/src/cluster/recovery/finish.rs, crates/taba-node/tests/restore_lives.rs, crates/taba-node/tests/regroup.rs, crates/taba-node/src/engine/messages/blocks.rs, connectors/gateway-contract/drivers/go/main.go, connectors/gateway-contract/scenarios/aws/sqs-standard.scn, connectors/gateway-contract/scenarios/taba/limits-sqs.scn, crates/taba-node/tests/partition.rs, crates/taba-node/tests/batch.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Known issues: open
@@ -12,6 +12,26 @@ sources: [crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/clu
 > Read first: [25-testing.md](25-testing.md).
 
 This file holds the sections of the issues that are **open** (`Open` or `Reopened`). Their index, where each file is and the pattern of a section are in [36-known-issues.md](36-known-issues.md); the fixed ones are in [36f-known-issues.md](36f-known-issues.md).
+
+## KI-038: The check of the Pulumi SDKs that stops with no message in CI
+
+**Status:** Open · **Found on:** 2026-11-26 · **Fixed on:** —
+
+- **Where:** job `Pulumi provider (unit tests and generated SDKs)` of `ci.yml`, step `connectors/pulumi/scripts/test.sh sdks` (it runs `connectors/pulumi/scripts/generate.sh`).
+- **Symptom:** the step ends with `Process completed with exit code 1` about 70 s after `[converter plugin terraform-1.4.0] installing`, with no other line: not the `schema.json or an SDK changed` of the check, not an error of `tfgen`. Seen once, on the Dependabot pull request #131 (rusqlite 0.42 → 0.43, which does not touch the Pulumi provider), on 2026-11-23; the same job passed on #130 and #132 the same day, and on #131 when re-run on 2026-11-26.
+- **Cause:** not identified. The steps of `generate.sh` that download Go modules (`go get` of the Pulumi SDK and of the floors, `go mod tidy`) sent their output and their errors to `/dev/null`, so a failure there (a module proxy that did not answer, for example) ends the script with no message; that is the likeliest reading, not a confirmed one.
+- **Next step:** those steps now write their output to a file that is printed when they fail. At the next occurrence, the log of the job shows the error of `go get` or `go mod tidy`.
+- **On Windows (a separate cause, fixed):** the same check failed every time on a Windows clone with `core.autocrlf`, with `unable to convert HCL example for Pulumi entity '#/resources/taba:index/token:Token'` and the example of `Token` gone from the schema and the four SDKs. The docs of the Terraform provider come out with CRLF there, and the regular expression of `connectors/pulumi/provider/docs_edits.go` that removes the `lifecycle` block of the token example only knew `
+`, so the block stayed and the converter dropped the example. The expression now accepts `
+`; test `connectors/pulumi/provider/resources_test.go::TestDocsEditsRemoveTheLifecycleBlockWithAnyLineEnd` (UC-IAC-035), and `test.sh sdks` passed on Windows after it. It does not explain the failure in CI, whose checkout is LF. The root of the Windows failure, CRLF in the checkout, is also gone: `.gitattributes` checks the Go sources and the docs and examples of the Terraform provider out with LF ([PRB-113](30-decisions.md#resolved-problems-prb)).
+- **Do not:** retry the step in a loop without knowing what failed.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-11-23 | Failed on pull request #131 with no message; passed on #130 and #132 the same day. |
+| 2026-11-26 | Passed when re-run on #131. The download steps of `generate.sh` now print their errors. On Windows the check failed twice in a row with the token example dropped (CRLF in the docs); the edit of the docs now accepts CRLF and the check passed. |
 
 ## KI-034: A restarted node in the table together with the old one in an overloaded hunt
 
@@ -76,3 +96,4 @@ What the issues above taught, so the next one is found faster (the checklist for
 - `src/cluster/replication/definitions.rs` (`offer`, `spread`, `relay`, `coordinate`), `src/cluster/service/mod.rs` (`recover_previous_life`, `finish_join`, `activate`) and `tests/cold_start.rs` (UC-RTN-058); the timeline of the lost offer is in the log kept from the hunt of 2026-10-26.
 - The hang of 2026-10-26 was reproduced locally and in a Linux container; the stack, the logs and the run counts are the ones in the history table.
 - The failures were seen in the repository's CI logs; the "found" dates come from the git history and the logs.
+- KI-038: `connectors/pulumi/scripts/generate.sh` (the download steps) and `connectors/pulumi/scripts/test.sh` (`sdks`); the log of the job on pull request #131.

@@ -15,6 +15,7 @@ Este arquivo guarda as seções dos problemas já **corrigidos**, como históric
 
 | Código | Problema | Status | Achado em | Corrigido em |
 |---|---|---|---|---|
+| KI-039 | [Um nó drenado conferido pela mensagem antiga depois que a sincronização a trouxe de volta](#ki-039-um-nó-drenado-conferido-pela-mensagem-antiga-depois-que-a-sincronização-a-trouxe-de-volta) | Corrigido | 2026-11-26 | 2026-11-26 |
 | KI-036 | [Um grep -q no fim de um pipe que reprova uma conferência que passou](#ki-036-um-grep--q-no-fim-de-um-pipe-que-reprova-uma-conferência-que-passou) | Corrigido | 2026-11-17 | 2026-11-17 |
 | KI-035 | [Drivers Java do contrato do gateway que dividem a pasta inteira do Maven](#ki-035-drivers-java-do-contrato-do-gateway-que-dividem-a-pasta-inteira-do-maven) | Corrigido | 2026-11-17 | 2026-11-17 |
 | KI-033 | [Um register pendente na secundária conferido antes de chegar](#ki-033-um-register-pendente-na-secundária-conferido-antes-de-chegar) | Corrigido | 2026-11-10 | 2026-11-10 |
@@ -49,6 +50,22 @@ Este arquivo guarda as seções dos problemas já **corrigidos**, como históric
 | KI-003 | [Reingresso depois de uma partição simétrica](#ki-003-reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | KI-002 | [Canal saudável que não volta](#ki-002-canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | KI-001 | [Inversão de ordem de travas ao escolher réplicas](#ki-001-inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## KI-039: Um nó drenado conferido pela mensagem antiga depois que a sincronização a trouxe de volta
+
+**Status:** Corrigido · **Achado em:** 2026-11-26 · **Corrigido em:** 2026-11-26
+
+- **Teste:** `tests/recovery.rs::a_node_that_left_by_drain_recovers_the_lost_messages_before_it_returns_as_a_new_node` (UC-DRN-018, UC-RTN-001, UC-RTN-003, UC-RTN-013).
+- **Sintoma:** `assertion failed: !messages_of(node3).holds(TOPIC, &lost.id)`, no job `Server (build and tests, amd64)` do pull request #134 (uma mudança só de `.gitattributes` e documentação); os outros 11 testes do arquivo passaram.
+- **Causa (confirmada):** no teste, não no servidor. O `rejoin_as_new` apaga o estado local e refaz o bootstrap com um ID novo; com `replication.factor=3` em três nós o nó novo é dono de todos os blocos, então a sincronização dele traz de volta a mensagem recuperada, como deve. O teste conferia que o nó 3 não tinha mais a mensagem assim que ele aparecia na tabela, uma corrida com essa sincronização: só passava quando olhava antes de a cópia chegar. Com a conferência movida para depois do `wait_joined` (o nó ativo), falhou 1 vez em 1.
+- **Correção (2026-11-26, no teste):** a limpeza é mostrada por uma segunda mensagem que só o nó 3 tem e que ninguém declarou perdida (`only_here`): nenhum dono pode devolvê-la, então ela precisa ter sumido depois da volta. Depois o teste espera o nó ficar ativo e confere que ele recebeu a `lost` de volta dos donos.
+- **Verificação:** o teste sozinho 30 vezes e o binário `recovery` inteiro 30 vezes (6 processos ao mesmo tempo, 5 rodadas) no Windows: nenhuma falha.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-11-26 | Falhou uma vez no CI do pull request #134; causa lida no `rejoin_as_new` e confirmada conferindo depois de o nó estar ativo (falha sempre); o teste confere uma mensagem que só o nó tinha; 60 execuções sem falha. |
 
 ## KI-036: Um grep -q no fim de um pipe que reprova uma conferência que passou
 
