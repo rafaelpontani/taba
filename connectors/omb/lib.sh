@@ -28,6 +28,10 @@ omb_checkout() {
 #   omb_maven <command> [docker options...]
 omb_maven() {
   local command="$1"; shift
-  docker run --rm -v "$(omb_hostpath "$OMB_REPO_ROOT"):/repo" -v taba-omb-m2:/root/.m2 -w /repo "$@" \
+  # TABA_M2_DIR (uma pasta do host) troca o volume pelo repositório que o CI guarda em cache: o Maven Central responde
+  # 429 aos runners do GitHub quando cada job baixa tudo de novo (KI-040).
+  local m2=(-v taba-omb-m2:/root/.m2)
+  [ -n "${TABA_M2_DIR:-}" ] && m2=(-v "$TABA_M2_DIR:/root/.m2/repository")
+  docker run --rm -v "$(omb_hostpath "$OMB_REPO_ROOT"):/repo" "${m2[@]}" -w /repo "$@" \
     "$OMB_MAVEN_IMAGE" sh -c "$command"
 }

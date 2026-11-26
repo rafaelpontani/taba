@@ -4,7 +4,10 @@
 # plugin group from Maven Central on every run, and a failed read ended the driver with "No plugin found for prefix"
 # (KI-040).
 mkdir /app && cd /app && cp -r /repo/connectors/gateway-contract/drivers/java/src "/repo/connectors/gateway-contract/drivers/java/pom-$FLAVOR.xml" .
+# The drivers run in parallel over one local repository (a volume, or the folder TABA_M2_DIR that the CI caches): the
+# resolver locks each artifact with a file, so two drivers that download the same one do not break each other.
 mvn -q -B -f "pom-$FLAVOR.xml" -Dsdk.version="$SDK_VERSION" \
+  -Daether.syncContext.named.factory=file-lock -Daether.syncContext.named.nameMapper=file-gav \
   org.apache.maven.plugins:maven-dependency-plugin:3.11.0:build-classpath -Dmdep.outputFile=cp.txt >/tmp/mvn.log 2>&1 || { tail -15 /tmp/mvn.log; exit 3; }
 mkdir out
 OPS="OpsV2"

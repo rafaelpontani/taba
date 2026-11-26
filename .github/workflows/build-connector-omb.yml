@@ -18,5 +18,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The Maven repository is kept between runs: Maven Central answers 429 (Too Many Requests) to the GitHub runners
+      # when every job downloads everything again (KI-040).
+      - name: Maven repository cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/m2
+          key: m2-omb-build-${{ hashFiles('connectors/omb/OMB_VERSION', 'connectors/omb/pom.xml', 'connectors/java/pom.xml') }}
+          restore-keys: m2-omb-build-
       - name: Build and unit tests
+        env:
+          TABA_M2_DIR: ${{ runner.temp }}/m2
         run: connectors/omb/build.sh
