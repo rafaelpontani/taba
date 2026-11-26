@@ -13,7 +13,7 @@ sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 >
 > **Legend:** `[ ]` open, undecided; `[~]` partially resolved (the text carries **only the questions still missing**, each with its sub-code); **Depends on** = the question can only be answered after another.
 >
-> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D225** and **PRB-112**; D217 and PRB-108 are taken by plans still in development).
+> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D244** and **PRB-113**; D217 and PRB-108 are taken by plans still in development).
 
 ## Known limits
 
@@ -385,6 +385,12 @@ Can be answered **now**, in any order: they do not depend on another question or
 - **State:** `[ ]` open · **Type:** design question
 
 **The listing in the Pulumi Registry.** The registry lists a provider by a pull request to `pulumi/registry` (`community-packages/package-list.json`, with the repository `rafaelpontani/pulumi-taba` and the schema `provider/cmd/pulumi-resource-taba/schema.json`, which the mirror already has) and reads its Releases; Pulumi reviews it, as the OpenTofu team did for the Terraform provider. It also asks for `docs/_index.md` and `docs/installation-configuration.md` in the repository. Question: when? The proposal is after the first final version is published and checked, with the two documents added to the mirror then.
+
+### D244
+
+- **State:** `[ ]` open · **Type:** design question
+
+**A participant accepts phase 1 of a member change at any version of its table.** `register` and `unregister` carry only the operation and the change: the participant checks that the change fits its table (`Membership::register_as`), not that its table is the one the coordinator has. A participant one change behind (it was left out of the previous change, or lost its commit, and the `membership` frame of that change has not arrived yet) commits the next change on top of the old table: the same version number, other members. When the frame of the change it missed arrives, its version is not ahead of the table's and `Membership::learn` drops it; the frame of the next change "does not fit the table" and is dropped too. The table stays different from the others' until something replaces it. A path that leaves a participant behind: the exclusion by vote (`ClusterService::unregister_node`) leaves out of its phase 1 the peers whose channel the coordinator sees as down, even one that has just answered the vote, while the join that follows sends its phase 1 to every member by call. It is the reading of [KI-034](36a-known-issues.md#ki-034-a-restarted-node-in-the-table-together-with-the-old-one-in-an-overloaded-hunt), not a confirmed one. Proposal: phase 1 carries the coordinator's table version and a participant at another version refuses it with `cluster.conflict`, so the coordinator rolls back and tries again once the participant has caught up through the frame (which waits in the outgoing queue until the `confirm`). The open point is compatibility: the structures of the cluster protocol have `deny_unknown_fields`, so during a rolling update a node of an earlier release refuses a `register` with the new field; the field would only go to the members that announced a version that understands it (`ClusterService::peer_supports`), and those versions are only known after a round of the upgrade. Alternatives: (a) that field, sent only to who supports it; (b) no field: a participant that drops a frame whose `operationId` it never applied asks a peer for the whole table (`list-nodes`) and replaces its own; (c) the exclusion by vote counts as down only the members that did not answer the vote, which closes the path above but not the general case.
 
 ## 2. Blocked by another decision or step
 

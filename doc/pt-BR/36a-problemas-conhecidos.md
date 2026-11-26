@@ -39,8 +39,8 @@ Este arquivo guarda as seções dos problemas **abertos** (`Aberto` ou `Reaberto
 
 - **Teste:** `tests/failures.rs::a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins_as_a_new_node` (UC-CNC-002, UC-CNC-007, UC-FRZ-005, UC-CAN-014).
 - **Sintoma:** `the new node's request waited for the end of the vote`: uma tabela teve o nó antigo e o novo juntos por um instante. Uma vez em 80 execuções de `ROUNDS=10 KEEP_GOING=1 docker/hang-hunt.sh failures`, numa rodada em que a suíte completa (`cargo test`) também rodava na mesma máquina (a mesma rodada teve outras falhas e travamentos de sobrecarga). A mesma caça repetida com a máquina livre (80 execuções) não falhou.
-- **Causa:** não identificada. A leitura a conferir: desde a correção do KI-030 o teste retém o `unregister` até o `join` do nó novo chegar a um membro; sob aquela sobrecarga a chamada retida pode esgotar o prazo (5 s, três tentativas), a exclusão falhar (`failed`), a votação terminar sem excluir, e o `join` então passar com o nó antigo ainda na tabela. Se for isso, o servidor deixou um nó no mesmo endereço entrar enquanto o morto ainda era membro, depois de uma exclusão que falhou: a pergunta é se ele deve continuar recusando até uma nova votação excluir o antigo.
-- **Próximo passo:** no log guardado (`target/hunt-failures-loaded/run_7_1.log`), os eventos do cluster deste teste: se a exclusão falhou antes do `join`; depois decidir a regra acima.
+- **Causa:** não confirmada. Leitura do log guardado (2026-11-26, `target/hunt-failures-loaded/run_7_1.log`; o cluster deste teste é o do nó antigo `…72b8…`, reiniciado como `…7352…` na mesma porta do cluster): o voto alcançou o quórum às 36.635, um nó tirou o antigo da tabela às 38.308 (`node out of the cluster reason=Vote`, depois do `unregister` retido), e 3 ms depois o outro abriu **um voto novo contra o mesmo nó antigo** (`yes=1 healthy=2`): para ele o nó antigo ainda era membro. O nó novo se registrou na versão 5 e, 160 ms depois, um nó descartou uma versão 5 com `member change that does not fit the table: ignored`. É a assinatura de uma tabela que aceitou o ingresso como a sua versão 4 com o nó antigo ainda nela, e depois descartou a exclusão (versão 4, não está à frente) e o ingresso (versão 5, o nó já membro). A fase 1 de uma mudança de membros não confere a versão da tabela do participante: [D244](31-pendencias.md#d244). O log não diz qual nó escreve cada linha, então o caminho que deixou o participante atrás não foi confirmado.
+- **Próximo passo:** decidir a [D244](31-pendencias.md#d244); a próxima caça com o nó local nos avisos de `cluster/service` e `cluster/members` (qual nó escreve cada linha) confirmaria o caminho.
 - **Não fazer:** aumentar o prazo da chamada retida.
 
 **Histórico**
@@ -48,6 +48,7 @@ Este arquivo guarda as seções dos problemas **abertos** (`Aberto` ou `Reaberto
 | Data | Evento |
 |---|---|
 | 2026-11-10 | Uma falha numa caça sobrecarregada (a suíte completa rodando ao mesmo tempo); nenhuma na repetição limpa de 80 execuções. |
+| 2026-11-26 | Leitura do log guardado: uma tabela que aceitou o ingresso antes da exclusão e depois descartou os dois quadros (`does not fit the table ... version=5`). Registrado como D244 (fase 1 sem a versão da tabela); o servidor não mudou. |
 
 ## KI-005: Teste de reinício da FIFO que espera 30 s numa execução combinada
 

@@ -39,8 +39,8 @@ This file holds the sections of the issues that are **open** (`Open` or `Reopene
 
 - **Test:** `tests/failures.rs::a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins_as_a_new_node` (UC-CNC-002, UC-CNC-007, UC-FRZ-005, UC-CAN-014).
 - **Symptom:** `the new node's request waited for the end of the vote`: a table had the old node and the new one together for a moment. Once in 80 runs of `ROUNDS=10 KEEP_GOING=1 docker/hang-hunt.sh failures`, in a round in which the full suite (`cargo test`) was also running on the same machine (the same round had other failures and hangs of overload). The same hunt repeated with the machine free (80 runs) did not fail.
-- **Cause:** not identified. The reading to check: since the fix of KI-030 the test holds the `unregister` until the new node's `join` reaches a member; under that overload the held call may run out its deadline (5 s, three attempts), the exclusion fail (`failed`), the vote end without excluding, and the `join` then pass with the old node still in the table. If so, the server let a node at the same address join while the dead one was still a member, after a failed exclusion: the question is whether it must keep refusing it until a new vote excludes the old one.
-- **Next step:** in the kept log (`target/hunt-failures-loaded/run_7_1.log`), the events of the cluster of this test: whether the exclusion failed before the `join`; then decide the rule above.
+- **Cause:** not confirmed. Reading of the kept log (2026-11-26, `target/hunt-failures-loaded/run_7_1.log`; the cluster of this test is the one of the old node `…72b8…`, restarted as `…7352…` at the same cluster port): the vote reached the quorum at 36.635, one node took the old one out of the table at 38.308 (`node out of the cluster reason=Vote`, after the held `unregister`), and 3 ms later the other one opened **a new vote against the same old node** (`yes=1 healthy=2`): for it the old node was still a member. The new node registered at version 5 and, 160 ms later, a node dropped a version 5 with `member change that does not fit the table: ignored`. That is the signature of a table that took the join as its version 4 with the old node still in it, then dropped the exclusion (version 4, not ahead) and the join (version 5, the node already a member). Phase 1 of a member change does not check the version of the participant's table: [D244](31-pending-items.md#d244). The log does not say which node writes each line, so which path left the participant behind was not confirmed.
+- **Next step:** decide [D244](31-pending-items.md#d244); the next hunt with the local node in the warnings of `cluster/service` and `cluster/members` (which node writes each line) would confirm the path.
 - **Do not:** raise the deadline of the held call.
 
 **History**
@@ -48,6 +48,7 @@ This file holds the sections of the issues that are **open** (`Open` or `Reopene
 | Date | Event |
 |---|---|
 | 2026-11-10 | One failure in an overloaded hunt (the full suite running at the same time); none in the clean repeat of 80 runs. |
+| 2026-11-26 | Reading of the kept log: a table that took the join before the exclusion and then dropped both frames (`does not fit the table ... version=5`). Recorded as D244 (phase 1 without the version of the table); the server was not changed. |
 
 ## KI-005: A FIFO restart test that waits 30 s in a combined run
 
